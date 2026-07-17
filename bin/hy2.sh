@@ -91,8 +91,10 @@ menu_interactive() {
 status_cmd() {
   need_root status
   read_env
+  local port_suffix=""
+  [ "${PANEL_PORT:-443}" != "443" ] && port_suffix=":${PANEL_PORT}"
   echo "HY2 AIO v${AIO_VERSION:-unknown}"
-  echo "面板：https://${DOMAIN}/${PANEL_PATH}/"
+  echo "面板：https://${DOMAIN}${port_suffix}/${PANEL_PATH}/"
   echo
   systemctl --no-pager --full status \
     hysteria-server.service hy2-aio.service caddy.service \

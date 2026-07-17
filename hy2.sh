@@ -142,8 +142,10 @@ menu_interactive() {
 status_cmd() {
   need_root status
   read_env
+  local port_suffix=""
+  [ "${PANEL_PORT:-443}" != "443" ] && port_suffix=":${PANEL_PORT}"
   echo "HY2 AIO v${AIO_VERSION:-unknown}"
-  echo "面板：https://${DOMAIN}/${PANEL_PATH}/"
+  echo "面板：https://${DOMAIN}${port_suffix}/${PANEL_PATH}/"
   echo
   systemctl --no-pager --full status \
     hysteria-server.service hy2-aio.service caddy.service \
@@ -356,11 +358,14 @@ EOF
   write_access_file
   test_https
 
+  local port_suffix=""
+  [ "${PANEL_PORT:-443}" != "443" ] && port_suffix=":${PANEL_PORT}"
+
   echo
   echo "============================================================"
   echo "HY2 AIO 安装完成"
   echo "============================================================"
-  echo "面板：https://${DOMAIN}/${PANEL_PATH}/"
+  echo "面板：https://${DOMAIN}${port_suffix}/${PANEL_PATH}/"
   echo "面板用户名：${PANEL_USER}"
   echo "面板密码：${PANEL_PASS}"
   echo "账号资料：${ACCESS_FILE}"
