@@ -9,6 +9,10 @@ umask 077
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_URL="${HY2_REPO_URL:-https://raw.githubusercontent.com/keiraee/hy2-allin-one/main}"
 
+# 临时函数（模块加载前使用）
+_bootstrap_log() { printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "$*"; }
+_bootstrap_die() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
+
 # 下载远程模块
 fetch_modules() {
   local target_dir="$1"
@@ -27,7 +31,7 @@ fetch_modules() {
     "bin/hy2.sh"
   )
   for f in "${files[@]}"; do
-    log "下载：$f"
+    _bootstrap_log "下载：$f"
     curl -fsSL "${REPO_URL}/${f}" -o "${target_dir}/${f}"
   done
 }
@@ -497,7 +501,7 @@ main() {
     SCRIPT_DIR="$tmp_dir"
     load_local_modules
   else
-    die "模块未安装，请运行：sudo bash hy2.sh install"
+    _bootstrap_die "模块未安装，请运行：sudo bash hy2.sh install"
   fi
 
   # 解析命令
