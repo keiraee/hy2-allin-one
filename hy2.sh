@@ -61,7 +61,7 @@ load_installed_modules() {
     source "${modules_dir}/lib/user.sh"
     source "${modules_dir}/lib/cert.sh"
     source "${modules_dir}/lib/access.sh"
-    source "${MODULES_DIR}/lib/backup.sh"
+    source "${modules_dir}/lib/backup.sh"
     source "${modules_dir}/lib/mode.sh"
     source "${modules_dir}/lib/backend.sh"
   else
@@ -350,9 +350,8 @@ EOF
 
   curl -fsS -X POST http://127.0.0.1:18081/sync >/dev/null || true
 
-  local script_path
-  script_path="$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")"
-  install -m 0755 "$script_path" "$SELF_INSTALL"
+  # 安装系统命令入口
+  install -m 0755 "${modules_dir}/bin/hy2.sh" "$SELF_INSTALL"
 
   write_access_file
   test_https
