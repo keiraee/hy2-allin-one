@@ -1,0 +1,627 @@
+#!/usr/bin/env bash
+# backend.sh - 后端 Python 服务生成
+
+write_backend() {
+  cat > "$APP_FILE" <<'PY'
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import csv
+import json
+import os
+import shutil
+import socket
+import subprocess
+import threading
+import time
+import urllib.parse
+import urllib.request
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+
+ENV_FILE = Path("/etc/hy2-aio/config.env")
+USERS_FILE = Path("/etc/hy2-aio/users.json")
+MODE_FILE = Path("/etc/hy2-aio/client-mode.json")
+STATE_DIR = Path("/var/lib/hy2-aio")
+STATE_FILE = STATE_DIR / "state.json"
+BACKUP_DIR = STATE_DIR / "backups"
+WEB_DIR = Path("/var/www/hy2-aio")
+DOWNLOAD_DIR = WEB_DIR / "downloads"
+DATA_FILE = WEB_DIR / "data.json"
+USERS_CSV = WEB_DIR / "users.csv"
+HISTORY_CSV = WEB_DIR / "history.csv"
+LISTEN = ("127.0.0.1", 18081)
+LOCK = threading.RLock()
+
+
+def load_env() -> dict[str, str]:
+    values: dict[str, str] = {}
+    for raw in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        raw = raw.strip()
+        if not raw or raw.startswith("#") or "=" not in raw:
+            continue
+        key, value = raw.split("=", 1)
+        values[key] = value
+    return values
+
+
+def load_users() -> dict[str, dict[str, str]]:
+    data = json.loads(USERS_FILE.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise RuntimeError("users.json 格式错误")
+    return data
+
+
+def normalize_mode(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {"mode": "bbr", "up_mbps": 0.0, "down_mbps": 0.0}
+    mode = str(value.get("mode", "bbr")).lower()
+    if mode != "brutal":
+        return {"mode": "bbr", "up_mbps": 0.0, "down_mbps": 0.0}
+    try:
+        up = float(value.get("up_mbps", 0))
+        down = float(value.get("down_mbps", 0))
+    except (TypeError, ValueError):
+        return {"mode": "bbr", "up_mbps": 0.0, "down_mbps": 0.0}
+    if up <= 0 or down <= 0:
+        return {"mode": "bbr", "up_mbps": 0.0, "down_mbps": 0.0}
+    return {"mode": "brutal", "up_mbps": up, "down_mbps": down}
+
+
+def load_modes() -> dict[str, Any]:
+    data = read_json(MODE_FILE, {})
+    if isinstance(data, dict) and "mode" in data:
+        return {"default": normalize_mode(data), "users": {}}
+    if not isinstance(data, dict):
+        data = {}
+    overrides = data.get("users", {})
+    return {
+        "default": normalize_mode(data.get("default", {})),
+        "users": overrides if isinstance(overrides, dict) else {},
+    }
+
+
+def mode_for_user(username: str, modes: dict[str, Any] | None = None) -> dict[str, Any]:
+    modes = modes or load_modes()
+    overrides = modes.get("users", {})
+    if isinstance(overrides, dict) and username in overrides:
+        return normalize_mode(overrides[username])
+    return normalize_mode(modes.get("default", {}))
+
+
+def mode_label(mode: dict[str, Any]) -> str:
+    if mode.get("mode") != "brutal":
+        return "BBR 自动估速"
+    up = float(mode.get("up_mbps", 0))
+    down = float(mode.get("down_mbps", 0))
+    return f"Brutal ↑{up:g} / ↓{down:g} Mbps"
+
+
+def atomic_json(path: Path, data: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def read_json(path: Path, default: Any) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return default
+
+
+def current_month() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m")
+
+
+def iso_now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def net_counters(iface: str) -> tuple[int, int]:
+    base = Path("/sys/class/net") / iface / "statistics"
+    rx = int((base / "rx_bytes").read_text(encoding="utf-8").strip())
+    tx = int((base / "tx_bytes").read_text(encoding="utf-8").strip())
+    return rx, tx
+
+
+def hysteria_api(path: str, secret: str) -> Any:
+    stats_port = load_env().get("STATS_PORT", "9999")
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{stats_port}" + path,
+        headers={"Authorization": secret, "Accept": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:
+        return json.load(response)
+
+
+def service_status(name: str) -> str:
+    result = subprocess.run(
+        ["systemctl", "is-active", name],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    return result.stdout.strip() or "unknown"
+
+
+def cpu_percent() -> float:
+    def read() -> tuple[int, int]:
+        parts = Path("/proc/stat").read_text(encoding="utf-8").splitlines()[0].split()[1:]
+        values = [int(item) for item in parts]
+        total = sum(values)
+        idle = values[3] + (values[4] if len(values) > 4 else 0)
+        return total, idle
+
+    total1, idle1 = read()
+    time.sleep(0.12)
+    total2, idle2 = read()
+    delta = max(total2 - total1, 1)
+    return round((1 - (idle2 - idle1) / delta) * 100, 1)
+
+
+def memory_info() -> dict[str, Any]:
+    values: dict[str, int] = {}
+    for line in Path("/proc/meminfo").read_text(encoding="utf-8").splitlines():
+        key, value = line.split(":", 1)
+        values[key] = int(value.split()[0]) * 1024
+    total = values["MemTotal"]
+    used = total - values["MemAvailable"]
+    swap_total = values.get("SwapTotal", 0)
+    swap_used = swap_total - values.get("SwapFree", 0)
+    return {
+        "total": total,
+        "used": used,
+        "percent": round(used / total * 100, 1),
+        "swap_total": swap_total,
+        "swap_used": swap_used,
+        "swap_percent": round(swap_used / swap_total * 100, 1) if swap_total else 0,
+    }
+
+
+def direct_link(env: dict[str, str], username: str, password: str) -> str:
+    auth = urllib.parse.quote(f"{username}:{password}", safe="")
+    query = urllib.parse.urlencode(
+        {
+            "insecure": "1",
+            "obfs": "salamander",
+            "obfs-password": env["OBFS_PASSWORD"],
+            "sni": env.get("SNI", "www.amazon.sg"),
+        }
+    )
+    name = urllib.parse.quote(f"HY2-{username}", safe="")
+    return f"hysteria2://{auth}@{env['PUBLIC_IP']}:{env.get('HY2_PORT', '443')}/?{query}#{name}"
+
+
+def subscription_yaml(env: dict[str, str], username: str, password: str) -> bytes:
+    def q(value: str) -> str:
+        return json.dumps(str(value), ensure_ascii=False)
+
+    mode = mode_for_user(username)
+    rate_lines = ""
+    if mode.get("mode") == "brutal":
+        rate_lines = (
+            f'    up: "{float(mode["up_mbps"]):g} Mbps"\n'
+            f'    down: "{float(mode["down_mbps"]):g} Mbps"\n'
+        )
+
+    content = f"""mixed-port: 7890
+allow-lan: false
+mode: global
+log-level: info
+ipv6: false
+
+tun:
+  enable: true
+  stack: system
+  auto-route: true
+  auto-detect-interface: true
+  strict-route: true
+  dns-hijack:
+    - any:53
+    - tcp://any:53
+
+dns:
+  enable: true
+  ipv6: false
+  enhanced-mode: fake-ip
+nameserver:
+    - https://1.1.1.1/dns-query
+    - https://8.8.8.8/dns-query
+
+proxy-groups:
+  - name: "GLOBAL"
+    type: select
+    proxies:
+      - {q("HY2-" + username)}
+
+proxies:
+  - name: {q("HY2-" + username)}
+    type: hysteria2
+    server: {q(env["PUBLIC_IP"])}
+    port: {env.get('HY2_PORT', '443')}
+{rate_lines}    password: {q(username + ":" + password)}
+    obfs: salamander
+    obfs-password: {q(env["OBFS_PASSWORD"])}
+    sni: {q(env.get("SNI", "www.amazon.sg"))}
+    skip-cert-verify: true
+    udp: true
+"""
+    return content.encode("utf-8")
+
+
+def blank_state(iface: str) -> dict[str, Any]:
+    rx, tx = net_counters(iface)
+    return {
+        "month": current_month(),
+        "network": {"rx": rx, "tx": tx, "last_rx": rx, "last_tx": tx},
+        "users": {},
+        "last_history": 0,
+    }
+
+
+def collect(force_backup: bool = False) -> dict[str, Any]:
+    with LOCK:
+        env = load_env()
+        users = load_users()
+        modes = load_modes()
+        iface = env["NETWORK_INTERFACE"]
+        total_limit = int(env["TOTAL_BYTES"])
+        state = read_json(STATE_FILE, blank_state(iface))
+
+        now_month = current_month()
+        raw_rx, raw_tx = net_counters(iface)
+        if state.get("month") != now_month:
+            state["month"] = now_month
+            state["network"] = {"rx": 0, "tx": 0, "last_rx": raw_rx, "last_tx": raw_tx}
+            for user_state in state.get("users", {}).values():
+                user_state["month_tx"] = 0
+                user_state["month_rx"] = 0
+
+        network = state.setdefault("network", {})
+        last_rx = int(network.get("last_rx", raw_rx))
+        last_tx = int(network.get("last_tx", raw_tx))
+        delta_rx = raw_rx - last_rx if raw_rx >= last_rx else raw_rx
+        delta_tx = raw_tx - last_tx if raw_tx >= last_tx else raw_tx
+        network["rx"] = int(network.get("rx", 0)) + max(delta_rx, 0)
+        network["tx"] = int(network.get("tx", 0)) + max(delta_tx, 0)
+        network["last_rx"] = raw_rx
+        network["last_tx"] = raw_tx
+
+        errors: list[str] = []
+        try:
+            traffic = hysteria_api("/traffic?clear=1", env["API_SECRET"])
+            if not isinstance(traffic, dict):
+                traffic = {}
+        except Exception as error:
+            traffic = {}
+            errors.append(f"traffic API: {error}")
+
+        try:
+            online = hysteria_api("/online", env["API_SECRET"])
+            if not isinstance(online, dict):
+                online = {}
+        except Exception as error:
+            online = {}
+            errors.append(f"online API: {error}")
+
+        state_users = state.setdefault("users", {})
+        output_users: list[dict[str, Any]] = []
+        timestamp = iso_now()
+
+        for username, info in sorted(users.items()):
+            user_state = state_users.setdefault(
+                username,
+                {
+                    "month_tx": 0,
+                    "month_rx": 0,
+                    "lifetime_tx": 0,
+                    "lifetime_rx": 0,
+                    "last_active": "从未",
+                },
+            )
+            raw = traffic.get(username, {})
+            raw = raw if isinstance(raw, dict) else {}
+            tx = int(raw.get("tx", 0))
+            rx = int(raw.get("rx", 0))
+            user_state["month_tx"] = int(user_state.get("month_tx", 0)) + tx
+            user_state["month_rx"] = int(user_state.get("month_rx", 0)) + rx
+            user_state["lifetime_tx"] = int(user_state.get("lifetime_tx", 0)) + tx
+            user_state["lifetime_rx"] = int(user_state.get("lifetime_rx", 0)) + rx
+            devices = int(online.get(username, 0) or 0)
+            if tx or rx or devices:
+                user_state["last_active"] = timestamp
+
+            password = str(info["password"])
+            token = str(info["token"])
+            client_mode = mode_for_user(username, modes)
+            output_users.append(
+                {
+                    "username": username,
+                    "password": password,
+                    "online": devices,
+                    "upload": user_state["month_tx"],
+                    "download": user_state["month_rx"],
+                    "total": user_state["month_tx"] + user_state["month_rx"],
+                    "lifetime_total": user_state["lifetime_tx"] + user_state["lifetime_rx"],
+                    "last_active": user_state["last_active"],
+                    "mode": mode_label(client_mode),
+                    "subscription": f"https://{env['DOMAIN']}:{env.get('PANEL_PORT', '443')}/s/{token}",
+                    "direct": direct_link(env, username, password),
+                }
+            )
+
+        disk = shutil.disk_usage("/")
+        memory = memory_info()
+        uptime = float(Path("/proc/uptime").read_text(encoding="utf-8").split()[0])
+        loads = [round(value, 2) for value in os.getloadavg()]
+        used = int(network["rx"]) + int(network["tx"])
+
+        data = {
+            "version": env.get("AIO_VERSION", "unknown"),
+            "generated_at": timestamp,
+            "errors": errors,
+            "server": {
+                "ip": env["PUBLIC_IP"],
+                "domain": env["DOMAIN"],
+                "hostname": socket.gethostname(),
+                "interface": iface,
+                "uptime": uptime,
+                "cpu": cpu_percent(),
+                "load": loads,
+                "memory": memory,
+                "disk": {
+                    "total": disk.total,
+                    "used": disk.used,
+                    "percent": round(disk.used / disk.total * 100, 1),
+                },
+                "services": {
+                    "Hysteria": service_status("hysteria-server.service"),
+                    "HY2 AIO": service_status("hy2-aio.service"),
+                    "Caddy": service_status("caddy.service"),
+                },
+                "traffic": {
+                    "rx": int(network["rx"]),
+                    "tx": int(network["tx"]),
+                    "used": used,
+                    "limit": total_limit,
+                    "remain": max(total_limit - used, 0),
+                    "percent": round(used / total_limit * 100, 4) if total_limit else 0,
+                },
+            },
+            "client_mode_default": mode_label(normalize_mode(modes.get("default", {}))),
+            "summary": {
+                "users": len(output_users),
+                "online_users": sum(1 for item in output_users if item["online"]),
+                "devices": sum(item["online"] for item in output_users),
+            },
+            "users": output_users,
+        }
+
+        atomic_json(STATE_FILE, state)
+        atomic_json(DATA_FILE, data)
+        write_users_csv(output_users)
+        write_history(state, data)
+        create_backup(force=force_backup)
+        apply_web_permissions()
+        return data
+
+
+def write_users_csv(users: list[dict[str, Any]]) -> None:
+    temporary = USERS_CSV.with_suffix(".tmp")
+    with temporary.open("w", newline="", encoding="utf-8-sig") as file:
+        writer = csv.writer(file)
+        writer.writerow(
+            ["用户", "在线设备", "月上传字节", "月下载字节", "月合计字节",
+             "历史累计字节", "最后活动", "速率模式", "订阅地址", "HY2基础直链"]
+        )
+        for user in users:
+            writer.writerow(
+                [
+                    user["username"], user["online"], user["upload"], user["download"],
+                    user["total"], user["lifetime_total"], user["last_active"],
+                    user["mode"], user["subscription"], user["direct"],
+                ]
+            )
+    os.replace(temporary, USERS_CSV)
+
+
+def write_history(state: dict[str, Any], data: dict[str, Any]) -> None:
+    now = time.time()
+    if now - float(state.get("last_history", 0)) < 300:
+        return
+    exists = HISTORY_CSV.exists()
+    with HISTORY_CSV.open("a", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        if not exists:
+            writer.writerow(
+                ["时间", "整机接收", "整机发送", "整机合计", "CPU", "内存百分比",
+                 "用户", "在线设备", "用户上传", "用户下载", "用户合计"]
+            )
+        traffic = data["server"]["traffic"]
+        for user in data["users"]:
+            writer.writerow(
+                [
+                    data["generated_at"], traffic["rx"], traffic["tx"], traffic["used"],
+                    data["server"]["cpu"], data["server"]["memory"]["percent"],
+                    user["username"], user["online"], user["upload"],
+                    user["download"], user["total"],
+                ]
+            )
+    state["last_history"] = now
+    atomic_json(STATE_FILE, state)
+
+
+def create_backup(force: bool = False) -> Path | None:
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    backup = BACKUP_DIR / f"hy2-aio-backup-{day}.tar.gz"
+    if force:
+        backup = BACKUP_DIR / datetime.now(timezone.utc).strftime(
+            "hy2-aio-backup-%Y-%m-%d-%H%M%S.tar.gz"
+        )
+
+    if force or not backup.exists():
+        include = [
+            "etc/hy2-aio",
+            "etc/hysteria/config.yaml",
+            "etc/hysteria/server.crt",
+            "etc/hysteria/server.key",
+            "etc/caddy/Caddyfile",
+            "usr/local/lib/hy2-aio",
+            "var/lib/hy2-aio/state.json",
+            "var/www/hy2-aio/history.csv",
+            "var/www/hy2-aio/users.csv",
+            "root/hy2-aio-access.txt",
+        ]
+        temporary = Path(str(backup) + ".tmp")
+        result = subprocess.run(
+            ["tar", "-czf", str(temporary), "--ignore-failed-read", "-C", "/", *include],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if result.returncode == 0 and temporary.exists() and temporary.stat().st_size:
+            os.replace(temporary, backup)
+        elif temporary.exists():
+            temporary.unlink()
+
+    if backup.exists():
+        shutil.copy2(backup, DOWNLOAD_DIR / "hy2-aio-backup-latest.tar.gz")
+
+    cutoff = time.time() - int(load_env().get("BACKUP_RETENTION_DAYS", "14")) * 86400
+    for path in BACKUP_DIR.glob("hy2-aio-backup-*.tar.gz"):
+        if path.stat().st_mtime < cutoff:
+            path.unlink()
+    return backup if backup.exists() else None
+
+
+def apply_web_permissions() -> None:
+    for path in [DATA_FILE, USERS_CSV, HISTORY_CSV, DOWNLOAD_DIR / "hy2-aio-backup-latest.tar.gz"]:
+        if path.exists():
+            os.chmod(path, 0o640)
+            try:
+                shutil.chown(path, user="root", group="caddy")
+            except Exception:
+                pass
+
+
+def subscription_for_token(token: str):
+    for username, info in load_users().items():
+        if str(info.get("token")) == token:
+            return username, info
+    return None, None
+
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "HY2AIO/1.0"
+
+    def log_message(self, format_string: str, *args: Any) -> None:
+        return
+
+    def send_json(self, status: int, payload: dict[str, Any]) -> None:
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def send_subscription(self, token: str) -> None:
+        username, info = subscription_for_token(token)
+        if username is None or info is None:
+            self.send_error(404)
+            return
+        try:
+            data = collect()
+            env = load_env()
+            body = subscription_yaml(env, username, str(info["password"]))
+            traffic = data["server"]["traffic"]
+        except Exception as error:
+            self.send_json(500, {"ok": False, "error": str(error)})
+            return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/yaml; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="HY2-{username}.yaml"')
+        self.send_header(
+            "Subscription-Userinfo",
+            f"upload={traffic['rx']}; download={traffic['tx']}; "
+            f"total={traffic['limit']}; expire=0",
+        )
+        self.send_header("Profile-Update-Interval", "1")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def do_HEAD(self) -> None:
+        self.do_GET()
+
+    def do_GET(self) -> None:
+        path = self.path.split("?", 1)[0]
+        if path == "/health":
+            self.send_json(200, {"ok": True, "time": iso_now()})
+            return
+        if path.startswith("/s/"):
+            self.send_subscription(path.removeprefix("/s/").strip("/"))
+            return
+        self.send_error(404)
+
+    def do_POST(self) -> None:
+        path = self.path.split("?", 1)[0]
+        try:
+            if path == "/sync":
+                data = collect()
+                self.send_json(200, {"ok": True, "generated_at": data["generated_at"]})
+                return
+            if path == "/backup":
+                data = collect(force_backup=True)
+                backup = create_backup(force=True)
+                self.send_json(
+                    200,
+                    {
+                        "ok": True,
+                        "generated_at": data["generated_at"],
+                        "backup": str(backup) if backup else None,
+                    },
+                )
+                return
+        except Exception as error:
+            self.send_json(500, {"ok": False, "error": str(error)})
+            return
+        self.send_error(404)
+
+
+def collector_loop() -> None:
+    while True:
+        try:
+            collect()
+        except Exception:
+            pass
+        time.sleep(60)
+
+
+def main() -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    WEB_DIR.mkdir(parents=True, exist_ok=True)
+    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    collect()
+    threading.Thread(target=collector_loop, daemon=True).start()
+    ThreadingHTTPServer(LISTEN, Handler).serve_forever()
+
+
+if __name__ == "__main__":
+    main()
+PY
+  chmod 0755 "$APP_FILE"
+}
