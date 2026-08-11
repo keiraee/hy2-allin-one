@@ -12,6 +12,8 @@ for index in range(1, count + 1):
     users[f"user{index}"] = {
         "password": secrets.token_hex(16),
         "token": secrets.token_hex(24),
+        "note": "",
+        "disabled": False,
     }
 temporary = path + ".tmp"
 with open(temporary, "w", encoding="utf-8") as file:
@@ -38,7 +40,12 @@ with open(path, "r", encoding="utf-8") as file:
     users = json.load(file)
 if username in users:
     raise SystemExit("用户已存在")
-users[username] = {"password": secrets.token_hex(16), "token": secrets.token_hex(24)}
+users[username] = {
+    "password": secrets.token_hex(16),
+    "token": secrets.token_hex(24),
+    "note": "",
+    "disabled": False,
+}
 temporary = path + ".tmp"
 with open(temporary, "w", encoding="utf-8") as file:
     json.dump(users, file, ensure_ascii=False, indent=2)
@@ -72,6 +79,38 @@ if username not in users:
     raise SystemExit("用户不存在")
 users[username]["password"] = secrets.token_hex(16)
 users[username]["token"] = secrets.token_hex(24)
+temporary = path + ".tmp"
+with open(temporary, "w", encoding="utf-8") as file:
+    json.dump(users, file, ensure_ascii=False, indent=2)
+os.replace(temporary, path)
+PY
+      ;;
+    note)
+      python3 - "$USERS_FILE" "$username" "${3:-}" <<'PY'
+import json, os, sys
+path, username, note = sys.argv[1:]
+if len(note) > 100:
+    raise SystemExit("备注最长 100 字符")
+with open(path, "r", encoding="utf-8") as file:
+    users = json.load(file)
+if username not in users:
+    raise SystemExit("用户不存在")
+users[username]["note"] = note
+temporary = path + ".tmp"
+with open(temporary, "w", encoding="utf-8") as file:
+    json.dump(users, file, ensure_ascii=False, indent=2)
+os.replace(temporary, path)
+PY
+      ;;
+    disable|enable)
+      python3 - "$USERS_FILE" "$username" "$action" <<'PY'
+import json, os, sys
+path, username, action = sys.argv[1:]
+with open(path, "r", encoding="utf-8") as file:
+    users = json.load(file)
+if username not in users:
+    raise SystemExit("用户不存在")
+users[username]["disabled"] = action == "disable"
 temporary = path + ".tmp"
 with open(temporary, "w", encoding="utf-8") as file:
     json.dump(users, file, ensure_ascii=False, indent=2)

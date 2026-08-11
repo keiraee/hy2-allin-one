@@ -70,6 +70,8 @@ for username, info in sorted(users.items()):
         [
             f"【{username}】",
             f"用户名：{username}",
+            f"状态：{'已禁用' if info.get('disabled') else '正常'}",
+            f"设备备注：{info.get('note', '') or '（无）'}",
             f"密码：{password}",
             f"速率模式：{mode_label(overrides.get(username, default_mode))}",
             f"Clash 订阅：{subscription}",

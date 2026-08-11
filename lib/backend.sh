@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -27,6 +28,7 @@ MODE_FILE = Path("/etc/hy2-aio/client-mode.json")
 STATE_DIR = Path("/var/lib/hy2-aio")
 STATE_FILE = STATE_DIR / "state.json"
 BACKUP_DIR = STATE_DIR / "backups"
+REBUILD_FILE = Path("/usr/local/lib/hy2-aio/rebuild_config.py")
 WEB_DIR = Path("/var/www/hy2-aio")
 DOWNLOAD_DIR = WEB_DIR / "downloads"
 DATA_FILE = WEB_DIR / "data.json"
@@ -221,6 +223,8 @@ tun:
   auto-route: true
   auto-detect-interface: true
   strict-route: true
+  route-exclude-address:
+    - {q(env["PUBLIC_IP"] + "/32")}
   dns-hijack:
     - any:53
     - tcp://any:53
@@ -229,7 +233,7 @@ dns:
   enable: true
   ipv6: false
   enhanced-mode: fake-ip
-nameserver:
+  nameserver:
     - https://1.1.1.1/dns-query
     - https://8.8.8.8/dns-query
 
@@ -343,6 +347,8 @@ def collect(force_backup: bool = False) -> dict[str, Any]:
                 {
                     "username": username,
                     "password": password,
+                    "note": str(info.get("note", "")),
+                    "disabled": bool(info.get("disabled", False)),
                     "online": devices,
                     "upload": user_state["month_tx"],
                     "download": user_state["month_rx"],
@@ -511,6 +517,48 @@ def apply_web_permissions() -> None:
                 pass
 
 
+USERNAME_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,32}")
+
+
+def apply_user_change(username: str, update) -> dict[str, Any]:
+    """修改单个用户并重建 Hysteria 配置；失败时回滚并抛出异常。"""
+    if not USERNAME_PATTERN.fullmatch(username):
+        raise ValueError("用户名格式错误")
+    with LOCK:
+        users = load_users()
+        if username not in users:
+            raise ValueError("用户不存在")
+        backup = json.dumps(users, ensure_ascii=False, indent=2)
+        update(users[username])
+        try:
+            atomic_json(USERS_FILE, users)
+            result = subprocess.run(
+                [str(REBUILD_FILE)], capture_output=True, text=True, timeout=30
+            )
+            if result.returncode != 0:
+                raise RuntimeError(result.stderr.strip() or "rebuild_config.py 执行失败")
+            restart = subprocess.run(
+                ["systemctl", "restart", "hysteria-server.service"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if restart.returncode != 0:
+                raise RuntimeError(restart.stderr.strip() or "Hysteria 重启失败")
+        except Exception:
+            atomic_json(USERS_FILE, json.loads(backup))
+            subprocess.run([str(REBUILD_FILE)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(
+                ["systemctl", "restart", "hysteria-server.service"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            raise
+        os.chmod(USERS_FILE, 0o640)
+        shutil.chown(USERS_FILE, user="root", group="hysteria")
+        return collect()
+
+
 def subscription_for_token(token: str):
     for username, info in load_users().items():
         if str(info.get("token")) == token:
@@ -538,6 +586,9 @@ class Handler(BaseHTTPRequestHandler):
         username, info = subscription_for_token(token)
         if username is None or info is None:
             self.send_error(404)
+            return
+        if info.get("disabled"):
+            self.send_json(403, {"ok": False, "error": "账号已被禁用"})
             return
         try:
             data = collect()
@@ -576,6 +627,32 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.send_error(404)
 
+    def read_body(self) -> dict[str, Any]:
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        raw = self.rfile.read(length) if length else b""
+        try:
+            payload = json.loads(raw.decode("utf-8") or "{}")
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            payload = {}
+        return payload if isinstance(payload, dict) else {}
+
+    def handle_user_change(self, action: str, payload: dict[str, Any]) -> None:
+        username = str(payload.get("username", ""))
+        if action == "note":
+            note = str(payload.get("note", "")).strip()
+            if len(note) > 100:
+                self.send_json(400, {"ok": False, "error": "备注最长 100 字符"})
+                return
+            data = apply_user_change(username, lambda info: info.update({"note": note}))
+        elif action == "disable":
+            data = apply_user_change(username, lambda info: info.update({"disabled": True}))
+        elif action == "enable":
+            data = apply_user_change(username, lambda info: info.update({"disabled": False}))
+        else:
+            self.send_error(404)
+            return
+        self.send_json(200, {"ok": True, "generated_at": data["generated_at"]})
+
     def do_POST(self) -> None:
         path = self.path.split("?", 1)[0]
         try:
@@ -594,6 +671,9 @@ class Handler(BaseHTTPRequestHandler):
                         "backup": str(backup) if backup else None,
                     },
                 )
+                return
+            if path in ("/user/note", "/user/disable", "/user/enable"):
+                self.handle_user_change(path.removeprefix("/user/"), self.read_body())
                 return
         except Exception as error:
             self.send_json(500, {"ok": False, "error": str(error)})

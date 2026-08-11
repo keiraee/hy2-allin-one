@@ -42,6 +42,8 @@ lines = [
     "  userpass:",
 ]
 for username, info in sorted(users.items()):
+    if info.get("disabled"):
+        continue
     lines.append(f"    {json.dumps(username)}: {json.dumps(str(info['password']))}")
 
 lines.extend([

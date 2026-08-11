@@ -95,6 +95,8 @@ EOF
   echo " 10) 重启服务"
   echo " 11) 更新 Hysteria"
   echo " 12) 卸载"
+  echo " 13) 设置用户备注"
+  echo " 14) 禁用/启用用户"
   echo "  99) 退出"
   echo
 }
@@ -103,7 +105,7 @@ EOF
 menu_interactive() {
   while true; do
     show_menu
-    read -r -p "请选择 [0-12/99]: " choice
+    read -r -p "请选择 [0-14/99]: " choice
     case "$choice" in
       0)  status_cmd ;;
       1)  install_stack ;;
@@ -127,6 +129,22 @@ menu_interactive() {
       10) restart_cmd ;;
       11) update_cmd ;;
       12) uninstall_cmd ;;
+      13)
+        read -r -p "请输入用户名：" username
+        read -r -p "请输入设备备注（如 iPhone 13，留空清除）：" note
+        modify_user "note" "$username" "$note"
+        ;;
+      14)
+        read -r -p "请输入用户名：" username
+        local state
+        state="$(python3 - "$USERS_FILE" "$username" <<'PY'
+import json, sys
+users = json.load(open(sys.argv[1], encoding="utf-8"))
+print("enable" if users.get(sys.argv[2], {}).get("disabled") else "disable")
+PY
+)"
+        modify_user "$state" "$username"
+        ;;
       99) exit 0 ;;
       *)
         echo "无效选择"
@@ -463,6 +481,9 @@ HY2 AIO v${AIO_VERSION}
   sudo hy2 add-user <用户名>   # 添加用户
   sudo hy2 remove-user <用户名> # 删除用户
   sudo hy2 rotate-user <用户名> # 轮换密钥
+  sudo hy2 note <用户名> [备注] # 设置设备备注（留空清除）
+  sudo hy2 disable <用户名>    # 禁用用户
+  sudo hy2 enable <用户名>     # 启用用户
   sudo hy2 backup              # 备份
   sudo hy2 logs [行数]         # 查看日志
   sudo hy2 restart             # 重启服务
@@ -526,6 +547,9 @@ main() {
     add-user)   modify_user "add-user" "${2:-}" ;;
     remove-user) modify_user "remove-user" "${2:-}" ;;
     rotate-user) modify_user "rotate-user" "${2:-}" ;;
+    note)       modify_user "note" "${2:-}" "${3:-}" ;;
+    disable)    modify_user "disable" "${2:-}" ;;
+    enable)     modify_user "enable" "${2:-}" ;;
     update)     update_cmd ;;
     uninstall)  uninstall_cmd ;;
     help|-h|--help) usage ;;

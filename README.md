@@ -1,4 +1,4 @@
-# HY2 AIO v1.3.0
+# HY2 AIO v1.3.2
 
 一键部署 Hysteria 2 + 多用户订阅 + 轻量面板
 
@@ -30,6 +30,9 @@ sudo hy2 users               # 用户列表
 sudo hy2 add-user <用户名>   # 添加用户
 sudo hy2 remove-user <用户名> # 删除用户
 sudo hy2 rotate-user <用户名> # 轮换密钥
+sudo hy2 note <用户名> [备注] # 设置设备备注（留空清除）
+sudo hy2 disable <用户名>    # 禁用用户
+sudo hy2 enable <用户名>     # 启用用户
 sudo hy2 backup              # 备份
 sudo hy2 logs [行数]         # 查看日志
 sudo hy2 restart             # 重启服务
@@ -80,6 +83,15 @@ hy2-allin-one/
 ```
 
 ## 更新日志
+
+### v1.3.2
+- 修复 Clash 订阅中 `nameserver` 缩进错误，确保自定义 DNS 正常生效
+- 自动将 HY2 服务器公网 IPv4 排除出 TUN 路由，避免全局模式下连接自身形成回环和间歇性超时
+
+### v1.3.1
+- 前端支持给用户添加设备备注（如 iPhone 13、笔记本）
+- 前端支持直接禁用/启用用户，禁用后立即无法连接，数据保留
+- 禁用用户的订阅地址返回 403
 
 ### v1.3.0
 - 重构为模块化架构
