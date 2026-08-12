@@ -675,7 +675,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"ok": True, "time": iso_now()})
             return
         if path.startswith("/s/"):
-            self.send_subscription(path.removeprefix("/s/").strip("/"))
+            self.send_subscription(path[3:].strip("/") if path.startswith("/s/") else path.strip("/"))
             return
         self.send_error(404)
 
@@ -745,7 +745,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.handle_user_credentials(self.read_body())
                 return
             if path in ("/user/note", "/user/disable", "/user/enable"):
-                self.handle_user_change(path.removeprefix("/user/"), self.read_body())
+                action = path[6:] if path.startswith("/user/") else path.lstrip("/")
+                self.handle_user_change(action, self.read_body())
                 return
         except Exception as error:
             self.send_json(500, {"ok": False, "error": str(error)})
