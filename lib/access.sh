@@ -58,16 +58,29 @@ lines = [
 for username, info in sorted(users.items()):
     password = str(info["password"])
     token = str(info["token"])
-    subscription = f"https://{env['DOMAIN']}:{env.get('PANEL_PORT', '443')}/s/{token}"
-    auth = urllib.parse.quote(f"{username}:{password}", safe="")
-    query = urllib.parse.urlencode(
-        {
-            "insecure": "1",
-            "obfs": "salamander",
-            "obfs-password": env["OBFS_PASSWORD"],
-            "sni": env.get("SNI", "www.amazon.sg"),
-        }
+    panel_port = env.get("PANEL_PORT", "443")
+    subscription = (
+        f"https://{env['DOMAIN']}:{panel_port}/s/{token}"
+        if str(panel_port) != "443"
+        else f"https://{env['DOMAIN']}/s/{token}"
     )
+    auth = urllib.parse.quote(f"{username}:{password}", safe="")
+    query_items = {
+        "obfs": "salamander",
+        "obfs-password": env["OBFS_PASSWORD"],
+        "sni": env.get("SNI", "www.amazon.sg"),
+    }
+    insecure_raw = str(env.get("CLIENT_INSECURE", "")).strip().lower()
+    if insecure_raw in ("0", "false", "no", "off"):
+        insecure = False
+    elif insecure_raw in ("1", "true", "yes", "on"):
+        insecure = True
+    else:
+        domain = str(env.get("DOMAIN", ""))
+        insecure = domain.endswith("sslip.io") or domain == str(env.get("PUBLIC_IP", ""))
+    if insecure:
+        query_items["insecure"] = "1"
+    query = urllib.parse.urlencode(query_items)
     node = urllib.parse.quote(f"HY2-{username}", safe="")
     direct = f"hysteria2://{auth}@{env['PUBLIC_IP']}:{env.get('HY2_PORT', '443')}/?{query}#{node}"
     lines.extend(

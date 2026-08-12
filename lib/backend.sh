@@ -186,16 +186,27 @@ def memory_info() -> dict[str, Any]:
     }
 
 
+def client_insecure(env: dict[str, str]) -> bool:
+    raw = str(env.get("CLIENT_INSECURE", "")).strip().lower()
+    if raw in ("0", "false", "no", "off"):
+        return False
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    domain = str(env.get("DOMAIN", ""))
+    public_ip = str(env.get("PUBLIC_IP", ""))
+    return domain.endswith("sslip.io") or domain == public_ip
+
+
 def direct_link(env: dict[str, str], username: str, password: str) -> str:
     auth = urllib.parse.quote(f"{username}:{password}", safe="")
-    query = urllib.parse.urlencode(
-        {
-            "insecure": "1",
-            "obfs": "salamander",
-            "obfs-password": env["OBFS_PASSWORD"],
-            "sni": env.get("SNI", "www.amazon.sg"),
-        }
-    )
+    query_items = {
+        "obfs": "salamander",
+        "obfs-password": env["OBFS_PASSWORD"],
+        "sni": env.get("SNI", "www.amazon.sg"),
+    }
+    if client_insecure(env):
+        query_items["insecure"] = "1"
+    query = urllib.parse.urlencode(query_items)
     name = urllib.parse.quote(f"HY2-{username}", safe="")
     return f"hysteria2://{auth}@{env['PUBLIC_IP']}:{env.get('HY2_PORT', '443')}/?{query}#{name}"
 
@@ -253,7 +264,7 @@ proxies:
     obfs: salamander
     obfs-password: {q(env["OBFS_PASSWORD"])}
     sni: {q(env.get("SNI", "www.amazon.sg"))}
-    skip-cert-verify: true
+    skip-cert-verify: {"true" if client_insecure(env) else "false"}
     udp: true
     keepalive: 30s
 """
