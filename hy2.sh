@@ -8,7 +8,7 @@ umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
-REPO_REF="${HY2_REPO_REF:-v1.3.11}"
+REPO_REF="${HY2_REPO_REF:-v1.3.12}"
 if [ -n "${HY2_REPO_URL:-}" ]; then
   REPO_URL="$HY2_REPO_URL"
 else
@@ -80,6 +80,7 @@ load_local_modules() {
 load_installed_modules() {
   local modules_dir="/usr/local/lib/hy2-aio/modules"
   if [ -d "$modules_dir/lib" ]; then
+    SCRIPT_DIR="$modules_dir"
     source "${modules_dir}/lib/core.sh"
     source "${modules_dir}/lib/install.sh"
     source "${modules_dir}/lib/config.sh"
@@ -93,6 +94,17 @@ load_installed_modules() {
   else
     die "模块未安装，请运行：sudo bash hy2.sh install"
   fi
+}
+
+resolve_latest_repo_ref() {
+  local tag
+  tag="$(curl -fsSL "https://api.github.com/repos/keiraee/hy2-allin-one/releases/latest" \
+    | python3 -c 'import sys, json; print(json.load(sys.stdin)["tag_name"])')" \
+    || _bootstrap_die "无法获取 GitHub latest release"
+  [ -n "$tag" ] || _bootstrap_die "latest release 为空"
+  REPO_REF="$tag"
+  REPO_URL="https://raw.githubusercontent.com/keiraee/hy2-allin-one/${REPO_REF}"
+  _bootstrap_log "目标版本：${REPO_REF}"
 }
 
 # 主菜单
@@ -124,6 +136,7 @@ EOF
   echo " 13) 设置用户备注"
   echo " 14) 禁用/启用用户"
   echo " 15) 混淆开关（obfs）"
+  echo " 16) 升级 HY2 AIO（拉最新版）"
   echo "  99) 退出"
   echo
 }
@@ -132,7 +145,7 @@ EOF
 menu_interactive() {
   while true; do
     show_menu
-    read -r -p "请选择 [0-15/99]: " choice
+    read -r -p "请选择 [0-16/99]: " choice
     case "$choice" in
       0)  status_cmd ;;
       1)  install_stack ;;
@@ -181,6 +194,13 @@ PY
           2) obfs_cmd off ;;
           *) echo "无效选择" ;;
         esac
+        ;;
+      16)
+        if [ -x "${SELF_INSTALL:-/usr/local/sbin/hy2}" ]; then
+          exec "${SELF_INSTALL:-/usr/local/sbin/hy2}" upgrade
+        else
+          echo "请先完成安装，或执行：sudo bash hy2.sh upgrade"
+        fi
         ;;
       99) exit 0 ;;
       *)
@@ -486,6 +506,7 @@ EOF
 
   # 安装模块到系统目录
   local modules_dir="/usr/local/lib/hy2-aio/modules"
+  [ -f "${SCRIPT_DIR}/lib/core.sh" ] || die "找不到模块源：${SCRIPT_DIR}/lib/core.sh"
   mkdir -p "$modules_dir/lib" "$modules_dir/bin"
   cp -a "${SCRIPT_DIR}/lib/"* "$modules_dir/lib/"
   cp -a "${SCRIPT_DIR}/bin/"* "$modules_dir/bin/"
@@ -593,8 +614,10 @@ HY2 AIO v${AIO_VERSION}
 
 用法：
   sudo bash hy2.sh install     # 安装
-  sudo bash hy2.sh repair      # 修复/升级
+  sudo bash hy2.sh repair      # 按本脚本钉死的版本拉取并修复
+  sudo bash hy2.sh upgrade     # 拉 GitHub 最新版并修复
   sudo hy2                     # 打开交互菜单
+  sudo hy2 upgrade             # 同上（装好后推荐）
 
 菜单模式：
   sudo hy2                     # 打开菜单
@@ -616,6 +639,7 @@ HY2 AIO v${AIO_VERSION}
   sudo hy2 logs [行数]         # 查看日志
   sudo hy2 restart             # 重启服务
   sudo hy2 update              # 更新 Hysteria
+  sudo hy2 upgrade             # 升级 HY2 AIO 到最新 Release
   sudo hy2 uninstall           # 卸载
   sudo hy2 obfs show           # 查看混淆状态
   sudo hy2 obfs on|off         # 开启/关闭 Salamander 混淆
@@ -643,7 +667,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_RATE_LIMIT_SUBSCRIPTION  订阅 /s/ 每 IP 每分钟次数，默认 30
   HY2_RATE_LIMIT_API  面板 API 每 IP 每分钟次数，默认 120
   HY2_REPO_URL        模块下载地址（默认 GitHub raw）
-  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.11
+  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.12
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
   CADDY_VERSION       钉死的 Caddy 版本（非 apt 回退），默认 v2.11.4
 EOF
@@ -651,17 +675,23 @@ EOF
 
 # 主入口
 main() {
-  # 加载模块
+  local command="${1:-menu}"
+
+  # 加载模块：旁边有 lib/ → 开发树；install/repair/upgrade 始终按 REPO_REF 拉取（即使本机已装旧模块）
   if [ -f "${SCRIPT_DIR}/lib/core.sh" ]; then
-    # 开发模式：本地模块
     load_local_modules
-  elif [ -f "/usr/local/lib/hy2-aio/modules/lib/core.sh" ]; then
-    # 已安装模式
-    load_installed_modules
   else
-    # 仅下载了 hy2.sh：临时拉取模块（install / repair / help）
-    case "${1:-}" in
-      install|repair|help|-h|--help)
+    case "$command" in
+      install|repair|upgrade|help|-h|--help)
+        if [ "$command" = "upgrade" ]; then
+          if [ -z "${HY2_REPO_REF:-}" ] || [ "${HY2_REPO_REF}" = "latest" ]; then
+            resolve_latest_repo_ref
+          else
+            REPO_REF="$HY2_REPO_REF"
+            REPO_URL="https://raw.githubusercontent.com/keiraee/hy2-allin-one/${REPO_REF}"
+            _bootstrap_log "目标版本：${REPO_REF}"
+          fi
+        fi
         local tmp_dir
         tmp_dir="$(mktemp -d)"
         fetch_modules "$tmp_dir"
@@ -669,17 +699,21 @@ main() {
         load_local_modules
         ;;
       *)
-        _bootstrap_die "模块未安装。请运行：sudo bash hy2.sh install   或先 git clone 完整仓库再 repair"
+        if [ -f "/usr/local/lib/hy2-aio/modules/lib/core.sh" ]; then
+          load_installed_modules
+        else
+          _bootstrap_die "模块未安装。请运行：sudo bash hy2.sh install   或先 git clone 完整仓库再 repair"
+        fi
         ;;
     esac
   fi
 
   # 解析命令
-  local command="${1:-menu}"
   case "$command" in
     menu)       menu_interactive ;;
     install)    install_stack ;;
     repair)     repair_cmd ;;
+    upgrade)    repair_cmd ;;
     status)     status_cmd ;;
     show)       show_cmd ;;
     sync)       sync_cmd ;;

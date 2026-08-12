@@ -5,6 +5,27 @@ set -Eeuo pipefail
 umask 077
 
 MODULES_DIR="/usr/local/lib/hy2-aio/modules"
+SCRIPT_DIR="$MODULES_DIR"
+REPO_SLUG="${HY2_REPO:-keiraee/hy2-allin-one}"
+
+# 自更新：先拉最新引导脚本再 repair，不依赖本机旧模块里的逻辑
+if [ "${1:-}" = "upgrade" ]; then
+  [ "$(id -u)" -eq 0 ] || { printf '%s\n' "请使用：sudo hy2 upgrade" >&2; exit 1; }
+  ref="${HY2_REPO_REF:-}"
+  if [ -z "$ref" ] || [ "$ref" = "latest" ]; then
+    ref="$(curl -fsSL "https://api.github.com/repos/${REPO_SLUG}/releases/latest" \
+      | python3 -c 'import sys, json; print(json.load(sys.stdin)["tag_name"])')" \
+      || { printf '%s\n' "无法获取 latest release" >&2; exit 1; }
+  fi
+  printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "升级 HY2 AIO → ${ref}"
+  tmp="$(mktemp -d)"
+  # shellcheck disable=SC2064
+  trap 'rm -rf "$tmp"' EXIT
+  curl -fsSL "https://raw.githubusercontent.com/${REPO_SLUG}/${ref}/hy2.sh" -o "$tmp/hy2.sh" \
+    || { printf '%s\n' "下载 hy2.sh 失败" >&2; exit 1; }
+  HY2_REPO_REF="$ref" bash "$tmp/hy2.sh" repair
+  exit $?
+fi
 
 # 加载模块
 source "${MODULES_DIR}/lib/core.sh"
@@ -47,6 +68,7 @@ EOF
   echo " 13) 设置用户备注"
   echo " 14) 禁用/启用用户"
   echo " 15) 混淆开关（obfs）"
+  echo " 16) 升级 HY2 AIO（拉最新版）"
   echo "  99) 退出"
   echo
 }
@@ -55,7 +77,7 @@ EOF
 menu_interactive() {
   while true; do
     show_menu
-    read -r -p "请选择 [0-15/99]: " choice
+    read -r -p "请选择 [0-16/99]: " choice
     case "$choice" in
       0)  status_cmd ;;
       1)  install_stack ;;
@@ -105,6 +127,7 @@ PY
           *) echo "无效选择" ;;
         esac
         ;;
+      16) exec "$SELF_INSTALL" upgrade ;;
       99) exit 0 ;;
       *)
         echo "无效选择"
@@ -223,8 +246,9 @@ HY2 AIO v${AIO_VERSION}
   sudo hy2 logs [行数]         # 查看日志
   sudo hy2 restart             # 重启服务
   sudo hy2 update              # 更新 Hysteria
+  sudo hy2 upgrade             # 升级 HY2 AIO 到 GitHub 最新版（无需再 curl）
   sudo hy2 uninstall           # 卸载
-  sudo hy2 repair              # 修复/升级
+  sudo hy2 repair              # 用当前已装模块修复
   sudo hy2 obfs show           # 查看混淆状态
   sudo hy2 obfs on|off         # 开启/关闭 Salamander 混淆
 EOF
@@ -236,6 +260,7 @@ case "$command" in
   menu)       menu_interactive ;;
   install)    die "请使用 bash hy2.sh install 安装" ;;
   repair)     repair_cmd ;;
+  upgrade)    die "内部错误：upgrade 应在加载模块前处理" ;;
   status)     status_cmd ;;
   show)       show_cmd ;;
   sync)       sync_cmd ;;

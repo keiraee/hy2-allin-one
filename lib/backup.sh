@@ -102,11 +102,14 @@ PY
   ensure_hy2_aio_user
 
   # Install CLI before service restarts so a later Caddy failure still leaves `hy2` usable.
-  local modules_dir
+  local modules_dir src
   modules_dir="/usr/local/lib/hy2-aio/modules"
+  src="${SCRIPT_DIR:-$modules_dir}"
+  [ -f "${src}/lib/core.sh" ] || die "找不到模块源：${src}/lib/core.sh（请用：sudo bash hy2.sh repair 或 sudo hy2 upgrade）"
+  [ -f "${src}/bin/hy2.sh" ] || die "找不到模块源：${src}/bin/hy2.sh"
   mkdir -p "$modules_dir/lib" "$modules_dir/bin"
-  cp -a "${SCRIPT_DIR}/lib/"* "$modules_dir/lib/"
-  cp -a "${SCRIPT_DIR}/bin/"* "$modules_dir/bin/"
+  cp -a "${src}/lib/"* "$modules_dir/lib/"
+  cp -a "${src}/bin/"* "$modules_dir/bin/"
   install -m 0755 "${modules_dir}/bin/hy2.sh" "$SELF_INSTALL"
 
   systemctl daemon-reload
