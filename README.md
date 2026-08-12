@@ -1,15 +1,16 @@
-# HY2 AIO v1.3.3
+# HY2 AIO v1.3.4
 
 一键部署 Hysteria 2 + 多用户订阅 + 轻量面板
 
 ## 快速开始
 
 ```bash
-# 下载并安装
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/main/hy2.sh -o hy2.sh
+# 下载并安装（建议核对 hy2.sh 的 SHA256 后再执行）
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.4/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
+开发/跟踪最新可用 `HY2_REPO_REF=main`。
 ## 使用方法
 
 ### 交互菜单
@@ -61,6 +62,9 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_PANEL_PATH` | 面板路径 | 随机生成 |
 | `HY2_SNI` | 客户端 SNI | www.amazon.sg |
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
+| `HY2_REPO_REF` | 模块 Git ref | `v1.3.4` |
+| `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
+| `CADDY_VERSION` | Caddy 回退安装版本 | `v2.11.4` |
 
 ## 目录结构
 
@@ -83,6 +87,11 @@ hy2-allin-one/
 ```
 
 ## 更新日志
+
+### v1.3.4
+- 安全加固：凭据不再写入 data.json/Web 备份；内部 API 鉴权；后端降权；供应链 checksum
+- 移除旧单体脚本 `hy2-aio-v1.2.0.sh`
+- 远程安装默认 pin `v1.3.4` 并用 `SHA256SUMS` 校验模块
 
 ### v1.3.3
 - Clash 订阅新增 `keepalive: 30s`，客户端每 30 秒发送 QUIC PING 保活，解决部署在 AWS/GCP 等云平台时因 UDP 状态超时（~120s）导致的间歇性断连

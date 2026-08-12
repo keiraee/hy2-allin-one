@@ -7,7 +7,8 @@ set -Eeuo pipefail
 umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_REF="${HY2_REPO_REF:-main}"
+# Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
+REPO_REF="${HY2_REPO_REF:-v1.3.4}"
 if [ -n "${HY2_REPO_URL:-}" ]; then
   REPO_URL="$HY2_REPO_URL"
 else
@@ -18,7 +19,7 @@ fi
 _bootstrap_log() { printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "$*"; }
 _bootstrap_die() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
 
-# 下载远程模块
+# 下载远程模块（先拉 SHA256SUMS，再逐文件校验）
 fetch_modules() {
   local target_dir="$1"
   mkdir -p "$target_dir/lib" "$target_dir/bin"
@@ -35,15 +36,30 @@ fetch_modules() {
     "lib/backend.sh"
     "bin/hy2.sh"
   )
-  local f tmp
+  local sums tmp f expected
+  sums="$(mktemp)"
+  _bootstrap_log "下载：SHA256SUMS"
+  curl -fsSL "${REPO_URL}/SHA256SUMS" -o "$sums" || { rm -f "$sums"; _bootstrap_die "下载 SHA256SUMS 失败（请确认已发布 ${REPO_REF}）"; }
+
   for f in "${files[@]}"; do
     _bootstrap_log "下载：$f"
     tmp="$(mktemp)"
-    curl -fsSL "${REPO_URL}/${f}" -o "$tmp" || { rm -f "$tmp"; _bootstrap_die "下载失败：$f"; }
-    head -1 "$tmp" | grep -qE '^#!|^#' || { rm -f "$tmp"; _bootstrap_die "模块内容校验失败：$f"; }
-    [ -s "$tmp" ] || { rm -f "$tmp"; _bootstrap_die "模块为空：$f"; }
+    curl -fsSL "${REPO_URL}/${f}" -o "$tmp" || { rm -f "$tmp" "$sums"; _bootstrap_die "下载失败：$f"; }
+    head -1 "$tmp" | grep -qE '^#!|^#' || { rm -f "$tmp" "$sums"; _bootstrap_die "模块内容校验失败：$f"; }
+    [ -s "$tmp" ] || { rm -f "$tmp" "$sums"; _bootstrap_die "模块为空：$f"; }
+    expected="$(awk -v name="$f" '$2 == name { print $1; exit }' "$sums")"
+    [ -n "$expected" ] || { rm -f "$tmp" "$sums"; _bootstrap_die "SHA256SUMS 中缺少：$f"; }
+    python3 - "$tmp" "$expected" <<'PY' || { rm -f "$tmp" "$sums"; _bootstrap_die "SHA256 校验失败：$f"; }
+import hashlib, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+expected = sys.argv[2].lower()
+digest = hashlib.sha256(path.read_bytes()).hexdigest()
+if digest != expected:
+    raise SystemExit(f"got {digest}, want {expected}")
+PY
     mv "$tmp" "${target_dir}/${f}"
   done
+  rm -f "$sums"
 }
 
 # 加载本地模块（开发模式）
@@ -545,8 +561,9 @@ HY2 AIO v${AIO_VERSION}
   HY2_CLIENT_INSECURE 客户端 skip-cert-verify（真实域名默认 false）
   HY2_BACKUP_DAYS     备份保留天数，默认 14
   HY2_REPO_URL        模块下载地址（默认 GitHub raw）
-  HY2_REPO_REF        Git 分支/tag/commit，默认 main（仅默认 URL 时生效）
+  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.4
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
+  CADDY_VERSION       钉死的 Caddy 版本（非 apt 回退），默认 v2.11.4
 EOF
 }
 
