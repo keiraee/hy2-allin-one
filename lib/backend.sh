@@ -498,8 +498,13 @@ def create_backup(force: bool = False) -> Path | None:
         elif temporary.exists():
             temporary.unlink()
 
-    if backup.exists():
-        shutil.copy2(backup, DOWNLOAD_DIR / "hy2-aio-backup-latest.tar.gz")
+    # Never publish backups under WEB_DIR — they contain TLS keys and secrets.
+    stale_web_backup = DOWNLOAD_DIR / "hy2-aio-backup-latest.tar.gz"
+    if stale_web_backup.exists():
+        try:
+            stale_web_backup.unlink()
+        except OSError:
+            pass
 
     cutoff = time.time() - int(load_env().get("BACKUP_RETENTION_DAYS", "14")) * 86400
     for path in BACKUP_DIR.glob("hy2-aio-backup-*.tar.gz"):
@@ -509,7 +514,7 @@ def create_backup(force: bool = False) -> Path | None:
 
 
 def apply_web_permissions() -> None:
-    for path in [DATA_FILE, USERS_CSV, HISTORY_CSV, DOWNLOAD_DIR / "hy2-aio-backup-latest.tar.gz"]:
+    for path in [DATA_FILE, USERS_CSV, HISTORY_CSV]:
         if path.exists():
             os.chmod(path, 0o640)
             try:

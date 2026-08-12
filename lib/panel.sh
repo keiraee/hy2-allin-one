@@ -42,7 +42,6 @@ h2{font-size:17px;margin:27px 0 12px}.notice{margin-top:14px;padding:12px 14px;b
       <button id="syncBtn" class="btn primary" onclick="syncNow()">立即同步</button>
       <a class="btn" href="users.csv">用户 CSV</a>
       <a class="btn" href="history.csv">历史记录</a>
-      <a class="btn" href="downloads/hy2-aio-backup-latest.tar.gz">完整备份</a>
     </div>
   </div>
 
@@ -61,7 +60,7 @@ h2{font-size:17px;margin:27px 0 12px}.notice{margin-top:14px;padding:12px 14px;b
 
   <h2>服务状态</h2><div id="services" class="services"></div>
   <h2>用户状态</h2><div id="users" class="users"></div>
-  <div class="footer">数据每 60 秒采集，网页每 30 秒自动刷新。订阅、直链和备份均含敏感凭据，请勿公开分享。</div>
+  <div class="footer">数据每 60 秒采集，网页每 30 秒自动刷新。订阅与直链含敏感凭据，请勿公开分享。完整备份仅可通过 CLI（sudo hy2 backup）获取。</div>
 </div>
 
 <script>
