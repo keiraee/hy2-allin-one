@@ -133,6 +133,10 @@ EOF
   fail2ban-client reload >/dev/null 2>&1 || systemctl reload fail2ban >/dev/null 2>&1 || true
   log "fail2ban 已配置：面板 Basic Auth 连续失败将封禁 IP"
 }
+
+configure_firewall_v12() {
+  PANEL_PORT="${PANEL_PORT:-443}"
+  HY2_PORT="${HY2_PORT:-443}"
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
     ufw allow 80/tcp >/dev/null
     ufw allow "$PANEL_PORT/tcp" >/dev/null
