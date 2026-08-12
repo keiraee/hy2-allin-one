@@ -110,6 +110,31 @@ def atomic_json(path: Path, data: Any) -> None:
     os.replace(temporary, path)
 
 
+def assert_writable_dir(path: Path, label: str) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    probe = path / f".hy2-write-probe-{os.getpid()}"
+    try:
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+    except OSError as error:
+        hint = ""
+        if path == Path("/etc/hy2-aio"):
+            hint = "；请执行：chown root:hy2-aio /etc/hy2-aio && chmod 0770 /etc/hy2-aio"
+        raise PermissionError(f"{label} 不可写：{path} ({error}){hint}") from error
+
+
+def check_runtime_permissions() -> None:
+    """Fail fast with a clear log if panel mutations cannot write required dirs."""
+    assert_writable_dir(STATE_DIR, "状态目录")
+    assert_writable_dir(BACKUP_DIR, "备份目录")
+    assert_writable_dir(WEB_DIR, "面板目录")
+    assert_writable_dir(DOWNLOAD_DIR, "下载目录")
+    assert_writable_dir(Path("/run/hy2-aio"), "运行时目录")
+    assert_writable_dir(USERS_FILE.parent, "配置目录")
+    assert_writable_dir(Path("/etc/hysteria"), "Hysteria 配置目录")
+    print("[hy2-aio] runtime write paths OK", flush=True)
+
+
 def read_json(path: Path, default: Any) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -912,6 +937,14 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError as error:
             self.send_json(400, {"ok": False, "error": str(error)})
             return
+        except PermissionError as error:
+            self.send_json(500, {"ok": False, "error": str(error)})
+            print(f"[hy2-aio] permission error: {error}", flush=True)
+            return
+        except RuntimeError as error:
+            self.send_json(500, {"ok": False, "error": str(error)})
+            print(f"[hy2-aio] runtime error: {error}", flush=True)
+            return
         self.send_json(200, {"ok": True, "generated_at": data["generated_at"]})
 
     def handle_user_credentials(self, payload: dict[str, Any]) -> None:
@@ -963,6 +996,14 @@ class Handler(BaseHTTPRequestHandler):
                 action = path[6:] if path.startswith("/user/") else path.lstrip("/")
                 self.handle_user_change(action, self.read_body())
                 return
+        except PermissionError as error:
+            self.send_json(500, {"ok": False, "error": str(error)})
+            print(f"[hy2-aio] api permission error: {error}", flush=True)
+            return
+        except RuntimeError as error:
+            self.send_json(500, {"ok": False, "error": str(error)})
+            print(f"[hy2-aio] api runtime error: {error}", flush=True)
+            return
         except Exception as error:
             self.send_json(500, {"ok": False, "error": "内部错误"})
             print(f"[hy2-aio] api error: {error}", flush=True)
@@ -987,6 +1028,10 @@ def main() -> None:
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     WEB_DIR.mkdir(parents=True, exist_ok=True)
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        check_runtime_permissions()
+    except Exception as error:
+        print(f"[hy2-aio] permission check failed: {error}", flush=True)
     try:
         collect()
     except Exception as error:

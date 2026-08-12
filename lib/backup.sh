@@ -45,6 +45,7 @@ repair_cmd() {
   chown hy2-aio:hy2-aio "$USERS_FILE" "$MODE_FILE" 2>/dev/null || true
   chmod 0640 "$USERS_FILE" "$MODE_FILE" 2>/dev/null || true
   ensure_mode_file
+  ensure_hysteria_config_perms
 
   python3 - "$ENV_FILE" "$SCRIPT_VERSION" <<'PY'
 import os
