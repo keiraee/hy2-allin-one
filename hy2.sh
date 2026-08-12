@@ -356,8 +356,8 @@ PANEL_PASS=$PANEL_PASS
 SNI=$SNI
 BACKUP_RETENTION_DAYS=$BACKUP_RETENTION_DAYS
 EOF
-  chown root:hysteria "$ENV_FILE"
-  chmod 0640 "$ENV_FILE"
+  chown root:root "$ENV_FILE"
+  chmod 0600 "$ENV_FILE"
   configure_firewall_v12
 
   generate_users "$users_count"

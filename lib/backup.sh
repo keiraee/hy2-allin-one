@@ -65,8 +65,8 @@ temporary = path.with_suffix(path.suffix + ".tmp")
 temporary.write_text("\n".join(output) + "\n", encoding="utf-8")
 os.replace(temporary, path)
 PY
-  chown root:hysteria "$ENV_FILE"
-  chmod 0640 "$ENV_FILE"
+  chown root:root "$ENV_FILE"
+  chmod 0600 "$ENV_FILE"
 
   write_backend
   write_panel
