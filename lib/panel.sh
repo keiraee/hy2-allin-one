@@ -25,7 +25,11 @@ h1{font-size:26px;margin:0}.muted,.label{color:#737780}.actions,.services{displa
 .bar i{display:block;height:100%;background:#17191c}.ok{color:#137547;border-color:#b9dec9}.bad{color:#b42318;border-color:#f0b8b2}.card.disabled{opacity:.55}
 .users{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.name{font-weight:750;font-size:17px}
 .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}.stat{background:#f5f6f8;border-radius:11px;padding:10px}.stat b{display:block}
-h2{font-size:17px;margin:27px 0 12px}.notice{margin-top:14px;padding:12px 14px;background:#fff8e8;border:1px solid #f0dfaf;border-radius:12px}
+h2{font-size:17px;margin:27px 0 12px}
+.notice{display:none;margin-top:14px;padding:12px 36px 12px 14px;background:#fff8e8;border:1px solid #f0dfaf;border-radius:12px;position:relative}
+.notice.show{display:block}
+.notice-close{position:absolute;top:8px;right:8px;width:28px;height:28px;border:0;border-radius:8px;background:transparent;color:#8a7a3a;cursor:pointer;font:inherit;font-size:18px;line-height:1}
+.notice-close:hover{background:#f3e7c0}
 .error{display:none;margin-top:14px;padding:12px 14px;background:#fff0ef;color:#b42318;border-radius:12px}
 .footer{margin-top:26px;color:#777b82;font-size:12px}
 .add-box{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0 0;padding:12px;background:#fff;border:1px solid #e3e5e8;border-radius:14px}
@@ -53,7 +57,10 @@ h2{font-size:17px;margin:27px 0 12px}.notice{margin-top:14px;padding:12px 14px;b
   </div>
 
   <div id="error" class="error"></div>
-  <div class="notice">面板流量来自服务器网卡本地计数，适合日常观察。数据默认每 60 秒刷新；用户操作后会立即更新。完整备份请用 CLI：sudo hy2 backup。</div>
+  <div id="notice" class="notice" role="note">
+    <button id="noticeClose" class="notice-close" type="button" aria-label="关闭提示">×</button>
+    面板流量来自服务器网卡本地计数，适合日常观察；云厂商控制台和账单仍是最终计费依据。速率模式只写入 Clash 订阅，HY2 基础直链不包含带宽参数。
+  </div>
 
   <div class="grid">
     <div class="card">
@@ -253,6 +260,12 @@ async function load(){
 $("syncBtn").onclick=syncNow;
 $("addBtn").onclick=addUser;
 $("newUser").addEventListener("keydown",event=>{if(event.key==="Enter")addUser()});
+const NOTICE_KEY="hy2-aio-notice-dismissed";
+if(localStorage.getItem(NOTICE_KEY)!=="1")$("notice").classList.add("show");
+$("noticeClose").onclick=()=>{
+  $("notice").classList.remove("show");
+  try{localStorage.setItem(NOTICE_KEY,"1")}catch(e){}
+};
 load();
 setInterval(load,60000);
 </script>
