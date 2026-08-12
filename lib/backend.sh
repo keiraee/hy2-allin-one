@@ -22,7 +22,7 @@ import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 ENV_FILE = Path("/etc/hy2-aio/config.env")
 USERS_FILE = Path("/etc/hy2-aio/users.json")
@@ -87,7 +87,7 @@ def load_modes() -> dict[str, Any]:
     }
 
 
-def mode_for_user(username: str, modes: dict[str, Any] | None = None) -> dict[str, Any]:
+def mode_for_user(username: str, modes: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     modes = modes or load_modes()
     overrides = modes.get("users", {})
     if isinstance(overrides, dict) and username in overrides:
@@ -484,7 +484,7 @@ def write_history(state: dict[str, Any], data: dict[str, Any]) -> None:
     atomic_json(STATE_FILE, state)
 
 
-def create_backup(force: bool = False) -> Path | None:
+def create_backup(force: bool = False) -> Optional[Path]:
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -951,7 +951,10 @@ def main() -> None:
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     WEB_DIR.mkdir(parents=True, exist_ok=True)
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    collect()
+    try:
+        collect()
+    except Exception as error:
+        print(f"[hy2-aio] initial collect failed: {error}", flush=True)
     threading.Thread(target=collector_loop, daemon=True).start()
     ThreadingHTTPServer(LISTEN, Handler).serve_forever()
 

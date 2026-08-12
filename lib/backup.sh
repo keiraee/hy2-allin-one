@@ -42,6 +42,8 @@ repair_cmd() {
 
   log "升级/修复 HY2 AIO 管理组件"
   ensure_hy2_aio_user
+  chown hy2-aio:hy2-aio "$USERS_FILE" "$MODE_FILE" 2>/dev/null || true
+  chmod 0640 "$USERS_FILE" "$MODE_FILE" 2>/dev/null || true
   ensure_mode_file
 
   python3 - "$ENV_FILE" "$SCRIPT_VERSION" <<'PY'
