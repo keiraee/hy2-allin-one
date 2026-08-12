@@ -175,6 +175,11 @@ write_caddy() {
   marker="import ${site_file}"
   install -d -m 0755 /etc/caddy
   install -d -o caddy -g caddy -m 0750 /var/log/caddy
+  # Ensure Caddy can write site access logs (restart fails if root-owned).
+  chown -R caddy:caddy /var/log/caddy 2>/dev/null || true
+  touch /var/log/caddy/hy2-aio.log
+  chown caddy:caddy /var/log/caddy/hy2-aio.log
+  chmod 0640 /var/log/caddy/hy2-aio.log
 
   if [ -f "$CADDY_FILE" ]; then
     cp "$CADDY_FILE" "${CADDY_FILE}.before-hy2-aio-$(date +%Y%m%d-%H%M%S)"
