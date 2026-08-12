@@ -69,8 +69,8 @@ tr.disabled td{opacity:.55}
 .menu-btn{width:34px;height:34px;border-radius:8px;border:1px solid transparent;background:transparent;
   cursor:pointer;font:inherit;font-size:18px;line-height:1;color:var(--muted)}
 .menu-btn:hover,.menu-btn.open{background:var(--hover);border-color:var(--line);color:var(--text)}
-.menu{display:none;position:absolute;right:0;top:calc(100% + 4px);min-width:168px;background:var(--panel);
-  border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.12);padding:6px;z-index:40}
+.menu{display:none;position:fixed;min-width:168px;background:var(--panel);
+  border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 32px rgba(15,23,42,.12);padding:6px;z-index:45}
 .menu.open{display:block}
 .menu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:9px 10px;
   border-radius:7px;font:inherit;cursor:pointer;color:var(--text)}
@@ -265,7 +265,29 @@ function el(tag,attrs={},...kids){
 }
 function clearNode(node){while(node.firstChild)node.removeChild(node.firstChild)}
 function closeMenus(){
-  if(openMenu){openMenu.classList.remove("open");const btn=openMenu._btn;if(btn)btn.classList.remove("open");openMenu=null}
+  if(openMenu){
+    openMenu.classList.remove("open");
+    const btn=openMenu._btn;
+    if(btn)btn.classList.remove("open");
+    openMenu.style.top="";openMenu.style.bottom="";openMenu.style.left="";openMenu.style.right="";
+    openMenu=null;
+  }
+}
+function positionMenu(menu,btn){
+  const r=btn.getBoundingClientRect();
+  const width=Math.max(menu.offsetWidth||168,168);
+  const left=Math.min(Math.max(8,r.right-width),window.innerWidth-width-8);
+  menu.style.left=left+"px";
+  menu.style.right="auto";
+  const spaceBelow=window.innerHeight-r.bottom;
+  const spaceAbove=r.top;
+  if(spaceBelow<260&&spaceAbove>spaceBelow){
+    menu.style.top="auto";
+    menu.style.bottom=(window.innerHeight-r.top+4)+"px";
+  }else{
+    menu.style.bottom="auto";
+    menu.style.top=(r.bottom+4)+"px";
+  }
 }
 function setDrawer(open){
   $("drawer").classList.toggle("open",open);
@@ -396,7 +418,13 @@ function renderUsers(users){
       event.stopPropagation();
       const willOpen=!menu.classList.contains("open");
       closeMenus();
-      if(willOpen){menu.classList.add("open");btn.classList.add("open");menu._btn=btn;openMenu=menu}
+      if(willOpen){
+        menu.classList.add("open");
+        btn.classList.add("open");
+        menu._btn=btn;
+        openMenu=menu;
+        positionMenu(menu,btn);
+      }
     }});
     menu.append(
       menuItem("复制订阅",()=>copyCredential(user.username,"subscription")),
@@ -457,6 +485,8 @@ $("noteSave").onclick=saveNote;
 $("noteInput").addEventListener("keydown",event=>{if(event.key==="Enter")saveNote()});
 $("noteModal").addEventListener("click",event=>{if(event.target===$("noteModal"))setNoteModal(false)});
 document.addEventListener("click",closeMenus);
+document.addEventListener("scroll",()=>{if(openMenu&&openMenu._btn)positionMenu(openMenu,openMenu._btn)},true);
+window.addEventListener("resize",()=>{if(openMenu&&openMenu._btn)positionMenu(openMenu,openMenu._btn)});
 document.addEventListener("keydown",event=>{
   if(event.key==="Escape"){closeMenus();setDrawer(false);setNoteModal(false)}
 });
