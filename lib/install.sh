@@ -49,14 +49,21 @@ install_caddy() {
 }
 
 install_caddy_v12() {
-  command -v caddy >/dev/null 2>&1 && return
-  if [ "$PKG_MANAGER" = "apt" ]; then
-    install_caddy
-    return
+  local caddy_bin arch version ver asset tmp archive sums expected
+  local unit_file="/etc/systemd/system/caddy.service" write_unit=0
+
+  caddy_bin="$(command -v caddy 2>/dev/null || true)"
+  if [ -z "$caddy_bin" ]; then
+    case "$PKG_MANAGER" in
+      apt) install_caddy ;;
+      dnf|yum) "$PKG_MANAGER" install -y caddy >/dev/null 2>&1 || true ;;
+      zypper) zypper --non-interactive install caddy >/dev/null 2>&1 || true ;;
+      *) die "不支持的包管理器：$PKG_MANAGER" ;;
+    esac
+    caddy_bin="$(command -v caddy 2>/dev/null || true)"
   fi
-  "$PKG_MANAGER" install -y caddy >/dev/null 2>&1 || true
-  if ! command -v caddy >/dev/null 2>&1; then
-    local arch version ver asset tmp archive sums expected
+
+  if [ -z "$caddy_bin" ]; then
     version="${CADDY_VERSION:-v2.11.4}"
     ver="${version#v}"
     case "$(uname -m)" in
@@ -86,11 +93,34 @@ PY
     tar -xzf "$archive" -C "$tmp" caddy || { rm -rf "$tmp"; die "解压 Caddy 失败"; }
     install -m 0755 "$tmp/caddy" /usr/local/bin/caddy
     rm -rf "$tmp"
+    command -v restorecon >/dev/null 2>&1 && restorecon /usr/local/bin/caddy 2>/dev/null || true
+    caddy_bin="$(command -v caddy 2>/dev/null || true)"
   fi
+
+  [ -n "$caddy_bin" ] && [ -x "$caddy_bin" ] || die "Caddy 安装失败"
+  [[ "$caddy_bin" =~ ^/[A-Za-z0-9_./:+-]+$ ]] \
+    || die "Caddy 二进制路径无效：$caddy_bin"
+  "$caddy_bin" version >/dev/null 2>&1 || die "Caddy 二进制无法运行：$caddy_bin"
+
   getent group caddy >/dev/null 2>&1 || groupadd --system caddy
   id caddy >/dev/null 2>&1 || useradd --system --gid caddy --home /var/lib/caddy --shell /usr/sbin/nologin caddy
   install -d -o caddy -g caddy -m 0750 /var/lib/caddy /var/log/caddy
-  cat > /etc/systemd/system/caddy.service <<'EOF'
+
+  # Preserve distro-provided units. Only create our own when none exists, or
+  # repair the exact stale unit emitted by older HY2 AIO versions.
+  systemctl daemon-reload
+  if [ -f "$unit_file" ] \
+    && grep -Fq 'ExecStart=/usr/local/bin/caddy ' "$unit_file" \
+    && [ ! -x /usr/local/bin/caddy ]; then
+    warn "检测到失效的旧 Caddy systemd 路径；改用 $caddy_bin"
+    write_unit=1
+  elif ! systemctl cat caddy.service >/dev/null 2>&1; then
+    write_unit=1
+  fi
+
+  if [ "$write_unit" = "1" ]; then
+    install -d -m 0755 "$(dirname "$unit_file")"
+    cat > "$unit_file" <<EOF
 [Unit]
 Description=Caddy
 After=network-online.target
@@ -98,15 +128,16 @@ Wants=network-online.target
 [Service]
 User=caddy
 Group=caddy
-ExecStart=/usr/local/bin/caddy run --environ --config /etc/caddy/Caddyfile
-ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --force
+ExecStart=${caddy_bin} run --environ --config /etc/caddy/Caddyfile
+ExecReload=${caddy_bin} reload --config /etc/caddy/Caddyfile --force
 Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 EOF
-  systemctl daemon-reload
+    systemctl daemon-reload
+  fi
   systemctl enable caddy.service >/dev/null
-  command -v caddy >/dev/null 2>&1 || die "Caddy 安装失败"
+  systemctl cat caddy.service >/dev/null 2>&1 || die "Caddy systemd 服务缺失"
 }
 
 configure_fail2ban_panel() {
