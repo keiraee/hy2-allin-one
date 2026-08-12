@@ -62,7 +62,7 @@ ensure_hysteria_config_perms() {
   if [ -f "${HYSTERIA_CERT:-}" ]; then
     chown hysteria:hysteria "$HYSTERIA_CERT" "$HYSTERIA_KEY" 2>/dev/null || true
     chmod 0640 "$HYSTERIA_CERT" 2>/dev/null || true
-    chmod 0600 "$HYSTERIA_KEY" 2>/dev/null || true
+    chmod 0640 "$HYSTERIA_KEY" 2>/dev/null || true
   fi
 }
 

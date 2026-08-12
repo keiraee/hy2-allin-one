@@ -13,5 +13,5 @@ create_certificate() {
     -addext "subjectAltName=IP:${PUBLIC_IP}" >/dev/null 2>&1
   chown hysteria:hysteria "$HYSTERIA_CERT" "$HYSTERIA_KEY"
   chmod 0640 "$HYSTERIA_CERT"
-  chmod 0600 "$HYSTERIA_KEY"
+  chmod 0640 "$HYSTERIA_KEY"
 }

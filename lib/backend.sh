@@ -15,6 +15,7 @@ import secrets
 import shutil
 import socket
 import subprocess
+import tarfile
 import threading
 import time
 import urllib.parse
@@ -30,6 +31,31 @@ MODE_FILE = Path("/etc/hy2-aio/client-mode.json")
 STATE_DIR = Path("/var/lib/hy2-aio")
 STATE_FILE = STATE_DIR / "state.json"
 BACKUP_DIR = STATE_DIR / "backups"
+BACKUP_ROOT = Path("/")
+BACKUP_REQUIRED = (
+    "etc/hy2-aio",
+    "etc/hysteria/config.yaml",
+    "etc/hysteria/server.crt",
+    "etc/hysteria/server.key",
+    "etc/caddy/Caddyfile",
+    "usr/local/lib/hy2-aio",
+)
+BACKUP_REQUIRED_MEMBERS = (
+    "etc/hy2-aio/config.env",
+    "etc/hy2-aio/users.json",
+    "etc/hy2-aio/client-mode.json",
+    "etc/hysteria/config.yaml",
+    "etc/hysteria/server.crt",
+    "etc/hysteria/server.key",
+    "etc/caddy/Caddyfile",
+    "usr/local/lib/hy2-aio/server.py",
+    "usr/local/lib/hy2-aio/rebuild_config.py",
+)
+BACKUP_OPTIONAL = (
+    "var/lib/hy2-aio/state.json",
+    "var/www/hy2-aio/history.csv",
+    "var/www/hy2-aio/users.csv",
+)
 REBUILD_FILE = Path("/usr/local/lib/hy2-aio/rebuild_config.py")
 WEB_DIR = Path("/var/www/hy2-aio")
 DOWNLOAD_DIR = WEB_DIR / "downloads"
@@ -38,6 +64,8 @@ USERS_CSV = WEB_DIR / "users.csv"
 HISTORY_CSV = WEB_DIR / "history.csv"
 LISTEN = ("127.0.0.1", 18081)
 LOCK = threading.RLock()
+BACKUP_LOCK = threading.Lock()
+BACKUP_VALIDATED: dict[Path, tuple[int, int]] = {}
 
 
 def load_env() -> dict[str, str]:
@@ -331,7 +359,7 @@ def blank_state(iface: str) -> dict[str, Any]:
     }
 
 
-def collect(force_backup: bool = False) -> dict[str, Any]:
+def collect(run_backup: bool = True) -> dict[str, Any]:
     with LOCK:
         env = load_env()
         users = load_users()
@@ -470,7 +498,13 @@ def collect(force_backup: bool = False) -> dict[str, Any]:
         atomic_json(DATA_FILE, data)
         write_users_csv(output_users)
         write_history(state, data)
-        create_backup(force=force_backup)
+        if run_backup:
+            try:
+                create_backup()
+            except RuntimeError as error:
+                errors.append(f"backup: {error}")
+                atomic_json(DATA_FILE, data)
+                print(f"[hy2-aio] automatic backup failed: {error}", flush=True)
         apply_web_permissions()
         return data
 
@@ -533,54 +567,104 @@ def write_history(state: dict[str, Any], data: dict[str, Any]) -> None:
     atomic_json(STATE_FILE, state)
 
 
+def validate_backup_archive(path: Path) -> None:
+    try:
+        with tarfile.open(path, "r:gz") as archive:
+            members = {member.name.rstrip("/"): member for member in archive.getmembers()}
+    except (OSError, tarfile.TarError) as error:
+        raise RuntimeError(f"备份归档无法读取：{error}") from error
+
+    missing = [relative for relative in BACKUP_REQUIRED_MEMBERS if relative not in members]
+    empty = [
+        relative
+        for relative in BACKUP_REQUIRED_MEMBERS
+        if relative in members and members[relative].isfile() and members[relative].size == 0
+    ]
+    if missing or empty:
+        details = []
+        if missing:
+            details.append(f"缺少 {', '.join(missing)}")
+        if empty:
+            details.append(f"空文件 {', '.join(empty)}")
+        raise RuntimeError(f"备份完整性校验失败：{'; '.join(details)}")
+
+
 def create_backup(force: bool = False) -> Optional[Path]:
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    backup = BACKUP_DIR / f"hy2-aio-backup-{day}.tar.gz"
-    if force:
-        backup = BACKUP_DIR / datetime.now(timezone.utc).strftime(
-            "hy2-aio-backup-%Y-%m-%d-%H%M%S.tar.gz"
-        )
+    with BACKUP_LOCK:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        backup = BACKUP_DIR / f"hy2-aio-backup-{day}.tar.gz"
+        if force:
+            backup = BACKUP_DIR / datetime.now(timezone.utc).strftime(
+                "hy2-aio-backup-%Y-%m-%d-%H%M%S-%f.tar.gz"
+            )
 
-    if force or not backup.exists():
-        include = [
-            "etc/hy2-aio",
-            "etc/hysteria/config.yaml",
-            "etc/hysteria/server.crt",
-            "etc/hysteria/server.key",
-            "etc/caddy/Caddyfile",
-            "usr/local/lib/hy2-aio",
-            "var/lib/hy2-aio/state.json",
-            "var/www/hy2-aio/history.csv",
-            "var/www/hy2-aio/users.csv",
-            "root/hy2-aio-access.txt",
-        ]
-        temporary = Path(str(backup) + ".tmp")
-        result = subprocess.run(
-            ["tar", "-czf", str(temporary), "--ignore-failed-read", "-C", "/", *include],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-        if result.returncode == 0 and temporary.exists() and temporary.stat().st_size:
-            os.replace(temporary, backup)
-        elif temporary.exists():
-            temporary.unlink()
+        create = force or not backup.exists()
+        if not create:
+            stat = backup.stat()
+            fingerprint = (stat.st_mtime_ns, stat.st_size)
+            if BACKUP_VALIDATED.get(backup) != fingerprint:
+                try:
+                    validate_backup_archive(backup)
+                    BACKUP_VALIDATED[backup] = fingerprint
+                except RuntimeError:
+                    backup.unlink()
+                    BACKUP_VALIDATED.pop(backup, None)
+                    create = True
 
-    # Never publish backups under WEB_DIR — they contain TLS keys and secrets.
-    stale_web_backup = DOWNLOAD_DIR / "hy2-aio-backup-latest.tar.gz"
-    if stale_web_backup.exists():
-        try:
-            stale_web_backup.unlink()
-        except OSError:
-            pass
+        if create:
+            missing = [
+                relative for relative in BACKUP_REQUIRED_MEMBERS
+                if not (BACKUP_ROOT / relative).exists()
+            ]
+            if missing:
+                raise RuntimeError(f"备份缺少必需路径：{', '.join(missing)}")
 
-    cutoff = time.time() - int(load_env().get("BACKUP_RETENTION_DAYS", "14")) * 86400
-    for path in BACKUP_DIR.glob("hy2-aio-backup-*.tar.gz"):
-        if path.stat().st_mtime < cutoff:
-            path.unlink()
-    return backup if backup.exists() else None
+            include = list(BACKUP_REQUIRED)
+            include.extend(
+                relative for relative in BACKUP_OPTIONAL
+                if (BACKUP_ROOT / relative).exists()
+            )
+            temporary = Path(str(backup) + ".tmp")
+            try:
+                result = subprocess.run(
+                    ["tar", "-czf", str(temporary), "-C", str(BACKUP_ROOT), *include],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    check=False,
+                )
+                if result.returncode != 0:
+                    detail = result.stderr.strip().splitlines()
+                    message = detail[-1] if detail else f"tar 退出码 {result.returncode}"
+                    raise RuntimeError(f"备份创建失败：{message}")
+                if not temporary.exists() or temporary.stat().st_size == 0:
+                    raise RuntimeError("备份创建失败：未生成有效归档")
+                validate_backup_archive(temporary)
+                os.chmod(temporary, 0o600)
+                os.replace(temporary, backup)
+                stat = backup.stat()
+                BACKUP_VALIDATED[backup] = (stat.st_mtime_ns, stat.st_size)
+            except Exception:
+                if temporary.exists():
+                    temporary.unlink()
+                raise
+
+        # Never publish backups under WEB_DIR — they contain TLS keys and secrets.
+        stale_web_backup = DOWNLOAD_DIR / "hy2-aio-backup-latest.tar.gz"
+        if stale_web_backup.exists():
+            try:
+                stale_web_backup.unlink()
+            except OSError:
+                pass
+
+        cutoff = time.time() - int(load_env().get("BACKUP_RETENTION_DAYS", "14")) * 86400
+        for path in BACKUP_DIR.glob("hy2-aio-backup-*.tar.gz"):
+            if path.stat().st_mtime < cutoff:
+                path.unlink()
+                BACKUP_VALIDATED.pop(path, None)
+        return backup
 
 
 def apply_web_permissions() -> None:
@@ -973,7 +1057,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"ok": True, "generated_at": data["generated_at"]})
                 return
             if path == "/backup":
-                data = collect(force_backup=True)
+                data = collect(run_backup=False)
                 backup = create_backup(force=True)
                 self.send_json(
                     200,

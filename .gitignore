@@ -13,3 +13,7 @@ Thumbs.db
 
 # 日志文件
 *.log
+
+# Python 缓存
+__pycache__/
+*.py[cod]
