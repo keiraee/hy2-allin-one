@@ -223,13 +223,14 @@ password_hash = subprocess.check_output(
 ).strip()
 
 port = str(port or "443")
-if port == "443":
-    site_addr = domain
-elif port == "80":
+if port == "80":
+    # Explicit HTTP only on port 80.
     site_addr = f"http://{domain}"
+elif port == "443":
+    site_addr = domain
 else:
-    # Custom panel port: keep plain HTTP (legacy installs, no auto_https on :1234 etc.).
-    site_addr = f"http://{domain}:{port}"
+    # Custom panel port: enable Caddy auto HTTPS (same as pre-v1.3.4 behavior).
+    site_addr = f"{domain}:{port}"
 
 content = f"""{site_addr} {{
     encode zstd gzip

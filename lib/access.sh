@@ -41,11 +41,11 @@ def mode_label(value):
 def public_base_url():
     domain = env["DOMAIN"]
     port = str(env.get("PANEL_PORT", "443") or "443")
-    if port in ("443", ""):
-        return f"https://{domain}"
     if port == "80":
         return f"http://{domain}"
-    return f"http://{domain}:{port}"
+    if port in ("443", ""):
+        return f"https://{domain}"
+    return f"https://{domain}:{port}"
 
 base = public_base_url()
 lines = [

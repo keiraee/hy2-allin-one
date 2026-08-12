@@ -199,14 +199,14 @@ def client_insecure(env: dict[str, str]) -> bool:
 
 
 def public_base_url(env: dict[str, str]) -> str:
-    """Panel/subscription base URL. Custom ports use HTTP (no auto HTTPS)."""
+    """Panel/subscription base URL (HTTPS except plain port 80)."""
     domain = str(env.get("DOMAIN", "") or "")
     port = str(env.get("PANEL_PORT", "443") or "443")
-    if port in ("443", ""):
-        return f"https://{domain}"
     if port == "80":
         return f"http://{domain}"
-    return f"http://{domain}:{port}"
+    if port in ("443", ""):
+        return f"https://{domain}"
+    return f"https://{domain}:{port}"
 
 
 def direct_link(env: dict[str, str], username: str, password: str) -> str:
