@@ -11,6 +11,7 @@ import hmac
 import json
 import os
 import re
+import secrets
 import shutil
 import socket
 import subprocess
@@ -564,16 +565,17 @@ def restart_hysteria() -> None:
 USERNAME_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
 
-def apply_user_change(username: str, update) -> dict[str, Any]:
-    """修改单个用户并重建 Hysteria 配置；失败时回滚并抛出异常。"""
-    if not USERNAME_PATTERN.fullmatch(username):
-        raise ValueError("用户名格式错误")
+def mutate_users(mutator) -> dict[str, Any]:
+    """修改 users.json 并重建 Hysteria；失败时回滚。"""
     with LOCK:
         users = load_users()
-        if username not in users:
-            raise ValueError("用户不存在")
         backup = json.dumps(users, ensure_ascii=False, indent=2)
-        update(users[username])
+        try:
+            mutator(users)
+        except ValueError:
+            raise
+        except Exception as error:
+            raise ValueError(str(error) or "用户数据无效") from error
         try:
             atomic_json(USERS_FILE, users)
             result = subprocess.run(
@@ -596,6 +598,62 @@ def apply_user_change(username: str, update) -> dict[str, Any]:
         except Exception:
             pass
         return collect()
+
+
+def apply_user_change(username: str, update) -> dict[str, Any]:
+    if not USERNAME_PATTERN.fullmatch(username):
+        raise ValueError("用户名格式错误")
+
+    def mutator(users: dict[str, Any]) -> None:
+        if username not in users:
+            raise ValueError("用户不存在")
+        update(users[username])
+
+    return mutate_users(mutator)
+
+
+def add_user(username: str) -> dict[str, Any]:
+    if not USERNAME_PATTERN.fullmatch(username):
+        raise ValueError("用户名格式错误")
+
+    def mutator(users: dict[str, Any]) -> None:
+        if username in users:
+            raise ValueError("用户已存在")
+        users[username] = {
+            "password": secrets.token_hex(16),
+            "token": secrets.token_hex(24),
+            "note": "",
+            "disabled": False,
+        }
+
+    return mutate_users(mutator)
+
+
+def remove_user(username: str) -> dict[str, Any]:
+    if not USERNAME_PATTERN.fullmatch(username):
+        raise ValueError("用户名格式错误")
+
+    def mutator(users: dict[str, Any]) -> None:
+        if username not in users:
+            raise ValueError("用户不存在")
+        if len(users) <= 1:
+            raise ValueError("不能删除最后一个用户")
+        del users[username]
+
+    return mutate_users(mutator)
+
+
+def rotate_user(username: str) -> dict[str, Any]:
+    if not USERNAME_PATTERN.fullmatch(username):
+        raise ValueError("用户名格式错误")
+
+    def mutator(users: dict[str, Any]) -> None:
+        if username not in users:
+            raise ValueError("用户不存在")
+        users[username]["password"] = secrets.token_hex(16)
+        users[username]["token"] = secrets.token_hex(24)
+
+    return mutate_users(mutator)
 
 
 def subscription_for_token(token: str):
@@ -791,19 +849,29 @@ class Handler(BaseHTTPRequestHandler):
         return payload if isinstance(payload, dict) else {}
 
     def handle_user_change(self, action: str, payload: dict[str, Any]) -> None:
-        username = str(payload.get("username", ""))
-        if action == "note":
-            note = str(payload.get("note", "")).strip()
-            if len(note) > 100:
-                self.send_json(400, {"ok": False, "error": "备注最长 100 字符"})
+        username = str(payload.get("username", "")).strip()
+        try:
+            if action == "note":
+                note = str(payload.get("note", "")).strip()
+                if len(note) > 100:
+                    self.send_json(400, {"ok": False, "error": "备注最长 100 字符"})
+                    return
+                data = apply_user_change(username, lambda info: info.update({"note": note}))
+            elif action == "disable":
+                data = apply_user_change(username, lambda info: info.update({"disabled": True}))
+            elif action == "enable":
+                data = apply_user_change(username, lambda info: info.update({"disabled": False}))
+            elif action == "add":
+                data = add_user(username)
+            elif action == "remove":
+                data = remove_user(username)
+            elif action == "rotate":
+                data = rotate_user(username)
+            else:
+                self.send_error(404)
                 return
-            data = apply_user_change(username, lambda info: info.update({"note": note}))
-        elif action == "disable":
-            data = apply_user_change(username, lambda info: info.update({"disabled": True}))
-        elif action == "enable":
-            data = apply_user_change(username, lambda info: info.update({"disabled": False}))
-        else:
-            self.send_error(404)
+        except ValueError as error:
+            self.send_json(400, {"ok": False, "error": str(error)})
             return
         self.send_json(200, {"ok": True, "generated_at": data["generated_at"]})
 
@@ -845,7 +913,14 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/user/credentials":
                 self.handle_user_credentials(self.read_body())
                 return
-            if path in ("/user/note", "/user/disable", "/user/enable"):
+            if path in (
+                "/user/note",
+                "/user/disable",
+                "/user/enable",
+                "/user/add",
+                "/user/remove",
+                "/user/rotate",
+            ):
                 action = path[6:] if path.startswith("/user/") else path.lstrip("/")
                 self.handle_user_change(action, self.read_body())
                 return

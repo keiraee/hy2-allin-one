@@ -14,12 +14,13 @@ write_panel() {
 <style>
 :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:#17191c;background:#f4f5f7}
 *{box-sizing:border-box}body{margin:0}.wrap{max-width:1180px;margin:auto;padding:30px 16px 64px}
-.top,.head{display:flex;justify-content:space-between;align-items:center;gap:14px}.top{align-items:flex-end}
+.top,.head,.toolbar{display:flex;justify-content:space-between;align-items:center;gap:14px}.top{align-items:flex-end}
 h1{font-size:26px;margin:0}.muted,.label{color:#737780}.actions,.services{display:flex;gap:8px;flex-wrap:wrap}
-.btn,.pill{border:1px solid #d9dce1;border-radius:11px;background:#fff;color:inherit;text-decoration:none;padding:9px 12px;cursor:pointer}
-.btn.primary{background:#17191c;color:#fff;border-color:#17191c}.btn:disabled{opacity:.55;cursor:wait}
+.btn,.pill{border:1px solid #d9dce1;border-radius:11px;background:#fff;color:inherit;text-decoration:none;padding:9px 12px;cursor:pointer;font:inherit}
+.btn.primary{background:#17191c;color:#fff;border-color:#17191c}.btn.bad{color:#b42318;border-color:#f0b8b2}
+.btn:disabled{opacity:.55;cursor:wait}
 .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px}
-.card{background:#fff;border:1px solid #e3e5e8;border-radius:17px;padding:17px;box-shadow:0 2px 12px #00000008}
+.card{background:#fff;border:1px solid #e3e5e8;border-radius:17px;padding:17px}
 .value{font-size:21px;font-weight:760;margin-top:5px}.bar{height:8px;background:#eceef1;border-radius:8px;overflow:hidden;margin-top:13px}
 .bar i{display:block;height:100%;background:#17191c}.ok{color:#137547;border-color:#b9dec9}.bad{color:#b42318;border-color:#f0b8b2}.card.disabled{opacity:.55}
 .users{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}.name{font-weight:750;font-size:17px}
@@ -27,6 +28,12 @@ h1{font-size:26px;margin:0}.muted,.label{color:#737780}.actions,.services{displa
 h2{font-size:17px;margin:27px 0 12px}.notice{margin-top:14px;padding:12px 14px;background:#fff8e8;border:1px solid #f0dfaf;border-radius:12px}
 .error{display:none;margin-top:14px;padding:12px 14px;background:#fff0ef;color:#b42318;border-radius:12px}
 .footer{margin-top:26px;color:#777b82;font-size:12px}
+.add-box{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0 0;padding:12px;background:#fff;border:1px solid #e3e5e8;border-radius:14px}
+.input{border:1px solid #d9dce1;border-radius:10px;padding:9px 12px;font:inherit;min-width:160px;background:#fff}
+.note-row{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.note-row .input{flex:1;min-width:140px}
+.toast{position:fixed;right:16px;bottom:16px;background:#17191c;color:#fff;padding:12px 16px;border-radius:12px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:20;max-width:320px}
+.toast.show{opacity:1}
 @media(max-width:850px){.grid{grid-template-columns:repeat(2,1fr)}.users{grid-template-columns:1fr}}
 @media(max-width:540px){.grid{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}.stats{grid-template-columns:1fr}}
 </style>
@@ -39,14 +46,14 @@ h2{font-size:17px;margin:27px 0 12px}.notice{margin-top:14px;padding:12px 14px;b
       <div id="time" class="muted">正在读取数据…</div>
     </div>
     <div class="actions">
-      <button id="syncBtn" class="btn primary" onclick="syncNow()">立即同步</button>
+      <button id="syncBtn" class="btn primary" type="button">立即同步</button>
       <a class="btn" href="users.csv">用户 CSV</a>
       <a class="btn" href="history.csv">历史记录</a>
     </div>
   </div>
 
   <div id="error" class="error"></div>
-  <div class="notice">面板流量来自服务器网卡本地计数，适合日常观察；云厂商控制台和账单仍是最终计费依据。速率模式只写入 Clash 订阅，HY2 基础直链不包含带宽参数。</div>
+  <div class="notice">面板流量来自服务器网卡本地计数，适合日常观察。数据默认每 60 秒刷新；用户操作后会立即更新。完整备份请用 CLI：sudo hy2 backup。</div>
 
   <div class="grid">
     <div class="card">
@@ -59,14 +66,30 @@ h2{font-size:17px;margin:27px 0 12px}.notice{margin-top:14px;padding:12px 14px;b
   </div>
 
   <h2>服务状态</h2><div id="services" class="services"></div>
-  <h2>用户状态</h2><div id="users" class="users"></div>
-  <div class="footer">数据每 60 秒采集，网页每 30 秒自动刷新。复制订阅/直链/密码需面板鉴权按需拉取。完整备份仅可通过 CLI（sudo hy2 backup）获取。</div>
+  <h2>用户管理</h2>
+  <div class="add-box">
+    <input id="newUser" class="input" type="text" maxlength="32" placeholder="新用户名（字母数字_ -）" autocomplete="off">
+    <button id="addBtn" class="btn primary" type="button">添加用户</button>
+  </div>
+  <div id="users" class="users" style="margin-top:12px"></div>
+  <div class="footer">轻量模式：60 秒轮询 + 操作后即时刷新。复制订阅/直链/密码按需拉取。</div>
 </div>
+<div id="toast" class="toast"></div>
 
 <script>
 const $=id=>document.getElementById(id);
 const bytes=value=>{let n=Number(value||0),i=0;const u=["B","KB","MB","GB","TB"];while(n>=1000&&i<u.length-1){n/=1000;i++}return n.toFixed(i<2?2:1)+" "+u[i]};
 const duration=seconds=>{seconds=Math.max(0,Math.floor(Number(seconds)||0));return Math.floor(seconds/86400)+" 天 "+Math.floor(seconds%86400/3600)+" 小时"};
+const VALID_NAME=/^[A-Za-z0-9_-]{1,32}$/;
+let toastTimer=null;
+
+function toast(message){
+  const node=$("toast");
+  node.textContent=message;
+  node.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>node.classList.remove("show"),2200);
+}
 function el(tag,attrs={},...kids){
   const node=document.createElement(tag);
   for(const [key,value] of Object.entries(attrs||{})){
@@ -74,8 +97,8 @@ function el(tag,attrs={},...kids){
     if(key==="className")node.className=value;
     else if(key==="text")node.textContent=value;
     else if(key==="style"&&typeof value==="object")Object.assign(node.style,value);
-    else if(key.startsWith("data"))node.setAttribute(key,value);
-    else if(key in node && key!=="style")node[key]=value;
+    else if(key.startsWith("on")&&typeof value==="function")node[key]=value;
+    else if(key in node)node[key]=value;
     else node.setAttribute(key,value);
   }
   for(const kid of kids){
@@ -85,12 +108,87 @@ function el(tag,attrs={},...kids){
   return node;
 }
 function clearNode(node){while(node.firstChild)node.removeChild(node.firstChild)}
-async function copyText(text,button){try{await navigator.clipboard.writeText(text)}catch(e){prompt("复制下面内容：",text)}const old=button.textContent;button.textContent="已复制";setTimeout(()=>button.textContent=old,1200)}
-async function apiPost(path,payload){const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),cache:"no-store"});const result=await response.json().catch(()=>({}));if(!response.ok||!result.ok)throw new Error(result.error||("HTTP "+response.status))}
-async function copyCredential(username,kind,button){const old=button.textContent;button.disabled=true;try{const response=await fetch("api/user/credentials",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,kind}),cache:"no-store"});const result=await response.json().catch(()=>({}));if(!response.ok||!result.ok||!result.value)throw new Error(result.error||("HTTP "+response.status));await copyText(result.value,button)}catch(error){alert("复制失败："+error.message);button.textContent=old}button.disabled=false}
-async function setNote(username,button){const note=prompt("设备备注（如 iPhone 13、笔记本，留空清除）："+(button.dataset.value?"当前："+button.dataset.value:""),button.dataset.value||"");if(note===null)return;const old=button.textContent;button.disabled=true;try{await apiPost("api/user/note",{username,note:note.trim()});await load()}catch(error){alert("设置备注失败："+error.message)}button.disabled=false;button.textContent=old}
-async function toggleUser(username,button){const disabled=button.dataset.disabled==="1";if(!disabled&&!confirm("确认禁用 "+username+"？该用户将立即无法连接，数据保留。"))return;const old=button.textContent;button.disabled=true;try{await apiPost(disabled?"api/user/enable":"api/user/disable",{username});await load()}catch(error){alert("操作失败："+error.message)}button.disabled=false;button.textContent=old}
-async function syncNow(){const btn=$("syncBtn"),old=btn.textContent;btn.disabled=true;btn.textContent="同步中…";try{const response=await fetch("api/sync",{method:"POST",cache:"no-store"});const result=await response.json().catch(()=>({}));if(!response.ok||!result.ok)throw new Error(result.error||("HTTP "+response.status));await load();btn.textContent="同步完成"}catch(error){btn.textContent="同步失败";alert("同步失败："+error.message)}setTimeout(()=>{btn.disabled=false;btn.textContent=old},1500)}
+
+async function copyText(text,button){
+  try{await navigator.clipboard.writeText(text)}catch(e){prompt("复制下面内容：",text)}
+  const old=button.textContent;button.textContent="已复制";setTimeout(()=>button.textContent=old,1200);
+}
+async function apiPost(path,payload){
+  const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload||{}),cache:"no-store"});
+  const result=await response.json().catch(()=>({}));
+  if(!response.ok||!result.ok)throw new Error(result.error||("HTTP "+response.status));
+  return result;
+}
+async function copyCredential(username,kind,button){
+  const old=button.textContent;button.disabled=true;
+  try{
+    const result=await apiPost("api/user/credentials",{username,kind});
+    await copyText(result.value,button);
+  }catch(error){toast("复制失败："+error.message);button.textContent=old}
+  button.disabled=false;
+}
+async function saveNote(username,input,button){
+  const note=String(input.value||"").trim();
+  if(note.length>100){toast("备注最长 100 字符");return}
+  const old=button.textContent;button.disabled=true;button.textContent="保存中…";
+  try{
+    await apiPost("api/user/note",{username,note});
+    toast("备注已保存");
+    await load();
+  }catch(error){toast("保存失败："+error.message)}
+  button.disabled=false;button.textContent=old;
+}
+async function toggleUser(username,disabled){
+  if(!disabled&&!confirm("确认禁用 "+username+"？该用户将立即无法连接，数据保留。"))return;
+  try{
+    await apiPost(disabled?"api/user/enable":"api/user/disable",{username});
+    toast(disabled?"已启用 "+username:"已禁用 "+username);
+    await load();
+  }catch(error){toast("操作失败："+error.message)}
+}
+async function removeUser(username){
+  if(!confirm("确认删除用户 "+username+"？此操作不可恢复。"))return;
+  try{
+    await apiPost("api/user/remove",{username});
+    toast("已删除 "+username);
+    await load();
+  }catch(error){toast("删除失败："+error.message)}
+}
+async function rotateUser(username){
+  if(!confirm("确认轮换 "+username+" 的密码与订阅 token？旧订阅将失效。"))return;
+  try{
+    await apiPost("api/user/rotate",{username});
+    toast("已轮换 "+username+" 的密钥");
+    await load();
+  }catch(error){toast("轮换失败："+error.message)}
+}
+async function addUser(){
+  const input=$("newUser");
+  const username=String(input.value||"").trim();
+  if(!VALID_NAME.test(username)){toast("用户名仅允许字母、数字、下划线、短横线，长度 1-32");return}
+  const btn=$("addBtn");btn.disabled=true;
+  try{
+    await apiPost("api/user/add",{username});
+    input.value="";
+    toast("已添加 "+username);
+    await load();
+  }catch(error){toast("添加失败："+error.message)}
+  btn.disabled=false;
+}
+async function syncNow(){
+  const btn=$("syncBtn"),old=btn.textContent;
+  btn.disabled=true;btn.textContent="同步中…";
+  try{
+    await apiPost("api/sync",{});
+    await load();
+    toast("同步完成");
+    btn.textContent="同步完成";
+  }catch(error){
+    btn.textContent="同步失败";
+    toast("同步失败："+error.message);
+  }
+  setTimeout(()=>{btn.disabled=false;btn.textContent=old},1200);
+}
 function renderServices(services){
   const root=$("services");clearNode(root);
   Object.entries(services||{}).forEach(([name,status])=>{
@@ -102,7 +200,8 @@ function renderUsers(users){
   (users||[]).forEach(user=>{
     const statusClass=user.disabled?"bad":(user.online?"ok":"muted");
     const statusText=user.disabled?"已禁用":(user.online?"在线 "+user.online+" 台":"离线");
-    const meta=(user.note?"设备："+user.note+" · ":"")+"速率模式："+(user.mode||"BBR 自动估速")+" · 最后活动："+user.last_active+" · 历史累计："+bytes(user.lifetime_total);
+    const meta="速率模式："+(user.mode||"BBR 自动估速")+" · 最后活动："+user.last_active+" · 历史累计："+bytes(user.lifetime_total);
+    const noteInput=el("input",{className:"input",type:"text",maxLength:100,value:user.note||"",placeholder:"设备备注（如 iPhone 13）"});
     const card=el("div",{className:"card"+(user.disabled?" disabled":"")},
       el("div",{className:"head"},
         el("span",{className:"name",text:user.username}),
@@ -113,13 +212,18 @@ function renderUsers(users){
         el("div",{className:"stat"},el("span",{className:"label",text:"月下载"}),el("b",{text:bytes(user.download)})),
         el("div",{className:"stat"},el("span",{className:"label",text:"月合计"}),el("b",{text:bytes(user.total)}))
       ),
-      el("div",{className:"muted",style:{marginBottom:"12px"},text:meta}),
+      el("div",{className:"muted",style:{marginBottom:"10px"},text:meta}),
+      el("div",{className:"note-row"},
+        noteInput,
+        el("button",{className:"btn",type:"button",text:"保存备注",onclick:function(){saveNote(user.username,noteInput,this)}})
+      ),
       el("div",{className:"actions"},
-        el("button",{className:"btn primary",text:"复制订阅",onclick:function(){copyCredential(user.username,"subscription",this)}}),
-        el("button",{className:"btn",text:"复制基础直链",onclick:function(){copyCredential(user.username,"direct",this)}}),
-        el("button",{className:"btn",text:"复制密码",onclick:function(){copyCredential(user.username,"password",this)}}),
-        el("button",{className:"btn",text:"备注","data-value":user.note||"",onclick:function(){setNote(user.username,this)}}),
-        el("button",{className:"btn "+(user.disabled?"primary":"bad"),text:user.disabled?"启用":"禁用","data-disabled":user.disabled?"1":"0",onclick:function(){toggleUser(user.username,this)}})
+        el("button",{className:"btn primary",type:"button",text:"复制订阅",onclick:function(){copyCredential(user.username,"subscription",this)}}),
+        el("button",{className:"btn",type:"button",text:"复制直链",onclick:function(){copyCredential(user.username,"direct",this)}}),
+        el("button",{className:"btn",type:"button",text:"复制密码",onclick:function(){copyCredential(user.username,"password",this)}}),
+        el("button",{className:"btn "+(user.disabled?"primary":"bad"),type:"button",text:user.disabled?"启用":"禁用",onclick:function(){toggleUser(user.username,!!user.disabled)}}),
+        el("button",{className:"btn",type:"button",text:"轮换密钥",onclick:function(){rotateUser(user.username)}}),
+        el("button",{className:"btn bad",type:"button",text:"删除",onclick:function(){removeUser(user.username)}})
       )
     );
     root.append(card);
@@ -127,7 +231,8 @@ function renderUsers(users){
 }
 async function load(){
   try{
-    const response=await fetch("data.json?t="+Date.now(),{cache:"no-store"});if(!response.ok)throw new Error("HTTP "+response.status);
+    const response=await fetch("data.json?t="+Date.now(),{cache:"no-store"});
+    if(!response.ok)throw new Error("HTTP "+response.status);
     const data=await response.json(),t=data.server.traffic;
     $("time").textContent="更新时间："+data.generated_at+" · "+data.server.ip+" · "+data.server.domain;
     $("traffic").textContent=bytes(t.used)+" / "+bytes(t.limit);
@@ -138,10 +243,18 @@ async function load(){
     $("disk").textContent=data.server.disk.percent+"%";$("uptime").textContent="运行 "+duration(data.server.uptime);
     renderServices(data.server.services);
     renderUsers(data.users);
-    $("error").style.display=data.errors.length?"block":"none";$("error").textContent=data.errors.join("；");
-  }catch(error){$("error").style.display="block";$("error").textContent="读取失败："+error.message}
+    $("error").style.display=data.errors.length?"block":"none";
+    $("error").textContent=data.errors.join("；");
+  }catch(error){
+    $("error").style.display="block";
+    $("error").textContent="读取失败："+error.message;
+  }
 }
-load();setInterval(load,30000);
+$("syncBtn").onclick=syncNow;
+$("addBtn").onclick=addUser;
+$("newUser").addEventListener("keydown",event=>{if(event.key==="Enter")addUser()});
+load();
+setInterval(load,60000);
 </script>
 </body>
 </html>
