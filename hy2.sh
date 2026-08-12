@@ -8,7 +8,7 @@ umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
-REPO_REF="${HY2_REPO_REF:-v1.3.14}"
+REPO_REF="${HY2_REPO_REF:-v1.3.15}"
 if [ -n "${HY2_REPO_URL:-}" ]; then
   REPO_URL="$HY2_REPO_URL"
 else
@@ -121,7 +121,7 @@ HY2 AIO - 一键部署 Hysteria 2
 
 EOF
   echo "  0) 状态"
-  echo "  1) 安装"
+  echo "  1) 安装说明（新机用 curl；已装请选 16）"
   echo "  2) 显示账号"
   echo "  3) 添加用户"
   echo "  4) 删除用户"
@@ -148,7 +148,14 @@ menu_interactive() {
     read -r -p "请选择 [0-16/99]: " choice
     case "$choice" in
       0)  status_cmd ;;
-      1)  install_stack ;;
+      1)
+        if [ -f "${ENV_FILE:-/etc/hy2-aio/config.env}" ]; then
+          echo "本机已安装，不能从菜单重复 install。"
+          echo "跨版本升级请选 16，或执行：hy2 upgrade && hy2 restart"
+        else
+          install_stack
+        fi
+        ;;
       2)  show_cmd ;;
       3)
         read -r -p "请输入用户名：" username
@@ -673,7 +680,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_RATE_LIMIT_SUBSCRIPTION  订阅 /s/ 每 IP 每分钟次数，默认 30
   HY2_RATE_LIMIT_API  面板 API 每 IP 每分钟次数，默认 120
   HY2_REPO_URL        模块下载地址（默认 GitHub raw）
-  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.14
+  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.15
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
   CADDY_VERSION       钉死的 Caddy 版本（非 apt 回退），默认 v2.11.4
 EOF
