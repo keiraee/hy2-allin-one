@@ -795,6 +795,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             env = load_env()
             body = subscription_yaml(env, username, str(info["password"]))
+            # Clash traffic bar must match panel "整机套餐" (NIC counters), not per-user HY2.
             cached = read_json(DATA_FILE, {})
             traffic = cached.get("server", {}).get("traffic", {})
             if not isinstance(traffic, dict):
@@ -802,6 +803,8 @@ class Handler(BaseHTTPRequestHandler):
             rx = int(traffic.get("rx", 0) or 0)
             tx = int(traffic.get("tx", 0) or 0)
             limit = int(traffic.get("limit", 0) or 0) or int(env.get("TOTAL_BYTES", "0") or 0)
+            if not limit:
+                limit = int(env.get("TOTAL_BYTES", "0") or 0)
         except Exception as error:
             self.send_json(500, {"ok": False, "error": "订阅生成失败"})
             print(f"[hy2-aio] subscription error: {error}", flush=True)

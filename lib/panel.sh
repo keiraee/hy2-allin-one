@@ -59,12 +59,12 @@ h2{font-size:17px;margin:27px 0 12px}
   <div id="error" class="error"></div>
   <div id="notice" class="notice" role="note">
     <button id="noticeClose" class="notice-close" type="button" aria-label="关闭提示">×</button>
-    面板流量来自服务器网卡本地计数，适合日常观察；云厂商控制台和账单仍是最终计费依据。速率模式只写入 Clash 订阅，HY2 基础直链不包含带宽参数。
+    套餐用量以「本月整机流量」为准（网卡本地计数，尽量对齐云厂商限制）；Clash 订阅流量条与此同步。用户卡片是 HY2 代理分摊参考，各用户之和通常小于整机（差额含系统/面板等非代理流量）。云厂商控制台仍是最终账单。速率模式只写入 Clash 订阅。
   </div>
 
   <div class="grid">
     <div class="card">
-      <div class="label">本月整机流量</div><div id="traffic" class="value">--</div>
+      <div class="label">本月整机（对齐云厂商套餐）</div><div id="traffic" class="value">--</div>
       <div id="remain" class="muted">--</div><div class="bar"><i id="trafficBar" style="width:0"></i></div>
     </div>
     <div class="card"><div class="label">CPU / 负载</div><div id="cpu" class="value">--</div><div id="load" class="muted">--</div></div>
@@ -79,7 +79,7 @@ h2{font-size:17px;margin:27px 0 12px}
     <button id="addBtn" class="btn primary" type="button">添加用户</button>
   </div>
   <div id="users" class="users" style="margin-top:12px"></div>
-  <div class="footer">轻量模式：60 秒轮询 + 操作后即时刷新。复制订阅/直链/密码按需拉取。</div>
+  <div class="footer">轻量模式：60 秒轮询 + 操作后即时刷新。Clash 显示整机套餐进度；用户卡片为 HY2 分摊参考。</div>
 </div>
 <div id="toast" class="toast"></div>
 
@@ -206,8 +206,8 @@ function renderUsers(users){
   const root=$("users");clearNode(root);
   (users||[]).forEach(user=>{
     const statusClass=user.disabled?"bad":(user.online?"ok":"muted");
-    const statusText=user.disabled?"已禁用":(user.online?"在线 "+user.online+" 台":"离线");
-    const meta="速率模式："+(user.mode||"BBR 自动估速")+" · 最后活动："+user.last_active+" · 历史累计："+bytes(user.lifetime_total);
+    const statusText=user.disabled?"已禁用":(user.online?"在线客户端 "+user.online:"离线");
+    const meta="HY2 代理分摊 · 速率模式："+(user.mode||"BBR 自动估速")+" · 最后活动："+user.last_active+" · 历史累计："+bytes(user.lifetime_total);
     const noteInput=el("input",{className:"input",type:"text",maxLength:100,value:user.note||"",placeholder:"设备备注（如 iPhone 13）"});
     const card=el("div",{className:"card"+(user.disabled?" disabled":"")},
       el("div",{className:"head"},
@@ -215,9 +215,9 @@ function renderUsers(users){
         el("span",{className:statusClass,text:statusText})
       ),
       el("div",{className:"stats"},
-        el("div",{className:"stat"},el("span",{className:"label",text:"月上传"}),el("b",{text:bytes(user.upload)})),
-        el("div",{className:"stat"},el("span",{className:"label",text:"月下载"}),el("b",{text:bytes(user.download)})),
-        el("div",{className:"stat"},el("span",{className:"label",text:"月合计"}),el("b",{text:bytes(user.total)}))
+        el("div",{className:"stat"},el("span",{className:"label",text:"HY2 月上传"}),el("b",{text:bytes(user.upload)})),
+        el("div",{className:"stat"},el("span",{className:"label",text:"HY2 月下载"}),el("b",{text:bytes(user.download)})),
+        el("div",{className:"stat"},el("span",{className:"label",text:"HY2 月合计"}),el("b",{text:bytes(user.total)}))
       ),
       el("div",{className:"muted",style:{marginBottom:"10px"},text:meta}),
       el("div",{className:"note-row"},
@@ -243,7 +243,7 @@ async function load(){
     const data=await response.json(),t=data.server.traffic;
     $("time").textContent="更新时间："+data.generated_at+" · "+data.server.ip+" · "+data.server.domain;
     $("traffic").textContent=bytes(t.used)+" / "+bytes(t.limit);
-    $("remain").textContent="接收 "+bytes(t.rx)+" · 发送 "+bytes(t.tx)+" · 剩余 "+bytes(t.remain)+" · "+Number(t.percent).toFixed(3)+"%";
+    $("remain").textContent="入站 "+bytes(t.rx)+" · 出站 "+bytes(t.tx)+" · 套餐剩余 "+bytes(t.remain)+" · "+Number(t.percent).toFixed(3)+"%";
     $("trafficBar").style.width=Math.min(100,Number(t.percent)||0)+"%";
     $("cpu").textContent=data.server.cpu+"%";$("load").textContent="负载 "+data.server.load.join(" / ");
     $("memory").textContent=data.server.memory.percent+"%";$("swap").textContent="Swap "+data.server.memory.swap_percent+"%";
@@ -260,7 +260,7 @@ async function load(){
 $("syncBtn").onclick=syncNow;
 $("addBtn").onclick=addUser;
 $("newUser").addEventListener("keydown",event=>{if(event.key==="Enter")addUser()});
-const NOTICE_KEY="hy2-aio-notice-dismissed";
+const NOTICE_KEY="hy2-aio-notice-dismissed-v2";
 if(localStorage.getItem(NOTICE_KEY)!=="1")$("notice").classList.add("show");
 $("noticeClose").onclick=()=>{
   $("notice").classList.remove("show");
