@@ -41,6 +41,7 @@ repair_cmd() {
   log "回滚快照：$(snapshot_before_change)"
 
   log "升级/修复 HY2 AIO 管理组件"
+  ensure_hy2_aio_user
   ensure_mode_file
 
   python3 - "$ENV_FILE" "$SCRIPT_VERSION" <<'PY'
