@@ -90,17 +90,19 @@ EOF
 
 configure_firewall_v12() {
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
+    ufw allow 80/tcp >/dev/null
     ufw allow "$PANEL_PORT/tcp" >/dev/null
     ufw allow "$HY2_PORT/udp" >/dev/null
     return
   fi
   if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    firewall-cmd --permanent --add-port=80/tcp >/dev/null
     firewall-cmd --permanent --add-port="$PANEL_PORT/tcp" >/dev/null
     firewall-cmd --permanent --add-port="$HY2_PORT/udp" >/dev/null
     firewall-cmd --reload >/dev/null
     return
   fi
-  warn "防火墙未修改；如需要请手动放行 TCP $PANEL_PORT 和 UDP $HY2_PORT"
+  warn "防火墙未修改；如需要请手动放行 TCP 80、$PANEL_PORT 和 UDP $HY2_PORT"
 }
 
 install_hysteria() {
