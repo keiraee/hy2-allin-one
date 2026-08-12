@@ -620,6 +620,29 @@ class Handler(BaseHTTPRequestHandler):
             return False
         return True
 
+    def require_same_origin(self) -> bool:
+        """Reject cross-site browser POSTs when Origin/Referer is present."""
+        origin = str(self.headers.get("Origin", "") or "").strip()
+        referer = str(self.headers.get("Referer", "") or "").strip()
+        if not origin and not referer:
+            return True
+        env = load_env()
+        domain = str(env.get("DOMAIN", "") or "")
+        port = str(env.get("PANEL_PORT", "443") or "443")
+        allowed = {
+            f"https://{domain}",
+            f"https://{domain}:{port}",
+        }
+        if origin and origin.rstrip("/") not in allowed:
+            self.send_json(403, {"ok": False, "error": "forbidden origin"})
+            return False
+        if not origin and referer:
+            ok = any(referer.startswith(f"{base}/") or referer.rstrip("/") == base for base in allowed)
+            if not ok:
+                self.send_json(403, {"ok": False, "error": "forbidden referer"})
+                return False
+        return True
+
     def send_json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -723,6 +746,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if not self.require_api_secret():
+            return
+        if not self.require_same_origin():
             return
         path = self.path.split("?", 1)[0]
         try:
