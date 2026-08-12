@@ -211,7 +211,6 @@ content = f"""{domain}:{port} {{
             roll_size 10mb
             roll_keep 3
         }}
-        format common_log
     }}
 
     route {{
