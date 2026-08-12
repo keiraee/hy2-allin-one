@@ -313,7 +313,12 @@ PYV
   [[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || die "域名格式错误"
   [[ "$PANEL_USER" =~ ^[A-Za-z0-9_-]{1,32}$ ]] || die "面板用户名格式错误"
   [[ "$PANEL_PATH" =~ ^[A-Za-z0-9_-]{4,80}$ ]] || die "面板路径格式错误"
-  [[ "$PANEL_PASS" =~ ^[A-Za-z0-9._-]{8,128}$ ]] || die "面板密码仅允许字母、数字、点、下划线、短横线，至少 8 位"
+  if [ "${#PANEL_PASS}" -lt 8 ] || [ "${#PANEL_PASS}" -gt 128 ]; then
+    die "面板密码长度须为 8-128"
+  fi
+  case "$PANEL_PASS" in
+    *$'\n'*|*$'\r'*|*=*) die "面板密码不能包含换行或等号" ;;
+  esac
   [[ "$SNI" =~ ^[A-Za-z0-9.-]+$ ]] || die "SNI 格式错误"
   [[ "$TOTAL_BYTES" =~ ^[1-9][0-9]*$ ]] || die "TOTAL_BYTES 必须是正整数"
 
@@ -401,7 +406,7 @@ EOF
   echo "============================================================"
   echo "面板：https://${DOMAIN}${port_suffix}/${PANEL_PATH}/"
   echo "面板用户名：${PANEL_USER}"
-  echo "面板密码：${PANEL_PASS}"
+  echo "面板密码：已写入 ${ACCESS_FILE}（不在终端显示）"
   echo "账号资料：${ACCESS_FILE}"
   echo
   echo "常用命令："
