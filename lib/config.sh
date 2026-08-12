@@ -203,7 +203,16 @@ password_hash = subprocess.check_output(
     text=True,
 ).strip()
 
-content = f"""{domain}:{port} {{
+port = str(port or "443")
+if port == "443":
+    site_addr = domain
+elif port == "80":
+    site_addr = f"http://{domain}"
+else:
+    # Custom panel port: keep plain HTTP (legacy installs, no auto_https on :1234 etc.).
+    site_addr = f"http://{domain}:{port}"
+
+content = f"""{site_addr} {{
     encode zstd gzip
 
     log {{
