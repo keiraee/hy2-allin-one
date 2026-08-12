@@ -56,15 +56,26 @@ install_caddy_v12() {
   fi
   "$PKG_MANAGER" install -y caddy >/dev/null 2>&1 || true
   if ! command -v caddy >/dev/null 2>&1; then
-    local arch
+    local arch tmp
     case "$(uname -m)" in
       x86_64) arch=amd64 ;;
       aarch64|arm64) arch=arm64 ;;
       *) die "不支持的 CPU 架构：$(uname -m)" ;;
     esac
-    curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=$arch" -o /tmp/caddy
-    install -m 0755 /tmp/caddy /usr/local/bin/caddy
-    rm -f /tmp/caddy
+    tmp="$(mktemp)"
+    curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=$arch" -o "$tmp"
+    # Reject empty or non-ELF downloads before installing as root.
+    python3 - "$tmp" <<'PY' || { rm -f "$tmp"; die "Caddy 下载校验失败（非 ELF 可执行文件）"; }
+import pathlib, sys
+path = pathlib.Path(sys.argv[1])
+data = path.read_bytes()[:8]
+if len(data) < 4 or data[:4] != b"\x7fELF":
+    raise SystemExit(1)
+if path.stat().st_size < 1_000_000:
+    raise SystemExit(1)
+PY
+    install -m 0755 "$tmp" /usr/local/bin/caddy
+    rm -f "$tmp"
   fi
   getent group caddy >/dev/null 2>&1 || groupadd --system caddy
   id caddy >/dev/null 2>&1 || useradd --system --gid caddy --home /var/lib/caddy --shell /usr/sbin/nologin caddy
