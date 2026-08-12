@@ -169,8 +169,7 @@ caddy_auth_directive() {
 }
 
 write_caddy() {
-  local hash auth site_file marker
-  hash="$(caddy hash-password --plaintext "$PANEL_PASS")"
+  local auth site_file marker
   auth="$(caddy_auth_directive)"
   site_file="/etc/caddy/hy2-aio.caddy"
   marker="import ${site_file}"
@@ -181,66 +180,91 @@ write_caddy() {
     cp "$CADDY_FILE" "${CADDY_FILE}.before-hy2-aio-$(date +%Y%m%d-%H%M%S)"
   fi
 
-  cat > "$site_file" <<EOF
-${DOMAIN}:${PANEL_PORT} {
+  DOMAIN="$DOMAIN" PANEL_PORT="$PANEL_PORT" PANEL_PATH="$PANEL_PATH" \
+    PANEL_USER="$PANEL_USER" PANEL_PASS="$PANEL_PASS" API_SECRET="$API_SECRET" \
+    WEB_DIR="$WEB_DIR" AUTH_DIRECTIVE="$auth" SITE_FILE="$site_file" \
+    python3 <<'PY'
+import os
+import subprocess
+from pathlib import Path
+
+domain = os.environ["DOMAIN"]
+port = os.environ["PANEL_PORT"]
+panel_path = os.environ["PANEL_PATH"]
+panel_user = os.environ["PANEL_USER"]
+panel_pass = os.environ["PANEL_PASS"]
+api_secret = os.environ["API_SECRET"]
+web_dir = os.environ["WEB_DIR"]
+auth = os.environ["AUTH_DIRECTIVE"]
+site_file = Path(os.environ["SITE_FILE"])
+
+password_hash = subprocess.check_output(
+    ["caddy", "hash-password", "--plaintext", panel_pass],
+    text=True,
+).strip()
+
+content = f"""{domain}:{port} {{
     encode zstd gzip
 
-    log {
-        output file /var/log/caddy/hy2-aio.log {
+    log {{
+        output file /var/log/caddy/hy2-aio.log {{
             roll_size 10mb
             roll_keep 3
-        }
+        }}
         format common_log
-    }
+    }}
 
-    route {
-        redir /${PANEL_PATH} /${PANEL_PATH}/ 308
+    route {{
+        redir /{panel_path} /{panel_path}/ 308
 
-        handle_path /${PANEL_PATH}/api/* {
-            ${auth} {
-                ${PANEL_USER} ${hash}
-            }
-            header {
+        handle_path /{panel_path}/api/* {{
+            {auth} {{
+                {panel_user} {password_hash}
+            }}
+            header {{
                 Cache-Control "no-store"
                 X-Content-Type-Options "nosniff"
                 X-Frame-Options "DENY"
                 Referrer-Policy "no-referrer"
-            }
-            reverse_proxy 127.0.0.1:18081 {
-                header_up X-API-Secret ${API_SECRET}
-                header_up X-Forwarded-For {remote_host}
-                header_up X-Real-IP {remote_host}
-            }
-        }
+            }}
+            reverse_proxy 127.0.0.1:18081 {{
+                header_up X-API-Secret {api_secret}
+                header_up X-Forwarded-For {{remote_host}}
+                header_up X-Real-IP {{remote_host}}
+            }}
+        }}
 
-        handle_path /${PANEL_PATH}/* {
-            ${auth} {
-                ${PANEL_USER} ${hash}
-            }
-            header {
+        handle_path /{panel_path}/* {{
+            {auth} {{
+                {panel_user} {password_hash}
+            }}
+            header {{
                 Cache-Control "no-store, no-cache, must-revalidate"
                 X-Content-Type-Options "nosniff"
                 X-Frame-Options "DENY"
                 Referrer-Policy "no-referrer"
                 Content-Security-Policy "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
-            }
-            root * ${WEB_DIR}
+            }}
+            root * {web_dir}
             file_server
-        }
+        }}
 
-        handle /s/* {
-            reverse_proxy 127.0.0.1:18081 {
-                header_up X-Forwarded-For {remote_host}
-                header_up X-Real-IP {remote_host}
-            }
-        }
+        handle /s/* {{
+            reverse_proxy 127.0.0.1:18081 {{
+                header_up X-Forwarded-For {{remote_host}}
+                header_up X-Real-IP {{remote_host}}
+            }}
+        }}
 
-        handle {
+        handle {{
             respond "Not Found" 404
-        }
-    }
-}
-EOF
+        }}
+    }}
+}}
+"""
+site_file.write_text(content, encoding="utf-8")
+PY
+  [ -f "$site_file" ] || die "写入 ${site_file} 失败"
 
   if [ ! -f "$CADDY_FILE" ]; then
     cat > "$CADDY_FILE" <<EOF
@@ -254,9 +278,9 @@ ${marker}
 EOF
   elif grep -Fq "$marker" "$CADDY_FILE"; then
     :
-  elif grep -Eq "^${DOMAIN}(:${PANEL_PORT})?[[:space:]]*\\{" "$CADDY_FILE" \
-    || grep -Fq "root * ${WEB_DIR}" "$CADDY_FILE"; then
-    # Replace legacy full-file HY2 Caddyfile with import-based layout.
+  elif grep -Fq "$WEB_DIR" "$CADDY_FILE" \
+    || grep -Eq "^${DOMAIN}(:${PANEL_PORT})?[[:space:]]*\\{" "$CADDY_FILE"; then
+    # Replace legacy HY2 Caddyfile with import-based layout.
     cat > "$CADDY_FILE" <<EOF
 {
     servers {
@@ -273,6 +297,7 @@ EOF
 
   caddy fmt --overwrite "$site_file"
   caddy fmt --overwrite "$CADDY_FILE"
-  caddy validate --config "$CADDY_FILE"
+  caddy validate --config "$CADDY_FILE" || die "Caddy 配置校验失败"
   configure_fail2ban_panel "$PANEL_PATH"
+  log "Caddy 站点配置：${site_file}"
 }
