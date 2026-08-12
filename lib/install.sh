@@ -56,26 +56,36 @@ install_caddy_v12() {
   fi
   "$PKG_MANAGER" install -y caddy >/dev/null 2>&1 || true
   if ! command -v caddy >/dev/null 2>&1; then
-    local arch tmp
+    local arch version ver asset tmp archive sums expected
+    version="${CADDY_VERSION:-v2.11.4}"
+    ver="${version#v}"
     case "$(uname -m)" in
       x86_64) arch=amd64 ;;
       aarch64|arm64) arch=arm64 ;;
       *) die "不支持的 CPU 架构：$(uname -m)" ;;
     esac
-    tmp="$(mktemp)"
-    curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=$arch" -o "$tmp"
-    # Reject empty or non-ELF downloads before installing as root.
-    python3 - "$tmp" <<'PY' || { rm -f "$tmp"; die "Caddy 下载校验失败（非 ELF 可执行文件）"; }
-import pathlib, sys
+    asset="caddy_${ver}_linux_${arch}.tar.gz"
+    tmp="$(mktemp -d)"
+    archive="$tmp/$asset"
+    sums="$tmp/checksums.txt"
+    log "下载并校验 Caddy ${version}（${asset}）"
+    curl -fsSL "https://github.com/caddyserver/caddy/releases/download/${version}/caddy_${ver}_checksums.txt" -o "$sums" \
+      || { rm -rf "$tmp"; die "下载 Caddy checksums 失败"; }
+    curl -fsSL "https://github.com/caddyserver/caddy/releases/download/${version}/${asset}" -o "$archive" \
+      || { rm -rf "$tmp"; die "下载 Caddy 失败"; }
+    expected="$(awk -v name="$asset" '$2 == name { print $1; exit }' "$sums")"
+    [ -n "$expected" ] || { rm -rf "$tmp"; die "checksums 中找不到 ${asset}"; }
+    python3 - "$archive" "$expected" <<'PY' || { rm -rf "$tmp"; die "Caddy SHA256 校验失败"; }
+import hashlib, pathlib, sys
 path = pathlib.Path(sys.argv[1])
-data = path.read_bytes()[:8]
-if len(data) < 4 or data[:4] != b"\x7fELF":
-    raise SystemExit(1)
-if path.stat().st_size < 1_000_000:
-    raise SystemExit(1)
+expected = sys.argv[2].lower()
+digest = hashlib.sha256(path.read_bytes()).hexdigest()
+if digest != expected:
+    raise SystemExit(f"got {digest}, want {expected}")
 PY
-    install -m 0755 "$tmp" /usr/local/bin/caddy
-    rm -f "$tmp"
+    tar -xzf "$archive" -C "$tmp" caddy || { rm -rf "$tmp"; die "解压 Caddy 失败"; }
+    install -m 0755 "$tmp/caddy" /usr/local/bin/caddy
+    rm -rf "$tmp"
   fi
   getent group caddy >/dev/null 2>&1 || groupadd --system caddy
   id caddy >/dev/null 2>&1 || useradd --system --gid caddy --home /var/lib/caddy --shell /usr/sbin/nologin caddy
