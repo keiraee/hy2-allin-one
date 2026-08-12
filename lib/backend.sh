@@ -750,10 +750,11 @@ class Handler(BaseHTTPRequestHandler):
         env = load_env()
         domain = str(env.get("DOMAIN", "") or "")
         port = str(env.get("PANEL_PORT", "443") or "443")
-        allowed = {
-            f"https://{domain}",
-            f"https://{domain}:{port}",
-        }
+        allowed: set[str] = set()
+        for scheme in ("http", "https"):
+            allowed.add(f"{scheme}://{domain}")
+            if port not in ("80", "443"):
+                allowed.add(f"{scheme}://{domain}:{port}")
         if origin and origin.rstrip("/") not in allowed:
             self.send_json(403, {"ok": False, "error": "forbidden origin"})
             return False

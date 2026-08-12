@@ -227,7 +227,7 @@ content = f"""{domain}:{port} {{
                 Referrer-Policy "no-referrer"
             }}
             reverse_proxy 127.0.0.1:18081 {{
-                header_up X-API-Secret {api_secret}
+                header_up X-API-Secret "{api_secret}"
                 header_up X-Forwarded-For {{remote_host}}
                 header_up X-Real-IP {{remote_host}}
             }}
