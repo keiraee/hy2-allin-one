@@ -741,11 +741,14 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def collector_loop() -> None:
+    failures = 0
     while True:
         try:
             collect()
-        except Exception:
-            pass
+            failures = 0
+        except Exception as error:
+            failures += 1
+            print(f"[hy2-aio] collect failed ({failures}): {error}", flush=True)
         time.sleep(60)
 
 
