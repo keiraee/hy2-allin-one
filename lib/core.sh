@@ -3,7 +3,7 @@
 
 set -Eeuo pipefail
 
-SCRIPT_VERSION="1.3.16"
+SCRIPT_VERSION="1.3.17"
 AIO_VERSION="$SCRIPT_VERSION"
 CONFIG_DIR="/etc/hy2-aio"
 ENV_FILE="${CONFIG_DIR}/config.env"
@@ -212,7 +212,7 @@ prompt_hysteria_port() {
   while true; do
     if [ -z "$value" ]; then
       if [ -t 0 ] && [ "${HY2_NONINTERACTIVE:-0}" != "1" ]; then
-        echo "  提示：AWS/GCP 等云服务器建议用 8443；也可改成 443"
+        echo "  提示：AWS/GCP 等云服务器建议用 8443；也可改成 443" >&2
       fi
       value="$(prompt_value '代理 UDP 端口' "$default")"
     fi

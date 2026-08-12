@@ -449,7 +449,7 @@ prompt_obfs_enabled() {
     printf '%s' "true"
     return
   fi
-  echo "  提示：开启后更隐蔽；若以后经常断线，可再执行 sudo hy2 obfs off"
+  echo "  提示：开启后更隐蔽；若以后经常断线，可再执行 hy2 obfs off" >&2
   read -r -p "开启流量伪装（Salamander）？直接回车=开启 [Y/n]: " answer || true
   answer="$(printf '%s' "${answer:-Y}" | tr '[:upper:]' '[:lower:]')"
   case "$answer" in

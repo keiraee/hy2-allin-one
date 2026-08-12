@@ -8,7 +8,7 @@ umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
-REPO_REF="${HY2_REPO_REF:-v1.3.16}"
+REPO_REF="${HY2_REPO_REF:-v1.3.17}"
 if [ -n "${HY2_REPO_URL:-}" ]; then
   REPO_URL="$HY2_REPO_URL"
 else
@@ -154,10 +154,14 @@ install_stack() {
   echo
   echo "[2/6] 代理端口"
   HY2_PORT="${HY2_PORT:-$(prompt_hysteria_port)}"
+  [[ "$HY2_PORT" =~ ^[0-9]+$ ]] && [ "$HY2_PORT" -ge 1 ] && [ "$HY2_PORT" -le 65535 ] \
+    || die "代理端口无效（内部错误，请升级安装脚本）：${HY2_PORT}"
 
   echo
   echo "[3/6] 面板端口"
   PANEL_PORT="${HY2_PANEL_PORT:-$(prompt_panel_port)}"
+  [[ "$PANEL_PORT" =~ ^[0-9]+$ ]] && [ "$PANEL_PORT" -ge 1 ] && [ "$PANEL_PORT" -le 65535 ] \
+    || die "面板端口无效：${PANEL_PORT}"
   STATS_PORT="${HY2_STATS_PORT:-$(prompt_stats_port)}"
 
   NETWORK_INTERFACE="${HY2_INTERFACE:-$(detect_iface)}"
@@ -199,6 +203,10 @@ PY
   OBFS_PASSWORD="$(rand_hex 16)"
   echo
   OBFS_ENABLED="$(prompt_obfs_enabled)"
+  case "$OBFS_ENABLED" in
+    true|false) ;;
+    *) die "混淆开关无效（内部错误，请升级安装脚本）：${OBFS_ENABLED}" ;;
+  esac
   API_SECRET="$(rand_hex 24)"
   SNI="${HY2_SNI:-www.amazon.sg}"
   BACKUP_RETENTION_DAYS="${HY2_BACKUP_DAYS:-14}"
@@ -487,7 +495,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_RATE_LIMIT_SUBSCRIPTION  订阅 /s/ 每 IP 每分钟次数，默认 30
   HY2_RATE_LIMIT_API  面板 API 每 IP 每分钟次数，默认 120
   HY2_REPO_URL        模块下载地址（默认 GitHub raw）
-  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.16
+  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.17
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
   CADDY_VERSION       钉死的 Caddy 版本（非 apt 回退），默认 v2.11.4
 EOF
