@@ -47,7 +47,7 @@ def load_env() -> dict[str, str]:
         if not raw or raw.startswith("#") or "=" not in raw:
             continue
         key, value = raw.split("=", 1)
-        values[key] = value
+        values[key.strip()] = value.strip().strip('"').strip("'")
     return values
 
 
@@ -748,21 +748,34 @@ class Handler(BaseHTTPRequestHandler):
         if not origin and not referer:
             return True
         env = load_env()
-        domain = str(env.get("DOMAIN", "") or "")
-        port = str(env.get("PANEL_PORT", "443") or "443")
-        allowed: set[str] = set()
-        for scheme in ("http", "https"):
-            allowed.add(f"{scheme}://{domain}")
-            if port not in ("80", "443"):
-                allowed.add(f"{scheme}://{domain}:{port}")
-        if origin and origin.rstrip("/") not in allowed:
+        domain = str(env.get("DOMAIN", "") or "").strip().lower()
+        port = str(env.get("PANEL_PORT", "443") or "443").strip()
+        if not domain:
+            return True
+
+        def host_ok(url: str) -> bool:
+            try:
+                parsed = urllib.parse.urlparse(url)
+            except Exception:
+                return False
+            host = (parsed.hostname or "").lower()
+            if host != domain:
+                return False
+            url_port = parsed.port
+            if url_port is None:
+                # Scheme default port: accept when panel uses standard ports,
+                # or when Host already matched domain (custom-port pages still send :port).
+                return True
+            return str(url_port) == port
+
+        if origin and origin.lower() != "null" and not host_ok(origin):
+            print(f"[hy2-aio] forbidden origin got={origin!r} domain={domain!r} port={port!r}", flush=True)
             self.send_json(403, {"ok": False, "error": "forbidden origin"})
             return False
-        if not origin and referer:
-            ok = any(referer.startswith(f"{base}/") or referer.rstrip("/") == base for base in allowed)
-            if not ok:
-                self.send_json(403, {"ok": False, "error": "forbidden referer"})
-                return False
+        if not origin and referer and not host_ok(referer):
+            print(f"[hy2-aio] forbidden referer got={referer!r} domain={domain!r} port={port!r}", flush=True)
+            self.send_json(403, {"ok": False, "error": "forbidden referer"})
+            return False
         return True
 
     def require_rate_limit(self, bucket: str, env_key: str, default: int, window: float = 60.0) -> bool:
