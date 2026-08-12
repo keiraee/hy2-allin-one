@@ -624,6 +624,45 @@ def user_credential_value(username: str, kind: str) -> str:
     return direct_link(env, username, password)
 
 
+RATE_BUCKETS: dict[str, list[float]] = {}
+RATE_BUCKET_LOCK = threading.Lock()
+
+
+def client_ip(handler: BaseHTTPRequestHandler) -> str:
+    forwarded = str(handler.headers.get("X-Forwarded-For", "") or "").strip()
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    real = str(handler.headers.get("X-Real-IP", "") or "").strip()
+    if real:
+        return real
+    if handler.client_address:
+        return str(handler.client_address[0])
+    return "unknown"
+
+
+def rate_limit_allow(bucket: str, ip: str, limit: int, window: float) -> bool:
+    if limit <= 0:
+        return True
+    key = f"{bucket}:{ip}"
+    now = time.time()
+    with RATE_BUCKET_LOCK:
+        hits = RATE_BUCKETS.setdefault(key, [])
+        cutoff = now - window
+        while hits and hits[0] < cutoff:
+            hits.pop(0)
+        if len(hits) >= limit:
+            return False
+        hits.append(now)
+        return True
+
+
+def rate_limit_from_env(env: dict[str, str], key: str, default: int) -> int:
+    try:
+        return max(0, int(env.get(key, str(default)) or default))
+    except ValueError:
+        return default
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "HY2AIO/1.0"
 
@@ -667,6 +706,14 @@ class Handler(BaseHTTPRequestHandler):
                 return False
         return True
 
+    def require_rate_limit(self, bucket: str, env_key: str, default: int, window: float = 60.0) -> bool:
+        env = load_env()
+        limit = rate_limit_from_env(env, env_key, default)
+        if rate_limit_allow(bucket, client_ip(self), limit, window):
+            return True
+        self.send_json(429, {"ok": False, "error": "请求过于频繁，请稍后再试"})
+        return False
+
     def send_json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -678,6 +725,8 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def send_subscription(self, token: str) -> None:
+        if not self.require_rate_limit("subscription", "RATE_LIMIT_SUBSCRIPTION", 30):
+            return
         username, info = subscription_for_token(token)
         if username is None or info is None:
             self.send_error(404)
@@ -772,6 +821,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self.require_api_secret():
             return
         if not self.require_same_origin():
+            return
+        if not self.require_rate_limit("api", "RATE_LIMIT_API", 120):
             return
         path = self.path.split("?", 1)[0]
         try:

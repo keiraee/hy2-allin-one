@@ -175,6 +175,7 @@ write_caddy() {
   site_file="/etc/caddy/hy2-aio.caddy"
   marker="import ${site_file}"
   install -d -m 0755 /etc/caddy
+  install -d -o caddy -g caddy -m 0750 /var/log/caddy
 
   if [ -f "$CADDY_FILE" ]; then
     cp "$CADDY_FILE" "${CADDY_FILE}.before-hy2-aio-$(date +%Y%m%d-%H%M%S)"
@@ -183,6 +184,14 @@ write_caddy() {
   cat > "$site_file" <<EOF
 ${DOMAIN}:${PANEL_PORT} {
     encode zstd gzip
+
+    log {
+        output file /var/log/caddy/hy2-aio.log {
+            roll_size 10mb
+            roll_keep 3
+        }
+        format common_log
+    }
 
     route {
         redir /${PANEL_PATH} /${PANEL_PATH}/ 308
@@ -199,6 +208,8 @@ ${DOMAIN}:${PANEL_PORT} {
             }
             reverse_proxy 127.0.0.1:18081 {
                 header_up X-API-Secret ${API_SECRET}
+                header_up X-Forwarded-For {remote_host}
+                header_up X-Real-IP {remote_host}
             }
         }
 
@@ -218,7 +229,10 @@ ${DOMAIN}:${PANEL_PORT} {
         }
 
         handle /s/* {
-            reverse_proxy 127.0.0.1:18081
+            reverse_proxy 127.0.0.1:18081 {
+                header_up X-Forwarded-For {remote_host}
+                header_up X-Real-IP {remote_host}
+            }
         }
 
         handle {
@@ -260,4 +274,5 @@ EOF
   caddy fmt --overwrite "$site_file"
   caddy fmt --overwrite "$CADDY_FILE"
   caddy validate --config "$CADDY_FILE"
+  configure_fail2ban_panel "$PANEL_PATH"
 }

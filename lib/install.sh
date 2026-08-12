@@ -109,7 +109,30 @@ EOF
   command -v caddy >/dev/null 2>&1 || die "Caddy 安装失败"
 }
 
-configure_firewall_v12() {
+configure_fail2ban_panel() {
+  local panel_path="$1"
+  command -v fail2ban-client >/dev/null 2>&1 || return 0
+  install -d -m 0755 /etc/fail2ban/filter.d /etc/fail2ban/jail.d
+
+  cat > /etc/fail2ban/filter.d/hy2-caddy-auth.conf <<EOF
+[Definition]
+failregex = ^<HOST> - .* "(?:GET|POST) /${panel_path}/.*" 401
+ignoreregex =
+EOF
+
+  cat > /etc/fail2ban/jail.d/hy2-caddy-auth.conf <<'EOF'
+[hy2-caddy-auth]
+enabled = true
+filter = hy2-caddy-auth
+logpath = /var/log/caddy/hy2-aio.log
+maxretry = 15
+findtime = 300
+bantime = 3600
+EOF
+
+  fail2ban-client reload >/dev/null 2>&1 || systemctl reload fail2ban >/dev/null 2>&1 || true
+  log "fail2ban 已配置：面板 Basic Auth 连续失败将封禁 IP"
+}
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
     ufw allow 80/tcp >/dev/null
     ufw allow "$PANEL_PORT/tcp" >/dev/null

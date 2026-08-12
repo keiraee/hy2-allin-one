@@ -62,6 +62,8 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_PANEL_PATH` | 面板路径 | 随机生成 |
 | `HY2_SNI` | 客户端 SNI | www.amazon.sg |
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
+| `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
+| `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
 | `HY2_REPO_REF` | 模块 Git ref | `v1.3.4` |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
 | `CADDY_VERSION` | Caddy 回退安装版本 | `v2.11.4` |
@@ -71,6 +73,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 ```
 hy2-allin-one/
 ├── hy2.sh              # 入口脚本
+├── SHA256SUMS          # 模块完整性校验
 ├── lib/                # 功能模块
 │   ├── core.sh         # 基础函数
 │   ├── install.sh      # 安装依赖
@@ -90,6 +93,7 @@ hy2-allin-one/
 
 ### v1.3.4
 - 安全加固：凭据不再写入 data.json/Web 备份；内部 API 鉴权；后端降权；供应链 checksum
+- 面板/订阅限流：后端按 IP 限速；Caddy 访问日志 + fail2ban 防 Basic Auth 暴力破解
 - 移除旧单体脚本 `hy2-aio-v1.2.0.sh`
 - 远程安装默认 pin `v1.3.4` 并用 `SHA256SUMS` 校验模块
 
