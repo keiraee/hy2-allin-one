@@ -8,6 +8,12 @@ snapshot_before_change() {
     "$CONFIG_DIR" /etc/hysteria "$APP_DIR" "$WEB_DIR" "$CADDY_FILE" \
     "$SERVICE_FILE" /etc/systemd/system/hysteria-server.service
   chmod 600 "$snapshot"
+  # Keep only the newest 10 rollback snapshots.
+  local old
+  # shellcheck disable=SC2012
+  ls -1t "$STATE_DIR/rollbacks"/hy2-before-*.tar.gz 2>/dev/null | tail -n +11 | while read -r old; do
+    rm -f "$old"
+  done
   printf '%s\n' "$snapshot"
 }
 
