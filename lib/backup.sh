@@ -78,6 +78,7 @@ PY
   ensure_hy2_aio_user
   systemctl daemon-reload
   systemctl enable hy2-aio.service hy2-aio-reload-hysteria.path >/dev/null
+  systemctl start hy2-aio-reload-hysteria.path || true
 
   if ! systemctl restart hy2-aio.service; then
     journalctl -u hy2-aio.service --no-pager -n 100 >&2 || true
