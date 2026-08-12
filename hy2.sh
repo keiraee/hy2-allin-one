@@ -303,6 +303,15 @@ PY
   API_SECRET="$(rand_hex 24)"
   SNI="${HY2_SNI:-www.amazon.sg}"
   BACKUP_RETENTION_DAYS="${HY2_BACKUP_DAYS:-14}"
+  SPEED_TEST="${HY2_SPEED_TEST:-false}"
+  # IP / sslip 证书无法校验真实 SNI，默认 disable；真实域名可设 HY2_SNI_GUARD=strict
+  if [ -n "${HY2_SNI_GUARD:-}" ]; then
+    SNI_GUARD="$HY2_SNI_GUARD"
+  elif [[ "$DOMAIN" == *sslip.io ]] || [[ "$DOMAIN" == "$PUBLIC_IP" ]]; then
+    SNI_GUARD="disable"
+  else
+    SNI_GUARD="strict"
+  fi
 
   python3 - "$PUBLIC_IP" <<'PYV' || die "公网 IPv4 格式错误：$PUBLIC_IP"
 import ipaddress, sys
@@ -355,6 +364,8 @@ PANEL_USER=$PANEL_USER
 PANEL_PASS=$PANEL_PASS
 SNI=$SNI
 BACKUP_RETENTION_DAYS=$BACKUP_RETENTION_DAYS
+SPEED_TEST=$SPEED_TEST
+SNI_GUARD=$SNI_GUARD
 EOF
   chown root:root "$ENV_FILE"
   chmod 0600 "$ENV_FILE"
@@ -525,9 +536,12 @@ HY2 AIO v${AIO_VERSION}
   HY2_PANEL_PASS      面板密码
   HY2_PANEL_PATH      面板随机路径
   HY2_SNI             客户端 SNI，默认 www.amazon.sg
+  HY2_SPEED_TEST      开启 Hysteria speedTest（默认 false）
+  HY2_SNI_GUARD       SNI 校验：disable|strict（真实域名默认 strict）
   HY2_BACKUP_DAYS     备份保留天数，默认 14
   HY2_REPO_URL        模块下载地址（默认 GitHub raw）
   HY2_REPO_REF        Git 分支/tag/commit，默认 main（仅默认 URL 时生效）
+  HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
 EOF
 }
 

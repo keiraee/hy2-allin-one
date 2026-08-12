@@ -35,7 +35,7 @@ lines = [
     "tls:",
     '  cert: "/etc/hysteria/server.crt"',
     '  key: "/etc/hysteria/server.key"',
-    "  sniGuard: disable",
+    f"  sniGuard: {json.dumps(env.get('SNI_GUARD', 'disable'))}",
     "",
     "auth:",
     "  type: userpass",
@@ -46,6 +46,7 @@ for username, info in sorted(users.items()):
         continue
     lines.append(f"    {json.dumps(username)}: {json.dumps(str(info['password']))}")
 
+speed_test = str(env.get("SPEED_TEST", "false")).strip().lower() in ("1", "true", "yes", "on")
 lines.extend([
     "",
     "obfs:",
@@ -57,7 +58,7 @@ lines.extend([
     "  type: bbr",
     "  bbrProfile: standard",
     "",
-    "speedTest: true",
+    f"speedTest: {'true' if speed_test else 'false'}",
     "disableUDP: false",
     "",
     "trafficStats:",
