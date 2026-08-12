@@ -118,9 +118,13 @@ PY
   systemctl is-active --quiet hy2-aio.service || die "HY2 AIO 后端未运行"
   api_post sync >/dev/null || true
 
-  local script_path
+  local script_path modules_dir
   script_path="$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")"
-  install -m 0755 "$script_path" "$SELF_INSTALL"
+  modules_dir="/usr/local/lib/hy2-aio/modules"
+  mkdir -p "$modules_dir/lib" "$modules_dir/bin"
+  cp -a "${SCRIPT_DIR}/lib/"* "$modules_dir/lib/"
+  cp -a "${SCRIPT_DIR}/bin/"* "$modules_dir/bin/"
+  install -m 0755 "${modules_dir}/bin/hy2.sh" "$SELF_INSTALL"
   write_access_file
 
   log "HY2 AIO 已升级到 v${SCRIPT_VERSION}"

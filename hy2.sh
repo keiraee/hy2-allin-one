@@ -8,7 +8,7 @@ umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
-REPO_REF="${HY2_REPO_REF:-v1.3.6}"
+REPO_REF="${HY2_REPO_REF:-v1.3.7}"
 if [ -n "${HY2_REPO_URL:-}" ]; then
   REPO_URL="$HY2_REPO_URL"
 else
@@ -643,7 +643,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_RATE_LIMIT_SUBSCRIPTION  订阅 /s/ 每 IP 每分钟次数，默认 30
   HY2_RATE_LIMIT_API  面板 API 每 IP 每分钟次数，默认 120
   HY2_REPO_URL        模块下载地址（默认 GitHub raw）
-  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.6
+  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.7
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
   CADDY_VERSION       钉死的 Caddy 版本（非 apt 回退），默认 v2.11.4
 EOF
@@ -658,15 +658,20 @@ main() {
   elif [ -f "/usr/local/lib/hy2-aio/modules/lib/core.sh" ]; then
     # 已安装模式
     load_installed_modules
-  elif [ "${1:-}" = "install" ] || [ "${1:-}" = "help" ] || [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
-    # 安装前：临时下载模块
-    local tmp_dir
-    tmp_dir="$(mktemp -d)"
-    fetch_modules "$tmp_dir"
-    SCRIPT_DIR="$tmp_dir"
-    load_local_modules
   else
-    _bootstrap_die "模块未安装，请运行：sudo bash hy2.sh install"
+    # 仅下载了 hy2.sh：临时拉取模块（install / repair / help）
+    case "${1:-}" in
+      install|repair|help|-h|--help)
+        local tmp_dir
+        tmp_dir="$(mktemp -d)"
+        fetch_modules "$tmp_dir"
+        SCRIPT_DIR="$tmp_dir"
+        load_local_modules
+        ;;
+      *)
+        _bootstrap_die "模块未安装。请运行：sudo bash hy2.sh install   或先 git clone 完整仓库再 repair"
+        ;;
+    esac
   fi
 
   # 解析命令
