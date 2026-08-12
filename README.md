@@ -2,6 +2,8 @@
 
 一键部署 Hysteria 2 + 多用户订阅 + 轻量面板
 
+稳定版见 [Releases](https://github.com/keiraee/hy2-allin-one/releases)；开发版跟踪 `main`（安装时设 `HY2_REPO_REF=main`）。
+
 ## 快速开始
 
 ```bash
@@ -10,7 +12,6 @@ curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.4/hy2.sh
 sudo bash hy2.sh install
 ```
 
-开发/跟踪最新可用 `HY2_REPO_REF=main`。
 ## 使用方法
 
 ### 交互菜单
