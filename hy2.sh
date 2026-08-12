@@ -344,9 +344,10 @@ PYV
 
   getent group hysteria >/dev/null 2>&1 || groupadd --system hysteria
   id hysteria >/dev/null 2>&1 || useradd --system --gid hysteria --home /nonexistent --shell /usr/sbin/nologin hysteria
+  ensure_hy2_aio_user
 
-  install -d -o root -g hysteria -m 0750 "$CONFIG_DIR"
-  install -d -o root -g root -m 0750 "$STATE_DIR" "$STATE_DIR/backups"
+  install -d -o root -g hy2-aio -m 0750 "$CONFIG_DIR"
+  install -d -o hy2-aio -g hy2-aio -m 0750 "$STATE_DIR" "$STATE_DIR/backups"
   install -d -o root -g root -m 0755 "$APP_DIR"
 
   cat > "$ENV_FILE" <<EOF
@@ -369,8 +370,8 @@ SPEED_TEST=$SPEED_TEST
 SNI_GUARD=$SNI_GUARD
 CLIENT_INSECURE=$CLIENT_INSECURE
 EOF
-  chown root:root "$ENV_FILE"
-  chmod 0600 "$ENV_FILE"
+  chown root:hy2-aio "$ENV_FILE"
+  chmod 0640 "$ENV_FILE"
   configure_firewall_v12
 
   generate_users "$users_count"
@@ -394,10 +395,11 @@ EOF
   cp -a "${SCRIPT_DIR}/bin/"* "$modules_dir/bin/"
 
   systemctl daemon-reload
-  systemctl enable hysteria-server.service hy2-aio.service caddy.service >/dev/null
+  systemctl enable hysteria-server.service hy2-aio.service hy2-aio-reload-hysteria.path caddy.service >/dev/null
   systemctl restart hysteria-server.service
   sleep 2
   systemctl restart hy2-aio.service
+  systemctl start hy2-aio-reload-hysteria.path
   systemctl restart caddy.service
   sleep 3
   wait_services

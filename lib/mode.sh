@@ -2,7 +2,7 @@
 # mode.sh - BBR/Brutal 速率模式管理
 
 ensure_mode_file() {
-  install -d -o root -g hysteria -m 0750 "$CONFIG_DIR"
+  install -d -o root -g hy2-aio -m 0750 "$CONFIG_DIR"
   python3 - "$MODE_FILE" "$USERS_FILE" <<'PY'
 import json
 import os
@@ -54,7 +54,7 @@ temporary = mode_path.with_suffix(mode_path.suffix + ".tmp")
 temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 os.replace(temporary, mode_path)
 PY
-  chown root:hysteria "$MODE_FILE"
+  chown hy2-aio:hy2-aio "$MODE_FILE"
   chmod 0640 "$MODE_FILE"
 }
 
@@ -182,13 +182,13 @@ PY
     die "速率模式写入失败（已保留备份：$backup）"
   fi
 
-  chown root:hysteria "$MODE_FILE"
+  chown hy2-aio:hy2-aio "$MODE_FILE"
   chmod 0640 "$MODE_FILE"
 
   if ! systemctl restart hy2-aio.service; then
     warn "订阅后端重启失败，恢复上一份模式配置"
     mv "$backup" "$MODE_FILE"
-    chown root:hysteria "$MODE_FILE"
+    chown hy2-aio:hy2-aio "$MODE_FILE"
     chmod 0640 "$MODE_FILE"
     systemctl restart hy2-aio.service || true
     die "模式切换失败"

@@ -21,7 +21,7 @@ with open(temporary, "w", encoding="utf-8") as file:
 os.replace(temporary, path)
 PY
   chmod 0640 "$USERS_FILE"
-  chown root:hysteria "$USERS_FILE"
+  chown hy2-aio:hy2-aio "$USERS_FILE"
 }
 
 modify_user() {
@@ -120,7 +120,7 @@ PY
     *) die "未知用户操作：$action" ;;
   esac
 
-  chown root:hysteria "$USERS_FILE"
+  chown hy2-aio:hy2-aio "$USERS_FILE"
   chmod 0640 "$USERS_FILE"
   "$REBUILD_FILE"
   chown hysteria:hysteria "$HYSTERIA_CONFIG"

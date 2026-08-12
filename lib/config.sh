@@ -70,6 +70,12 @@ lines.extend([
 temporary = OUT_FILE.with_suffix(".tmp")
 temporary.write_text("\n".join(lines), encoding="utf-8")
 os.replace(temporary, OUT_FILE)
+os.chmod(OUT_FILE, 0o640)
+try:
+    import grp
+    os.chown(OUT_FILE, -1, grp.getgrnam("hysteria").gr_gid)
+except Exception:
+    pass
 PY
   chmod 0755 "$REBUILD_FILE"
 }
@@ -84,11 +90,14 @@ Requires=hysteria-server.service
 
 [Service]
 Type=simple
-User=root
-Group=root
+User=hy2-aio
+Group=hy2-aio
+SupplementaryGroups=hysteria caddy
 ExecStart=/usr/bin/python3 /usr/local/lib/hy2-aio/server.py
 Restart=always
 RestartSec=3
+RuntimeDirectory=hy2-aio
+RuntimeDirectoryMode=0750
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
@@ -100,12 +109,51 @@ RestrictSUIDSGID=true
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 LockPersonality=true
 SystemCallArchitectures=native
-ReadWritePaths=/etc/hy2-aio /var/lib/hy2-aio /var/www/hy2-aio /etc/hysteria
+ReadWritePaths=/etc/hy2-aio /var/lib/hy2-aio /var/www/hy2-aio /etc/hysteria /run/hy2-aio
 ReadOnlyPaths=/usr/local/lib/hy2-aio
 
 [Install]
 WantedBy=multi-user.target
 EOF
+
+  cat > /etc/systemd/system/hy2-aio-reload-hysteria.path <<'EOF'
+[Unit]
+Description=Watch HY2 AIO request to reload Hysteria
+
+[Path]
+PathExists=/run/hy2-aio/reload-hysteria
+Unit=hy2-aio-reload-hysteria.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  cat > /etc/systemd/system/hy2-aio-reload-hysteria.service <<'EOF'
+[Unit]
+Description=Restart hysteria-server for HY2 AIO
+After=hysteria-server.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl restart hysteria-server.service
+ExecStartPost=/bin/rm -f /run/hy2-aio/reload-hysteria
+EOF
+}
+
+ensure_hy2_aio_user() {
+  getent group hy2-aio >/dev/null 2>&1 || groupadd --system hy2-aio
+  getent group hysteria >/dev/null 2>&1 || groupadd --system hysteria
+  getent group caddy >/dev/null 2>&1 || groupadd --system caddy
+  if ! id hy2-aio >/dev/null 2>&1; then
+    useradd --system --gid hy2-aio --groups hysteria,caddy \
+      --home-dir "$STATE_DIR" --shell /usr/sbin/nologin hy2-aio
+  else
+    usermod -a -G hysteria,caddy hy2-aio 2>/dev/null || true
+  fi
+  install -d -o hy2-aio -g hy2-aio -m 0750 "$STATE_DIR" "$STATE_DIR/backups"
+  install -d -o hy2-aio -g caddy -m 2750 "$WEB_DIR" "$WEB_DIR/downloads"
+  install -d -o root -g hy2-aio -m 0750 "$CONFIG_DIR"
+  install -d -o hysteria -g hysteria -m 0770 /etc/hysteria
 }
 
 caddy_auth_directive() {

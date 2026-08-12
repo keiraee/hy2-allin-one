@@ -2,7 +2,7 @@
 # panel.sh - Web 面板 HTML 生成
 
 write_panel() {
-  install -d -o root -g caddy -m 0750 "$WEB_DIR" "$WEB_DIR/downloads"
+  install -d -o hy2-aio -g caddy -m 2750 "$WEB_DIR" "$WEB_DIR/downloads"
   cat > "$WEB_DIR/index.html" <<'HTML'
 <!doctype html>
 <html lang="zh-CN">
@@ -147,7 +147,7 @@ load();setInterval(load,30000);
 </html>
 HTML
 
-  chown -R root:caddy "$WEB_DIR"
-  find "$WEB_DIR" -type d -exec chmod 0750 {} \;
+  chown -R hy2-aio:caddy "$WEB_DIR"
+  find "$WEB_DIR" -type d -exec chmod 2750 {} \;
   find "$WEB_DIR" -type f -exec chmod 0640 {} \;
 }

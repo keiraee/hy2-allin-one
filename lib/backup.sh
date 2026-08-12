@@ -65,20 +65,22 @@ temporary = path.with_suffix(path.suffix + ".tmp")
 temporary.write_text("\n".join(output) + "\n", encoding="utf-8")
 os.replace(temporary, path)
 PY
-  chown root:root "$ENV_FILE"
-  chmod 0600 "$ENV_FILE"
+  chown root:hy2-aio "$ENV_FILE"
+  chmod 0640 "$ENV_FILE"
 
   write_backend
   write_panel
   write_systemd
   write_caddy
+  ensure_hy2_aio_user
   systemctl daemon-reload
-  systemctl enable hy2-aio.service >/dev/null
+  systemctl enable hy2-aio.service hy2-aio-reload-hysteria.path >/dev/null
 
   if ! systemctl restart hy2-aio.service; then
     journalctl -u hy2-aio.service --no-pager -n 100 >&2 || true
     die "HY2 AIO 后端升级失败"
   fi
+  systemctl start hy2-aio-reload-hysteria.path || true
 
   if ! systemctl reload caddy.service 2>/dev/null; then
     systemctl restart caddy.service || die "Caddy 重载失败"

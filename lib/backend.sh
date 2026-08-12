@@ -538,9 +538,27 @@ def apply_web_permissions() -> None:
         if path.exists():
             os.chmod(path, 0o640)
             try:
-                shutil.chown(path, user="root", group="caddy")
+                shutil.chown(path, user="hy2-aio", group="caddy")
             except Exception:
                 pass
+
+
+def restart_hysteria() -> None:
+    """Ask root path unit to restart hysteria-server (backend runs unprivileged)."""
+    flag = Path("/run/hy2-aio/reload-hysteria")
+    try:
+        flag.unlink(missing_ok=True)
+    except TypeError:
+        if flag.exists():
+            flag.unlink()
+    except OSError:
+        pass
+    flag.write_text(str(time.time()), encoding="utf-8")
+    for _ in range(75):
+        time.sleep(0.2)
+        if not flag.exists():
+            return
+    raise RuntimeError("等待 Hysteria 重启超时")
 
 
 USERNAME_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,32}")
@@ -563,25 +581,20 @@ def apply_user_change(username: str, update) -> dict[str, Any]:
             )
             if result.returncode != 0:
                 raise RuntimeError(result.stderr.strip() or "rebuild_config.py 执行失败")
-            restart = subprocess.run(
-                ["systemctl", "restart", "hysteria-server.service"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if restart.returncode != 0:
-                raise RuntimeError(restart.stderr.strip() or "Hysteria 重启失败")
+            restart_hysteria()
         except Exception:
             atomic_json(USERS_FILE, json.loads(backup))
             subprocess.run([str(REBUILD_FILE)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(
-                ["systemctl", "restart", "hysteria-server.service"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            try:
+                restart_hysteria()
+            except Exception:
+                pass
             raise
         os.chmod(USERS_FILE, 0o640)
-        shutil.chown(USERS_FILE, user="root", group="hysteria")
+        try:
+            shutil.chown(USERS_FILE, user="hy2-aio", group="hy2-aio")
+        except Exception:
+            pass
         return collect()
 
 
