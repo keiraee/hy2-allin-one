@@ -342,13 +342,10 @@ def collect(force_backup: bool = False) -> dict[str, Any]:
             if tx or rx or devices:
                 user_state["last_active"] = timestamp
 
-            password = str(info["password"])
-            token = str(info["token"])
             client_mode = mode_for_user(username, modes)
             output_users.append(
                 {
                     "username": username,
-                    "password": password,
                     "note": str(info.get("note", "")),
                     "disabled": bool(info.get("disabled", False)),
                     "online": devices,
@@ -358,8 +355,6 @@ def collect(force_backup: bool = False) -> dict[str, Any]:
                     "lifetime_total": user_state["lifetime_tx"] + user_state["lifetime_rx"],
                     "last_active": user_state["last_active"],
                     "mode": mode_label(client_mode),
-                    "subscription": f"https://{env['DOMAIN']}:{env.get('PANEL_PORT', '443')}/s/{token}",
-                    "direct": direct_link(env, username, password),
                 }
             )
 
@@ -425,14 +420,14 @@ def write_users_csv(users: list[dict[str, Any]]) -> None:
         writer = csv.writer(file)
         writer.writerow(
             ["用户", "在线设备", "月上传字节", "月下载字节", "月合计字节",
-             "历史累计字节", "最后活动", "速率模式", "订阅地址", "HY2基础直链"]
+             "历史累计字节", "最后活动", "速率模式"]
         )
         for user in users:
             writer.writerow(
                 [
                     user["username"], user["online"], user["upload"], user["download"],
                     user["total"], user["lifetime_total"], user["last_active"],
-                    user["mode"], user["subscription"], user["direct"],
+                    user["mode"],
                 ]
             )
     os.replace(temporary, USERS_CSV)
@@ -573,6 +568,25 @@ def subscription_for_token(token: str):
     return None, None
 
 
+def user_credential_value(username: str, kind: str) -> str:
+    if not USERNAME_PATTERN.fullmatch(username):
+        raise ValueError("用户名格式错误")
+    if kind not in ("subscription", "direct", "password"):
+        raise ValueError("未知凭据类型")
+    users = load_users()
+    if username not in users:
+        raise ValueError("用户不存在")
+    info = users[username]
+    env = load_env()
+    password = str(info["password"])
+    token = str(info["token"])
+    if kind == "password":
+        return password
+    if kind == "subscription":
+        return f"https://{env['DOMAIN']}:{env.get('PANEL_PORT', '443')}/s/{token}"
+    return direct_link(env, username, password)
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "HY2AIO/1.0"
 
@@ -674,6 +688,16 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.send_json(200, {"ok": True, "generated_at": data["generated_at"]})
 
+    def handle_user_credentials(self, payload: dict[str, Any]) -> None:
+        username = str(payload.get("username", ""))
+        kind = str(payload.get("kind", "")).strip().lower()
+        try:
+            value = user_credential_value(username, kind)
+        except ValueError as error:
+            self.send_json(400, {"ok": False, "error": str(error)})
+            return
+        self.send_json(200, {"ok": True, "kind": kind, "value": value})
+
     def do_POST(self) -> None:
         if not self.require_api_secret():
             return
@@ -694,6 +718,9 @@ class Handler(BaseHTTPRequestHandler):
                         "backup": str(backup) if backup else None,
                     },
                 )
+                return
+            if path == "/user/credentials":
+                self.handle_user_credentials(self.read_body())
                 return
             if path in ("/user/note", "/user/disable", "/user/enable"):
                 self.handle_user_change(path.removeprefix("/user/"), self.read_body())
