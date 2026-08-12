@@ -8,7 +8,7 @@ umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
-REPO_REF="${HY2_REPO_REF:-v1.3.7}"
+REPO_REF="${HY2_REPO_REF:-v1.3.8}"
 if [ -n "${HY2_REPO_URL:-}" ]; then
   REPO_URL="$HY2_REPO_URL"
 else
@@ -47,7 +47,7 @@ fetch_modules() {
     curl -fsSL "${REPO_URL}/${f}" -o "$tmp" || { rm -f "$tmp" "$sums"; _bootstrap_die "下载失败：$f"; }
     head -1 "$tmp" | grep -qE '^#!|^#' || { rm -f "$tmp" "$sums"; _bootstrap_die "模块内容校验失败：$f"; }
     [ -s "$tmp" ] || { rm -f "$tmp" "$sums"; _bootstrap_die "模块为空：$f"; }
-    expected="$(awk -v name="$f" '$2 == name { print $1; exit }' "$sums")"
+    expected="$(awk -v name="$f" '{ gsub(/\r/, ""); if ($2 == name) { print $1; exit } }' "$sums")"
     [ -n "$expected" ] || { rm -f "$tmp" "$sums"; _bootstrap_die "SHA256SUMS 中缺少：$f"; }
     python3 - "$tmp" "$expected" <<'PY' || { rm -f "$tmp" "$sums"; _bootstrap_die "SHA256 校验失败：$f"; }
 import hashlib, pathlib, sys
@@ -643,7 +643,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_RATE_LIMIT_SUBSCRIPTION  订阅 /s/ 每 IP 每分钟次数，默认 30
   HY2_RATE_LIMIT_API  面板 API 每 IP 每分钟次数，默认 120
   HY2_REPO_URL        模块下载地址（默认 GitHub raw）
-  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.7
+  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.8
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
   CADDY_VERSION       钉死的 Caddy 版本（非 apt 回退），默认 v2.11.4
 EOF

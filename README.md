@@ -1,4 +1,4 @@
-# HY2 AIO v1.3.7
+# HY2 AIO v1.3.8
 
 一键部署 Hysteria 2 + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -8,7 +8,7 @@
 ## 快速开始
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.7/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.8/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -18,7 +18,7 @@ sudo bash hy2.sh install
 ## 已安装 · 升级
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.7/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.8/hy2.sh -o hy2.sh
 sudo bash hy2.sh repair
 sudo hy2 restart
 ```
@@ -84,7 +84,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref | `v1.3.7` |
+| `HY2_REPO_REF` | 模块 Git ref | `v1.3.8` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
 | `CADDY_VERSION` | Caddy 回退安装版本 | `v2.11.4` |
@@ -121,6 +121,10 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v1.3.8
+- 修复：SHA256SUMS 在 Windows 下 CRLF 导致 repair 校验失败
+- fetch_modules 兼容 CRLF 校验文件
 
 ### v1.3.7
 - 修复：只下载 `hy2.sh` 时 `repair` 无法拉模块 / 装不上 `hy2` 命令
