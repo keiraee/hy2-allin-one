@@ -649,12 +649,9 @@ class Handler(BaseHTTPRequestHandler):
             tx = int(traffic.get("tx", 0) or 0)
             limit = int(traffic.get("limit", 0) or 0) or int(env.get("TOTAL_BYTES", "0") or 0)
         except Exception as error:
-            self.send_json(500, {"ok": False, "error": str(error)})
+            self.send_json(500, {"ok": False, "error": "订阅生成失败"})
+            print(f"[hy2-aio] subscription error: {error}", flush=True)
             return
-
-        self.send_response(200)
-        self.send_header("Content-Type", "text/yaml; charset=utf-8")
-        self.send_header("Content-Disposition", f'attachment; filename="HY2-{username}.yaml"')
         self.send_header(
             "Subscription-Userinfo",
             f"upload={rx}; download={tx}; total={limit}; expire=0",
@@ -749,7 +746,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.handle_user_change(action, self.read_body())
                 return
         except Exception as error:
-            self.send_json(500, {"ok": False, "error": str(error)})
+            self.send_json(500, {"ok": False, "error": "内部错误"})
+            print(f"[hy2-aio] api error: {error}", flush=True)
             return
         self.send_error(404)
 
