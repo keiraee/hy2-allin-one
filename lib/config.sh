@@ -90,7 +90,17 @@ Restart=always
 RestartSec=3
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectHome=false
+ProtectHome=true
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+SystemCallArchitectures=native
+ReadWritePaths=/etc/hy2-aio /var/lib/hy2-aio /var/www/hy2-aio /etc/hysteria
+ReadOnlyPaths=/usr/local/lib/hy2-aio
 
 [Install]
 WantedBy=multi-user.target
