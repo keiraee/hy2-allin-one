@@ -121,18 +121,18 @@ caddy_auth_directive() {
 }
 
 write_caddy() {
-  local hash auth
+  local hash auth site_file marker
   hash="$(caddy hash-password --plaintext "$PANEL_PASS")"
   auth="$(caddy_auth_directive)"
-  [ ! -f "$CADDY_FILE" ] || cp "$CADDY_FILE" "${CADDY_FILE}.before-hy2-aio-$(date +%Y%m%d-%H%M%S)"
+  site_file="/etc/caddy/hy2-aio.caddy"
+  marker="import ${site_file}"
+  install -d -m 0755 /etc/caddy
 
-  cat > "$CADDY_FILE" <<EOF
-{
-    servers {
-        protocols h1 h2
-    }
-}
+  if [ -f "$CADDY_FILE" ]; then
+    cp "$CADDY_FILE" "${CADDY_FILE}.before-hy2-aio-$(date +%Y%m%d-%H%M%S)"
+  fi
 
+  cat > "$site_file" <<EOF
 ${DOMAIN}:${PANEL_PORT} {
     encode zstd gzip
 
@@ -179,6 +179,37 @@ ${DOMAIN}:${PANEL_PORT} {
     }
 }
 EOF
+
+  if [ ! -f "$CADDY_FILE" ]; then
+    cat > "$CADDY_FILE" <<EOF
+{
+    servers {
+        protocols h1 h2
+    }
+}
+
+${marker}
+EOF
+  elif grep -Fq "$marker" "$CADDY_FILE"; then
+    :
+  elif grep -Eq "^${DOMAIN}(:${PANEL_PORT})?[[:space:]]*\\{" "$CADDY_FILE" \
+    || grep -Fq "root * ${WEB_DIR}" "$CADDY_FILE"; then
+    # Replace legacy full-file HY2 Caddyfile with import-based layout.
+    cat > "$CADDY_FILE" <<EOF
+{
+    servers {
+        protocols h1 h2
+    }
+}
+
+${marker}
+EOF
+  else
+    # Preserve unrelated site configs; only append our import.
+    printf '\n%s\n' "$marker" >> "$CADDY_FILE"
+  fi
+
+  caddy fmt --overwrite "$site_file"
   caddy fmt --overwrite "$CADDY_FILE"
   caddy validate --config "$CADDY_FILE"
 }
