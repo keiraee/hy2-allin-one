@@ -59,10 +59,12 @@ tr.disabled td{opacity:.55}
 .user-cell{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
 .user-name{font-weight:650}
 .user-note{color:var(--muted);font-size:13px}
+.status-cell{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
 .status-dot{display:inline-flex;align-items:center;gap:6px}
 .status-dot::before{content:"";width:7px;height:7px;border-radius:50%;background:#d1d5db}
 .status-dot.on::before{background:var(--ok)}.status-dot.off::before{background:#9ca3af}
 .status-dot.ban::before{background:var(--bad)}
+.status-active{font-size:12px;color:var(--muted)}
 .ops{position:relative;text-align:right}
 .menu-btn{width:34px;height:34px;border-radius:8px;border:1px solid transparent;background:transparent;
   cursor:pointer;font:inherit;font-size:18px;line-height:1;color:var(--muted)}
@@ -227,6 +229,13 @@ tr.disabled td{opacity:.55}
 const $=id=>document.getElementById(id);
 const bytes=value=>{let n=Number(value||0),i=0;const u=["B","KB","MB","GB","TB"];while(n>=1000&&i<u.length-1){n/=1000;i++}return n.toFixed(i<2?2:1)+" "+u[i]};
 const duration=seconds=>{seconds=Math.max(0,Math.floor(Number(seconds)||0));return Math.floor(seconds/86400)+" 天 "+Math.floor(seconds%86400/3600)+" 小时"};
+const formatActive=raw=>{
+  if(!raw||raw==="从未")return "从未";
+  const d=new Date(raw);
+  if(Number.isNaN(d.getTime()))return String(raw);
+  const p=n=>String(n).padStart(2,"0");
+  return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+" "+p(d.getHours())+":"+p(d.getMinutes());
+};
 const VALID_NAME=/^[A-Za-z0-9_-]{1,32}$/;
 let toastTimer=null, openMenu=null, noteUser="";
 
@@ -378,6 +387,10 @@ function renderUsers(users){
     const note=String(user.note||"").trim();
     const statusClass=user.disabled?"ban":(user.online?"on":"off");
     const statusText=user.disabled?"已禁用":(user.online?"在线 "+user.online:"离线");
+    const statusCell=el("div",{className:"status-cell"},
+      el("span",{className:"status-dot "+statusClass,text:statusText}),
+      el("span",{className:"status-active",text:"最后 "+formatActive(user.last_active)})
+    );
     const menu=el("div",{className:"menu"});
     const btn=el("button",{className:"menu-btn",type:"button",title:"操作",text:"⋯",onclick:function(event){
       event.stopPropagation();
@@ -402,7 +415,7 @@ function renderUsers(users){
     );
     root.append(el("tr",{className:user.disabled?"disabled":""},
       el("td",{},nameCell),
-      el("td",{},el("span",{className:"status-dot "+statusClass,text:statusText})),
+      el("td",{},statusCell),
       el("td",{className:"traffic-up",text:"↑ "+bytes(user.upload)}),
       el("td",{className:"traffic-down",text:"↓ "+bytes(user.download)}),
       el("td",{text:bytes(user.total)}),

@@ -8,7 +8,7 @@ umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
-REPO_REF="${HY2_REPO_REF:-v1.3.9}"
+REPO_REF="${HY2_REPO_REF:-v1.3.10}"
 if [ -n "${HY2_REPO_URL:-}" ]; then
   REPO_URL="$HY2_REPO_URL"
 else
@@ -643,7 +643,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_RATE_LIMIT_SUBSCRIPTION  订阅 /s/ 每 IP 每分钟次数，默认 30
   HY2_RATE_LIMIT_API  面板 API 每 IP 每分钟次数，默认 120
   HY2_REPO_URL        模块下载地址（默认 GitHub raw）
-  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.9
+  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.10
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
   CADDY_VERSION       钉死的 Caddy 版本（非 apt 回退），默认 v2.11.4
 EOF
