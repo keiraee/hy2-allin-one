@@ -43,8 +43,12 @@ lines = [
     "=" * 64,
     f"版本：{env.get('AIO_VERSION', '')}",
     f"服务器：{env['PUBLIC_IP']}",
-    "端口：443/UDP",
-    f"面板：https://{env['DOMAIN']}/{env['PANEL_PATH']}/",
+    f"端口：{env.get('HY2_PORT', '443')}/UDP",
+    (
+        f"面板：https://{env['DOMAIN']}:{env['PANEL_PORT']}/{env['PANEL_PATH']}/"
+        if str(env.get("PANEL_PORT", "443")) != "443"
+        else f"面板：https://{env['DOMAIN']}/{env['PANEL_PATH']}/"
+    ),
     f"面板用户名：{env['PANEL_USER']}",
     f"面板密码：{env['PANEL_PASS']}",
     f"套餐总量（字节）：{env['TOTAL_BYTES']}",
