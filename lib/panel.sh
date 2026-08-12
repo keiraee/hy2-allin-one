@@ -65,15 +65,66 @@ h2{font-size:17px;margin:27px 0 12px}.notice{margin-top:14px;padding:12px 14px;b
 
 <script>
 const $=id=>document.getElementById(id);
-const esc=value=>String(value).replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[ch]));
 const bytes=value=>{let n=Number(value||0),i=0;const u=["B","KB","MB","GB","TB"];while(n>=1000&&i<u.length-1){n/=1000;i++}return n.toFixed(i<2?2:1)+" "+u[i]};
 const duration=seconds=>{seconds=Math.max(0,Math.floor(Number(seconds)||0));return Math.floor(seconds/86400)+" 天 "+Math.floor(seconds%86400/3600)+" 小时"};
+function el(tag,attrs={},...kids){
+  const node=document.createElement(tag);
+  for(const [key,value] of Object.entries(attrs||{})){
+    if(value==null)continue;
+    if(key==="className")node.className=value;
+    else if(key==="text")node.textContent=value;
+    else if(key==="style"&&typeof value==="object")Object.assign(node.style,value);
+    else if(key.startsWith("data"))node.setAttribute(key,value);
+    else if(key in node && key!=="style")node[key]=value;
+    else node.setAttribute(key,value);
+  }
+  for(const kid of kids){
+    if(kid==null||kid===false)continue;
+    node.append(kid.nodeType?kid:document.createTextNode(String(kid)));
+  }
+  return node;
+}
+function clearNode(node){while(node.firstChild)node.removeChild(node.firstChild)}
 async function copyText(text,button){try{await navigator.clipboard.writeText(text)}catch(e){prompt("复制下面内容：",text)}const old=button.textContent;button.textContent="已复制";setTimeout(()=>button.textContent=old,1200)}
 async function apiPost(path,payload){const response=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload),cache:"no-store"});const result=await response.json().catch(()=>({}));if(!response.ok||!result.ok)throw new Error(result.error||("HTTP "+response.status))}
 async function copyCredential(username,kind,button){const old=button.textContent;button.disabled=true;try{const response=await fetch("api/user/credentials",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username,kind}),cache:"no-store"});const result=await response.json().catch(()=>({}));if(!response.ok||!result.ok||!result.value)throw new Error(result.error||("HTTP "+response.status));await copyText(result.value,button)}catch(error){alert("复制失败："+error.message);button.textContent=old}button.disabled=false}
 async function setNote(username,button){const note=prompt("设备备注（如 iPhone 13、笔记本，留空清除）："+(button.dataset.value?"当前："+button.dataset.value:""),button.dataset.value||"");if(note===null)return;const old=button.textContent;button.disabled=true;try{await apiPost("api/user/note",{username,note:note.trim()});await load()}catch(error){alert("设置备注失败："+error.message)}button.disabled=false;button.textContent=old}
 async function toggleUser(username,button){const disabled=button.dataset.disabled==="1";if(!disabled&&!confirm("确认禁用 "+username+"？该用户将立即无法连接，数据保留。"))return;const old=button.textContent;button.disabled=true;try{await apiPost(disabled?"api/user/enable":"api/user/disable",{username});await load()}catch(error){alert("操作失败："+error.message)}button.disabled=false;button.textContent=old}
 async function syncNow(){const btn=$("syncBtn"),old=btn.textContent;btn.disabled=true;btn.textContent="同步中…";try{const response=await fetch("api/sync",{method:"POST",cache:"no-store"});const result=await response.json().catch(()=>({}));if(!response.ok||!result.ok)throw new Error(result.error||("HTTP "+response.status));await load();btn.textContent="同步完成"}catch(error){btn.textContent="同步失败";alert("同步失败："+error.message)}setTimeout(()=>{btn.disabled=false;btn.textContent=old},1500)}
+function renderServices(services){
+  const root=$("services");clearNode(root);
+  Object.entries(services||{}).forEach(([name,status])=>{
+    root.append(el("span",{className:"pill "+(status==="active"?"ok":"bad"),text:name+"："+status}));
+  });
+}
+function renderUsers(users){
+  const root=$("users");clearNode(root);
+  (users||[]).forEach(user=>{
+    const statusClass=user.disabled?"bad":(user.online?"ok":"muted");
+    const statusText=user.disabled?"已禁用":(user.online?"在线 "+user.online+" 台":"离线");
+    const meta=(user.note?"设备："+user.note+" · ":"")+"速率模式："+(user.mode||"BBR 自动估速")+" · 最后活动："+user.last_active+" · 历史累计："+bytes(user.lifetime_total);
+    const card=el("div",{className:"card"+(user.disabled?" disabled":"")},
+      el("div",{className:"head"},
+        el("span",{className:"name",text:user.username}),
+        el("span",{className:statusClass,text:statusText})
+      ),
+      el("div",{className:"stats"},
+        el("div",{className:"stat"},el("span",{className:"label",text:"月上传"}),el("b",{text:bytes(user.upload)})),
+        el("div",{className:"stat"},el("span",{className:"label",text:"月下载"}),el("b",{text:bytes(user.download)})),
+        el("div",{className:"stat"},el("span",{className:"label",text:"月合计"}),el("b",{text:bytes(user.total)}))
+      ),
+      el("div",{className:"muted",style:{marginBottom:"12px"},text:meta}),
+      el("div",{className:"actions"},
+        el("button",{className:"btn primary",text:"复制订阅",onclick:function(){copyCredential(user.username,"subscription",this)}}),
+        el("button",{className:"btn",text:"复制基础直链",onclick:function(){copyCredential(user.username,"direct",this)}}),
+        el("button",{className:"btn",text:"复制密码",onclick:function(){copyCredential(user.username,"password",this)}}),
+        el("button",{className:"btn",text:"备注","data-value":user.note||"",onclick:function(){setNote(user.username,this)}}),
+        el("button",{className:"btn "+(user.disabled?"primary":"bad"),text:user.disabled?"启用":"禁用","data-disabled":user.disabled?"1":"0",onclick:function(){toggleUser(user.username,this)}})
+      )
+    );
+    root.append(card);
+  });
+}
 async function load(){
   try{
     const response=await fetch("data.json?t="+Date.now(),{cache:"no-store"});if(!response.ok)throw new Error("HTTP "+response.status);
@@ -85,11 +136,8 @@ async function load(){
     $("cpu").textContent=data.server.cpu+"%";$("load").textContent="负载 "+data.server.load.join(" / ");
     $("memory").textContent=data.server.memory.percent+"%";$("swap").textContent="Swap "+data.server.memory.swap_percent+"%";
     $("disk").textContent=data.server.disk.percent+"%";$("uptime").textContent="运行 "+duration(data.server.uptime);
-    $("services").innerHTML=Object.entries(data.server.services).map(([name,status])=>`<span class="pill ${status==="active"?"ok":"bad"}">${esc(name)}：${esc(status)}</span>`).join("");
-    $("users").innerHTML=data.users.map(user=>`<div class="card ${user.disabled?"disabled":""}"><div class="head"><span class="name">${esc(user.username)}</span><span class="${user.disabled?"bad":(user.online?"ok":"muted")}">${user.disabled?"已禁用":(user.online?"在线 "+user.online+" 台":"离线")}</span></div><div class="stats"><div class="stat"><span class="label">月上传</span><b>${bytes(user.upload)}</b></div><div class="stat"><span class="label">月下载</span><b>${bytes(user.download)}</b></div><div class="stat"><span class="label">月合计</span><b>${bytes(user.total)}</b></div></div><div class="muted" style="margin-bottom:12px">${user.note?`设备：${esc(user.note)} · `:""}速率模式：${esc(user.mode||"BBR 自动估速")} · 最后活动：${esc(user.last_active)} · 历史累计：${bytes(user.lifetime_total)}</div><div class="actions"><button class="btn primary" data-cred="${esc(user.username)}" data-kind="subscription">复制订阅</button><button class="btn" data-cred="${esc(user.username)}" data-kind="direct">复制基础直链</button><button class="btn" data-cred="${esc(user.username)}" data-kind="password">复制密码</button><button class="btn" data-note="${esc(user.username)}" data-value="${esc(user.note||"")}">备注</button><button class="btn ${user.disabled?"primary":"bad"}" data-toggle="${esc(user.username)}" data-disabled="${user.disabled?"1":"0"}">${user.disabled?"启用":"禁用"}</button></div></div>`).join("");
-    document.querySelectorAll("[data-cred]").forEach(button=>{button.onclick=()=>copyCredential(button.dataset.cred,button.dataset.kind,button)});
-    document.querySelectorAll("[data-note]").forEach(button=>{button.onclick=()=>setNote(button.dataset.note,button)});
-    document.querySelectorAll("[data-toggle]").forEach(button=>{button.onclick=()=>toggleUser(button.dataset.toggle,button)});
+    renderServices(data.server.services);
+    renderUsers(data.users);
     $("error").style.display=data.errors.length?"block":"none";$("error").textContent=data.errors.join("；");
   }catch(error){$("error").style.display="block";$("error").textContent="读取失败："+error.message}
 }

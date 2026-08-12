@@ -152,6 +152,7 @@ ${DOMAIN}:${PANEL_PORT} {
                 X-Content-Type-Options "nosniff"
                 X-Frame-Options "DENY"
                 Referrer-Policy "no-referrer"
+                Content-Security-Policy "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
             }
             root * ${WEB_DIR}
             file_server
