@@ -198,6 +198,17 @@ def client_insecure(env: dict[str, str]) -> bool:
     return domain.endswith("sslip.io") or domain == public_ip
 
 
+def public_base_url(env: dict[str, str]) -> str:
+    """Panel/subscription base URL. Custom ports use HTTP (no auto HTTPS)."""
+    domain = str(env.get("DOMAIN", "") or "")
+    port = str(env.get("PANEL_PORT", "443") or "443")
+    if port in ("443", ""):
+        return f"https://{domain}"
+    if port == "80":
+        return f"http://{domain}"
+    return f"http://{domain}:{port}"
+
+
 def direct_link(env: dict[str, str], username: str, password: str) -> str:
     auth = urllib.parse.quote(f"{username}:{password}", safe="")
     query_items = {
@@ -678,7 +689,7 @@ def user_credential_value(username: str, kind: str) -> str:
     if kind == "password":
         return password
     if kind == "subscription":
-        return f"https://{env['DOMAIN']}:{env.get('PANEL_PORT', '443')}/s/{token}"
+        return f"{public_base_url(env)}/s/{token}"
     return direct_link(env, username, password)
 
 

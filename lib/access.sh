@@ -38,17 +38,23 @@ def mode_label(value):
         return "BBR 自动估速"
     return f"Brutal 上传 {up:g} / 下载 {down:g} Mbps"
 
+def public_base_url():
+    domain = env["DOMAIN"]
+    port = str(env.get("PANEL_PORT", "443") or "443")
+    if port in ("443", ""):
+        return f"https://{domain}"
+    if port == "80":
+        return f"http://{domain}"
+    return f"http://{domain}:{port}"
+
+base = public_base_url()
 lines = [
     "HY2 AIO 访问资料",
     "=" * 64,
     f"版本：{env.get('AIO_VERSION', '')}",
     f"服务器：{env['PUBLIC_IP']}",
     f"端口：{env.get('HY2_PORT', '443')}/UDP",
-    (
-        f"面板：https://{env['DOMAIN']}:{env['PANEL_PORT']}/{env['PANEL_PATH']}/"
-        if str(env.get("PANEL_PORT", "443")) != "443"
-        else f"面板：https://{env['DOMAIN']}/{env['PANEL_PATH']}/"
-    ),
+    f"面板：{base}/{env['PANEL_PATH']}/",
     f"面板用户名：{env['PANEL_USER']}",
     f"面板密码：{env['PANEL_PASS']}",
     f"套餐总量（字节）：{env['TOTAL_BYTES']}",
@@ -58,12 +64,7 @@ lines = [
 for username, info in sorted(users.items()):
     password = str(info["password"])
     token = str(info["token"])
-    panel_port = env.get("PANEL_PORT", "443")
-    subscription = (
-        f"https://{env['DOMAIN']}:{panel_port}/s/{token}"
-        if str(panel_port) != "443"
-        else f"https://{env['DOMAIN']}/s/{token}"
-    )
+    subscription = f"{base}/s/{token}"
     auth = urllib.parse.quote(f"{username}:{password}", safe="")
     query_items = {
         "obfs": "salamander",
