@@ -120,6 +120,8 @@ def assert_writable_dir(path: Path, label: str) -> None:
         hint = ""
         if path == Path("/etc/hy2-aio"):
             hint = "；请执行：chown root:hy2-aio /etc/hy2-aio && chmod 0770 /etc/hy2-aio"
+        elif path == Path("/etc/hysteria"):
+            hint = "；请执行：chown hysteria:hysteria /etc/hysteria && chmod 2770 /etc/hysteria && chmod 0660 /etc/hysteria/config.yaml"
         raise PermissionError(f"{label} 不可写：{path} ({error}){hint}") from error
 
 

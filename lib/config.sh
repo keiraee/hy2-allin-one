@@ -398,7 +398,7 @@ apply_hysteria_client_settings() {
   write_rebuild_helper
   "$REBUILD_FILE"
   chown hysteria:hysteria "$HYSTERIA_CONFIG"
-  chmod 0640 "$HYSTERIA_CONFIG"
+  chmod 0660 "$HYSTERIA_CONFIG"
   write_access_file
   systemctl restart hysteria-server.service
   api_post sync >/dev/null || true

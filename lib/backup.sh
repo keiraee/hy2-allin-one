@@ -94,7 +94,7 @@ PY
   write_rebuild_helper
   "$REBUILD_FILE"
   chown hysteria:hysteria "$HYSTERIA_CONFIG" 2>/dev/null || true
-  chmod 0640 "$HYSTERIA_CONFIG" 2>/dev/null || true
+  chmod 0660 "$HYSTERIA_CONFIG" 2>/dev/null || true
 
   write_backend
   write_panel

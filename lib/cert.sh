@@ -2,7 +2,7 @@
 # cert.sh - 证书管理
 
 create_certificate() {
-  install -d -o hysteria -g hysteria -m 0750 /etc/hysteria
+  install -d -o hysteria -g hysteria -m 2770 /etc/hysteria
   openssl req -x509 -nodes \
     -newkey ec \
     -pkeyopt ec_paramgen_curve:prime256v1 \

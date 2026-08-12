@@ -124,7 +124,7 @@ PY
   chmod 0640 "$USERS_FILE"
   "$REBUILD_FILE"
   chown hysteria:hysteria "$HYSTERIA_CONFIG"
-  chmod 0640 "$HYSTERIA_CONFIG"
+  chmod 0660 "$HYSTERIA_CONFIG"
 
   if ! systemctl restart hysteria-server.service; then
     warn "Hysteria 重启失败，恢复用户配置"
