@@ -46,6 +46,7 @@ EOF
   echo " 12) 卸载"
   echo " 13) 设置用户备注"
   echo " 14) 禁用/启用用户"
+  echo " 15) 混淆开关（obfs）"
   echo "  99) 退出"
   echo
 }
@@ -54,7 +55,7 @@ EOF
 menu_interactive() {
   while true; do
     show_menu
-    read -r -p "请选择 [0-14/99]: " choice
+    read -r -p "请选择 [0-15/99]: " choice
     case "$choice" in
       0)  status_cmd ;;
       1)  install_stack ;;
@@ -94,6 +95,16 @@ PY
 )"
         modify_user "$state" "$username"
         ;;
+      15)
+        echo "0) 查看状态  1) 开启混淆  2) 关闭混淆"
+        read -r -p "请选择 [0-2]: " obfs_choice
+        case "$obfs_choice" in
+          0) obfs_cmd show ;;
+          1) obfs_cmd on ;;
+          2) obfs_cmd off ;;
+          *) echo "无效选择" ;;
+        esac
+        ;;
       99) exit 0 ;;
       *)
         echo "无效选择"
@@ -113,12 +124,19 @@ status_cmd() {
   [ "${PANEL_PORT:-443}" != "443" ] && port_suffix=":${PANEL_PORT}"
   echo "HY2 AIO v${AIO_VERSION:-unknown}"
   echo "面板：https://${DOMAIN}${port_suffix}/${PANEL_PATH}/"
+  echo "Hysteria UDP：${HY2_PORT:-443}"
+  if obfs_is_enabled; then
+    echo "混淆：on (salamander)"
+  else
+    echo "混淆：off"
+  fi
+  echo "QUIC 保活：${QUIC_KEEP_ALIVE_PERIOD:-5s} / idle ${QUIC_MAX_IDLE_TIMEOUT:-120s}"
   echo
   systemctl --no-pager --full status \
     hysteria-server.service hy2-aio.service caddy.service \
     | sed -n '1,45p' || true
   echo
-  ss -lntup | grep -E ':(80|443|18081|9999)\b' || true
+  ss -lntup | grep -E ":(80|443|18081|9999|${HY2_PORT:-443})\\b" || true
 }
 
 # 显示账号
@@ -207,6 +225,8 @@ HY2 AIO v${AIO_VERSION}
   sudo hy2 update              # 更新 Hysteria
   sudo hy2 uninstall           # 卸载
   sudo hy2 repair              # 修复/升级
+  sudo hy2 obfs show           # 查看混淆状态
+  sudo hy2 obfs on|off         # 开启/关闭 Salamander 混淆
 EOF
 }
 
@@ -232,7 +252,8 @@ case "$command" in
   disable)    modify_user "disable" "${2:-}" ;;
   enable)     modify_user "enable" "${2:-}" ;;
   update)     update_cmd ;;
-    uninstall)  uninstall_cmd ;;
-    help|-h|--help) usage ;;
-    *)          usage; exit 1 ;;
+  uninstall)  uninstall_cmd ;;
+  obfs)       obfs_cmd "${2:-show}" ;;
+  help|-h|--help) usage ;;
+  *)          usage; exit 1 ;;
 esac

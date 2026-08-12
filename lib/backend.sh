@@ -198,6 +198,11 @@ def client_insecure(env: dict[str, str]) -> bool:
     return domain.endswith("sslip.io") or domain == public_ip
 
 
+def obfs_enabled(env: dict[str, str]) -> bool:
+    raw = str(env.get("OBFS_ENABLED", "true")).strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
 def public_base_url(env: dict[str, str]) -> str:
     """Panel/subscription base URL (HTTPS except plain port 80)."""
     domain = str(env.get("DOMAIN", "") or "")
@@ -211,11 +216,12 @@ def public_base_url(env: dict[str, str]) -> str:
 
 def direct_link(env: dict[str, str], username: str, password: str) -> str:
     auth = urllib.parse.quote(f"{username}:{password}", safe="")
-    query_items = {
-        "obfs": "salamander",
-        "obfs-password": env["OBFS_PASSWORD"],
+    query_items: dict[str, str] = {
         "sni": env.get("SNI", "www.amazon.sg"),
     }
+    if obfs_enabled(env):
+        query_items["obfs"] = "salamander"
+        query_items["obfs-password"] = env["OBFS_PASSWORD"]
     if client_insecure(env):
         query_items["insecure"] = "1"
     query = urllib.parse.urlencode(query_items)
@@ -233,6 +239,13 @@ def subscription_yaml(env: dict[str, str], username: str, password: str) -> byte
         rate_lines = (
             f'    up: "{float(mode["up_mbps"]):g} Mbps"\n'
             f'    down: "{float(mode["down_mbps"]):g} Mbps"\n'
+        )
+
+    obfs_lines = ""
+    if obfs_enabled(env):
+        obfs_lines = (
+            "    obfs: salamander\n"
+            f"    obfs-password: {q(env['OBFS_PASSWORD'])}\n"
         )
 
     content = f"""mixed-port: 7890
@@ -273,12 +286,10 @@ proxies:
     server: {q(env["PUBLIC_IP"])}
     port: {env.get('HY2_PORT', '443')}
 {rate_lines}    password: {q(username + ":" + password)}
-    obfs: salamander
-    obfs-password: {q(env["OBFS_PASSWORD"])}
-    sni: {q(env.get("SNI", "www.amazon.sg"))}
+{obfs_lines}    sni: {q(env.get("SNI", "www.amazon.sg"))}
     skip-cert-verify: {"true" if client_insecure(env) else "false"}
     udp: true
-    keepalive: 30s
+    keepalive: 5s
 """
     return content.encode("utf-8")
 

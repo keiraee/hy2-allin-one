@@ -3,7 +3,7 @@
 
 set -Eeuo pipefail
 
-SCRIPT_VERSION="1.3.5"
+SCRIPT_VERSION="1.3.6"
 AIO_VERSION="$SCRIPT_VERSION"
 CONFIG_DIR="/etc/hy2-aio"
 ENV_FILE="${CONFIG_DIR}/config.env"
@@ -81,6 +81,9 @@ read_env() {
   HY2_PORT="${HY2_PORT:-443}"
   PANEL_PORT="${PANEL_PORT:-443}"
   STATS_PORT="${STATS_PORT:-9999}"
+  OBFS_ENABLED="${OBFS_ENABLED:-true}"
+  QUIC_KEEP_ALIVE_PERIOD="${QUIC_KEEP_ALIVE_PERIOD:-5s}"
+  QUIC_MAX_IDLE_TIMEOUT="${QUIC_MAX_IDLE_TIMEOUT:-120s}"
 }
 
 api_post() {
@@ -138,14 +141,16 @@ tcp_port_is_used() {
 prompt_panel_port() {
   local value="${HY2_PANEL_PORT:-}" default="443"
   while true; do
-    value="${value:-$(prompt_value 'Panel HTTPS TCP port' "$default")}"
+    if [ -z "$value" ]; then
+      value="$(prompt_value '面板 HTTPS 端口（一般不用改）' "$default")"
+    fi
     [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -ge 1 ] && [ "$value" -le 65535 ] || {
       warn "端口必须是 1-65535 的整数"
       value=""
       continue
     }
     if tcp_port_is_used "$value"; then
-      warn "TCP 端口 $value 已被占用"
+      warn "TCP 端口 $value 已被占用，请换一个"
       value=""
       continue
     fi
@@ -156,17 +161,17 @@ prompt_panel_port() {
 
 prompt_stats_port() {
   local value="${HY2_STATS_PORT:-}" default="9999"
+  # 小白安装不询问；无人值守/显式环境变量才用自定义
+  if [ -z "$value" ]; then
+    printf '%s' "$default"
+    return
+  fi
   while true; do
-    value="${value:-$(prompt_value 'Internal stats TCP port' "$default")}"
     [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -ge 1 ] && [ "$value" -le 65535 ] || {
-      warn "端口必须是 1-65535 的整数"
-      value=""
-      continue
+      die "HY2_STATS_PORT 须为 1-65535 的整数"
     }
     if tcp_port_is_used "$value"; then
-      warn "TCP 端口 $value 已被占用"
-      value=""
-      continue
+      die "内部统计端口 TCP $value 已被占用"
     fi
     printf '%s' "$value"
     return
@@ -174,16 +179,22 @@ prompt_stats_port() {
 }
 
 prompt_hysteria_port() {
-  local value="${HY2_PORT:-}" default="443"
+  # 默认 8443：云上 UDP 443 更容易被干扰；仍可手动改成 443
+  local value="${HY2_PORT:-}" default="8443"
   while true; do
-    value="${value:-$(prompt_value 'Hysteria UDP port' "$default")}"
+    if [ -z "$value" ]; then
+      if [ -t 0 ] && [ "${HY2_NONINTERACTIVE:-0}" != "1" ]; then
+        echo "  提示：AWS/GCP 等云服务器建议用 8443；也可改成 443"
+      fi
+      value="$(prompt_value '代理 UDP 端口' "$default")"
+    fi
     [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -ge 1 ] && [ "$value" -le 65535 ] || {
       warn "端口必须是 1-65535 的整数"
       value=""
       continue
     }
     if port_is_used "$value"; then
-      warn "UDP 端口 $value 已被占用"
+      warn "UDP 端口 $value 已被占用，请换一个"
       value=""
       continue
     fi

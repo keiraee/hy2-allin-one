@@ -29,8 +29,15 @@ users = json.loads(USERS_FILE.read_text(encoding="utf-8"))
 if not users:
     raise SystemExit("users.json 不能为空")
 
+def truthy(key: str, default: str = "false") -> bool:
+    return str(env.get(key, default)).strip().lower() in ("1", "true", "yes", "on")
+
 lines = [
     f'listen: ":{env.get("HY2_PORT", "443")}"',
+    "",
+    "quic:",
+    f'  maxIdleTimeout: {json.dumps(env.get("QUIC_MAX_IDLE_TIMEOUT", "120s"))}',
+    f'  keepAlivePeriod: {json.dumps(env.get("QUIC_KEEP_ALIVE_PERIOD", "5s"))}',
     "",
     "tls:",
     '  cert: "/etc/hysteria/server.crt"',
@@ -46,14 +53,18 @@ for username, info in sorted(users.items()):
         continue
     lines.append(f"    {json.dumps(username)}: {json.dumps(str(info['password']))}")
 
-speed_test = str(env.get("SPEED_TEST", "false")).strip().lower() in ("1", "true", "yes", "on")
+speed_test = truthy("SPEED_TEST", "false")
+obfs_enabled = truthy("OBFS_ENABLED", "true")
+lines.append("")
+if obfs_enabled:
+    lines.extend([
+        "obfs:",
+        "  type: salamander",
+        "  salamander:",
+        f"    password: {json.dumps(env['OBFS_PASSWORD'])}",
+        "",
+    ])
 lines.extend([
-    "",
-    "obfs:",
-    "  type: salamander",
-    "  salamander:",
-    f"    password: {json.dumps(env['OBFS_PASSWORD'])}",
-    "",
     "congestion:",
     "  type: bbr",
     "  bbrProfile: standard",
@@ -328,4 +339,110 @@ EOF
   caddy validate --config "$CADDY_FILE" || die "Caddy 配置校验失败"
   configure_fail2ban_panel "$PANEL_PATH"
   log "Caddy 站点配置：${site_file}"
+}
+
+obfs_is_enabled() {
+  local raw
+  raw="$(printf '%s' "${OBFS_ENABLED:-true}" | tr '[:upper:]' '[:lower:]')"
+  case "$raw" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+set_config_env_var() {
+  local key="$1" value="$2"
+  python3 - "$ENV_FILE" "$key" "$value" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+key = sys.argv[2]
+value = sys.argv[3]
+lines = path.read_text(encoding="utf-8").splitlines()
+found = False
+output = []
+for line in lines:
+    if line.startswith(f"{key}="):
+        output.append(f"{key}={value}")
+        found = True
+    else:
+        output.append(line)
+if not found:
+    output.append(f"{key}={value}")
+temporary = path.with_suffix(path.suffix + ".tmp")
+temporary.write_text("\n".join(output) + "\n", encoding="utf-8")
+os.replace(temporary, path)
+PY
+  chown root:hy2-aio "$ENV_FILE"
+  chmod 0640 "$ENV_FILE"
+}
+
+apply_hysteria_client_settings() {
+  write_rebuild_helper
+  "$REBUILD_FILE"
+  chown hysteria:hysteria "$HYSTERIA_CONFIG"
+  chmod 0640 "$HYSTERIA_CONFIG"
+  write_access_file
+  systemctl restart hysteria-server.service
+  api_post sync >/dev/null || true
+}
+
+obfs_cmd() {
+  need_root obfs
+  read_env
+  local action="${1:-show}"
+  case "$action" in
+    show|status|"")
+      if obfs_is_enabled; then
+        echo "obfs: on (salamander)"
+      else
+        echo "obfs: off"
+      fi
+      echo "keepalive: 5s（订阅） / QUIC keepAlivePeriod: ${QUIC_KEEP_ALIVE_PERIOD:-5s}"
+      ;;
+    on|enable)
+      set_config_env_var OBFS_ENABLED true
+      export OBFS_ENABLED=true
+      apply_hysteria_client_settings
+      log "已开启 Salamander 混淆；请客户端更新订阅"
+      ;;
+    off|disable)
+      set_config_env_var OBFS_ENABLED false
+      export OBFS_ENABLED=false
+      apply_hysteria_client_settings
+      log "已关闭混淆（加密仍在）；请客户端更新订阅"
+      ;;
+    *)
+      die "用法：sudo hy2 obfs on|off|show"
+      ;;
+  esac
+}
+
+prompt_obfs_enabled() {
+  local value="${HY2_OBFS:-}" answer=""
+  if [ -n "$value" ]; then
+    value="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+    case "$value" in
+      1|true|yes|on|y) printf '%s' "true"; return ;;
+      0|false|no|off|n) printf '%s' "false"; return ;;
+      *) die "HY2_OBFS 须为 0/1 或 true/false" ;;
+    esac
+  fi
+  if [ "${HY2_NONINTERACTIVE:-0}" = "1" ] || [ ! -t 0 ]; then
+    printf '%s' "true"
+    return
+  fi
+  echo "  提示：开启后更隐蔽；若以后经常断线，可再执行 sudo hy2 obfs off"
+  read -r -p "开启流量伪装（Salamander）？直接回车=开启 [Y/n]: " answer || true
+  answer="$(printf '%s' "${answer:-Y}" | tr '[:upper:]' '[:lower:]')"
+  case "$answer" in
+    ""|y|yes) printf '%s' "true" ;;
+    n|no) printf '%s' "false" ;;
+    *)
+      warn "无效输入，已默认开启"
+      printf '%s' "true"
+      ;;
+  esac
 }

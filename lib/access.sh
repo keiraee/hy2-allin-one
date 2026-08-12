@@ -48,12 +48,15 @@ def public_base_url():
     return f"https://{domain}:{port}"
 
 base = public_base_url()
+obfs_raw = str(env.get("OBFS_ENABLED", "true")).strip().lower()
+obfs_label = "salamander（开）" if obfs_raw in ("1", "true", "yes", "on") else "关"
 lines = [
     "HY2 AIO 访问资料",
     "=" * 64,
     f"版本：{env.get('AIO_VERSION', '')}",
     f"服务器：{env['PUBLIC_IP']}",
     f"端口：{env.get('HY2_PORT', '443')}/UDP",
+    f"混淆：{obfs_label}",
     f"面板：{base}/{env['PANEL_PATH']}/",
     f"面板用户名：{env['PANEL_USER']}",
     f"面板密码：{env['PANEL_PASS']}",
@@ -67,10 +70,12 @@ for username, info in sorted(users.items()):
     subscription = f"{base}/s/{token}"
     auth = urllib.parse.quote(f"{username}:{password}", safe="")
     query_items = {
-        "obfs": "salamander",
-        "obfs-password": env["OBFS_PASSWORD"],
         "sni": env.get("SNI", "www.amazon.sg"),
     }
+    obfs_raw = str(env.get("OBFS_ENABLED", "true")).strip().lower()
+    if obfs_raw in ("1", "true", "yes", "on"):
+        query_items["obfs"] = "salamander"
+        query_items["obfs-password"] = env["OBFS_PASSWORD"]
     insecure_raw = str(env.get("CLIENT_INSECURE", "")).strip().lower()
     if insecure_raw in ("0", "false", "no", "off"):
         insecure = False

@@ -1,4 +1,4 @@
-# HY2 AIO
+# HY2 AIO v1.3.6
 
 一键部署 Hysteria 2 + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -8,18 +8,22 @@
 ## 快速开始
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.5/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.6/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
+
+按中文提示一步步回车即可（公网 IP → 端口 → 面板端口 → 用户数 → 流量 → 域名/伪装）。  
+一路回车使用推荐默认值；高级用户也可用环境变量无人值守安装（见下方）。
 
 ## 已安装 · 升级
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.5/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.6/hy2.sh -o hy2.sh
 sudo bash hy2.sh repair
+sudo hy2 restart
 ```
 
-`repair` 会打回滚快照、更新模块与配置、重启面板后端；**不会重启 Hysteria**，现有连接一般不受影响。
+`repair` 会打回滚快照、更新模块与配置、写入 Hysteria 配置（含 QUIC 保活）；**默认不重启 Hysteria**。使配置生效请 `sudo hy2 restart`，或用 `sudo hy2 obfs on|off`（会重启 Hysteria）。
 
 ## 使用方法
 
@@ -50,6 +54,8 @@ sudo hy2 restart             # 重启服务
 sudo hy2 update              # 更新 Hysteria
 sudo hy2 uninstall           # 卸载
 sudo hy2 repair              # 修复/升级
+sudo hy2 obfs show           # 查看混淆状态
+sudo hy2 obfs on|off         # 开启/关闭混淆（服务端+订阅+直链同步）
 ```
 
 ## 无人值守安装
@@ -71,10 +77,12 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_PANEL_PASS` | 面板密码 | 随机生成 |
 | `HY2_PANEL_PATH` | 面板路径 | 随机生成 |
 | `HY2_SNI` | 客户端 SNI | www.amazon.sg |
+| `HY2_OBFS` | Salamander 混淆 `0/1` | `1`（开） |
+| `HY2_PORT` | Hysteria UDP 端口 | 安装向导默认 `8443` |
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref | `v1.3.5` |
+| `HY2_REPO_REF` | 模块 Git ref | `v1.3.6` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
 | `CADDY_VERSION` | Caddy 回退安装版本 | `v2.11.4` |
@@ -102,7 +110,18 @@ hy2-allin-one/
 
 ## 说明
 
+- **Clash 订阅**默认 `keepalive: 5s`；服务端写入 QUIC `keepAlivePeriod: 5s`、`maxIdleTimeout: 120s`。
+- **混淆默认开启**；不稳时可 `sudo hy2 obfs off` 后让客户端更新订阅（关闭的是伪装，不是加密）。
+- **安装向导**默认代理 UDP `8443`（云上比 443 更稳）；仍可改成 `443`。
 - **整机流量**：面板顶部为网卡计数，尽量对齐云厂商套餐；Clash 订阅进度与此同源。
 - **用户流量**：用户表为 HY2 代理分摊参考，各用户之和通常小于整机。
 - **凭据**：密码/订阅 token 不在 `data.json` 公开；面板内按需复制。
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
+
+## 更新日志
+
+### v1.3.6
+- 中文分步安装向导：一路回车即可装完；结束前汇总确认
+- Clash 订阅 `keepalive: 5s`；服务端默认 QUIC 保活
+- 混淆可开关：`hy2 obfs on|off|show`，服务端/订阅/直链同步；默认开启
+- 代理 UDP 默认改为 `8443`（云厂商更稳）；云防火墙提示跟随实际端口

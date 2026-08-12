@@ -54,22 +54,46 @@ from pathlib import Path
 path = Path(sys.argv[1])
 version = sys.argv[2]
 lines = path.read_text(encoding="utf-8").splitlines()
-found = False
+found_version = False
+found_obfs = False
+found_keep = False
+found_idle = False
 output = []
 for line in lines:
     if line.startswith("AIO_VERSION="):
         output.append(f"AIO_VERSION={version}")
-        found = True
+        found_version = True
+    elif line.startswith("OBFS_ENABLED="):
+        output.append(line)
+        found_obfs = True
+    elif line.startswith("QUIC_KEEP_ALIVE_PERIOD="):
+        output.append(line)
+        found_keep = True
+    elif line.startswith("QUIC_MAX_IDLE_TIMEOUT="):
+        output.append(line)
+        found_idle = True
     else:
         output.append(line)
-if not found:
+if not found_version:
     output.insert(0, f"AIO_VERSION={version}")
+if not found_obfs:
+    output.append("OBFS_ENABLED=true")
+if not found_keep:
+    output.append("QUIC_KEEP_ALIVE_PERIOD=5s")
+if not found_idle:
+    output.append("QUIC_MAX_IDLE_TIMEOUT=120s")
 temporary = path.with_suffix(path.suffix + ".tmp")
 temporary.write_text("\n".join(output) + "\n", encoding="utf-8")
 os.replace(temporary, path)
 PY
   chown root:hy2-aio "$ENV_FILE"
   chmod 0640 "$ENV_FILE"
+  read_env
+
+  write_rebuild_helper
+  "$REBUILD_FILE"
+  chown hysteria:hysteria "$HYSTERIA_CONFIG" 2>/dev/null || true
+  chmod 0640 "$HYSTERIA_CONFIG" 2>/dev/null || true
 
   write_backend
   write_panel
@@ -100,7 +124,8 @@ PY
   write_access_file
 
   log "HY2 AIO 已升级到 v${SCRIPT_VERSION}"
-  log "Hysteria 服务未重启，当前连接不会因本次升级中断"
+  log "已写入 QUIC 保活与混淆开关到配置；Hysteria 未自动重启"
+  log "使配置生效：sudo hy2 restart   （或 sudo hy2 obfs on|off）"
   echo "运行速率模式菜单：sudo hy2 mode"
 }
 

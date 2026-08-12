@@ -8,7 +8,7 @@ umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
-REPO_REF="${HY2_REPO_REF:-v1.3.5}"
+REPO_REF="${HY2_REPO_REF:-v1.3.6}"
 if [ -n "${HY2_REPO_URL:-}" ]; then
   REPO_URL="$HY2_REPO_URL"
 else
@@ -123,6 +123,7 @@ EOF
   echo " 12) 卸载"
   echo " 13) 设置用户备注"
   echo " 14) 禁用/启用用户"
+  echo " 15) 混淆开关（obfs）"
   echo "  99) 退出"
   echo
 }
@@ -131,7 +132,7 @@ EOF
 menu_interactive() {
   while true; do
     show_menu
-    read -r -p "请选择 [0-14/99]: " choice
+    read -r -p "请选择 [0-15/99]: " choice
     case "$choice" in
       0)  status_cmd ;;
       1)  install_stack ;;
@@ -171,6 +172,16 @@ PY
 )"
         modify_user "$state" "$username"
         ;;
+      15)
+        echo "0) 查看状态  1) 开启混淆  2) 关闭混淆"
+        read -r -p "请选择 [0-2]: " obfs_choice
+        case "$obfs_choice" in
+          0) obfs_cmd show ;;
+          1) obfs_cmd on ;;
+          2) obfs_cmd off ;;
+          *) echo "无效选择" ;;
+        esac
+        ;;
       99) exit 0 ;;
       *)
         echo "无效选择"
@@ -190,12 +201,19 @@ status_cmd() {
   [ "${PANEL_PORT:-443}" != "443" ] && port_suffix=":${PANEL_PORT}"
   echo "HY2 AIO v${AIO_VERSION:-unknown}"
   echo "面板：https://${DOMAIN}${port_suffix}/${PANEL_PATH}/"
+  echo "Hysteria UDP：${HY2_PORT:-443}"
+  if obfs_is_enabled; then
+    echo "混淆：on (salamander)"
+  else
+    echo "混淆：off"
+  fi
+  echo "QUIC 保活：${QUIC_KEEP_ALIVE_PERIOD:-5s} / idle ${QUIC_MAX_IDLE_TIMEOUT:-120s}"
   echo
   systemctl --no-pager --full status \
     hysteria-server.service hy2-aio.service caddy.service \
     | sed -n '1,45p' || true
   echo
-  ss -lntup | grep -E ':(80|443|18081|9999)\b' || true
+  ss -lntup | grep -E ":(80|443|18081|9999|${HY2_PORT:-443})\\b" || true
 }
 
 # 显示账号
@@ -273,21 +291,54 @@ install_stack() {
 
   install_packages_v12
 
-  PUBLIC_IP="${HY2_PUBLIC_IP:-$(detect_public_ipv4 || true)}"
+  echo
+  echo "============================================================"
+  echo " HY2 AIO 安装向导"
+  echo " 一路回车 = 使用推荐默认值；要改再输入"
+  echo "============================================================"
+  echo
+
+  local detected_ip=""
+  detected_ip="${HY2_PUBLIC_IP:-$(detect_public_ipv4 || true)}"
+  if [ -n "${HY2_PUBLIC_IP:-}" ]; then
+    PUBLIC_IP="$HY2_PUBLIC_IP"
+    echo "[1/6] 公网 IP：${PUBLIC_IP}（已由环境变量指定）"
+  elif [ -n "$detected_ip" ]; then
+    echo "[1/6] 公网 IP"
+    PUBLIC_IP="$(prompt_value '确认公网 IP（不对再改）' "$detected_ip")"
+  else
+    echo "[1/6] 公网 IP"
+    PUBLIC_IP=""
+    if [ -t 0 ] && [ "${HY2_NONINTERACTIVE:-0}" != "1" ]; then
+      while [ -z "$PUBLIC_IP" ]; do
+        read -r -p "未能自动检测，请输入公网 IPv4: " PUBLIC_IP || true
+      done
+    fi
+  fi
+  [ -n "$PUBLIC_IP" ] || die "必须提供公网 IPv4（可设 HY2_PUBLIC_IP=x.x.x.x）"
+
+  echo
+  echo "[2/6] 代理端口"
   HY2_PORT="${HY2_PORT:-$(prompt_hysteria_port)}"
+
+  echo
+  echo "[3/6] 面板端口"
   PANEL_PORT="${HY2_PANEL_PORT:-$(prompt_panel_port)}"
   STATS_PORT="${HY2_STATS_PORT:-$(prompt_stats_port)}"
-  [ -n "$PUBLIC_IP" ] || die "无法自动检测公网 IPv4，可使用 HY2_PUBLIC_IP=x.x.x.x 指定"
 
   NETWORK_INTERFACE="${HY2_INTERFACE:-$(detect_iface)}"
   [ -n "$NETWORK_INTERFACE" ] || die "无法检测默认网卡"
 
   local default_domain="${PUBLIC_IP//./-}.sslip.io"
-  local users_count total_tb custom_domain
-  users_count="${HY2_USERS:-$(prompt_value '创建用户数量' '5')}"
+  local users_count total_tb custom_domain confirm=""
+  echo
+  echo "[4/6] 账号数量"
+  users_count="${HY2_USERS:-$(prompt_value '要创建几个用户' '5')}"
   [[ "$users_count" =~ ^[1-9][0-9]?$ ]] || die "用户数量必须是 1-99"
 
-  total_tb="${HY2_TOTAL_TB:-$(prompt_value '套餐总流量 TB（十进制）' '1')}"
+  echo
+  echo "[5/6] 套餐流量"
+  total_tb="${HY2_TOTAL_TB:-$(prompt_value '套餐总流量（TB）' '1')}"
   if [ -n "${HY2_TOTAL_BYTES:-}" ]; then
     TOTAL_BYTES="$HY2_TOTAL_BYTES"
   else
@@ -304,18 +355,24 @@ PY
 )" || die "套餐流量格式错误"
   fi
 
-  custom_domain="${HY2_DOMAIN:-$(prompt_value '订阅/面板域名（直接回车使用自动域名）' "$default_domain")}"
+  echo
+  echo "[6/6] 域名与伪装"
+  custom_domain="${HY2_DOMAIN:-$(prompt_value '面板/订阅域名（没有域名就回车）' "$default_domain")}"
   DOMAIN="${custom_domain:-$default_domain}"
   PANEL_USER="${HY2_PANEL_USER:-admin}"
   PANEL_PASS="${HY2_PANEL_PASS:-$(rand_hex 12)}"
   PANEL_PATH="${HY2_PANEL_PATH:-hy2-$(rand_hex 12)}"
   OBFS_PASSWORD="$(rand_hex 16)"
+  echo
+  OBFS_ENABLED="$(prompt_obfs_enabled)"
   API_SECRET="$(rand_hex 24)"
   SNI="${HY2_SNI:-www.amazon.sg}"
   BACKUP_RETENTION_DAYS="${HY2_BACKUP_DAYS:-14}"
   RATE_LIMIT_SUBSCRIPTION="${HY2_RATE_LIMIT_SUBSCRIPTION:-30}"
   RATE_LIMIT_API="${HY2_RATE_LIMIT_API:-120}"
   SPEED_TEST="${HY2_SPEED_TEST:-false}"
+  QUIC_KEEP_ALIVE_PERIOD="${HY2_QUIC_KEEP_ALIVE_PERIOD:-5s}"
+  QUIC_MAX_IDLE_TIMEOUT="${HY2_QUIC_MAX_IDLE_TIMEOUT:-120s}"
   # IP / sslip 证书无法校验真实 SNI，默认 disable；真实域名可设 HY2_SNI_GUARD=strict
   if [ -n "${HY2_SNI_GUARD:-}" ]; then
     SNI_GUARD="$HY2_SNI_GUARD"
@@ -350,11 +407,27 @@ PYV
   [[ "$SNI" =~ ^[A-Za-z0-9.-]+$ ]] || die "SNI 格式错误"
   [[ "$TOTAL_BYTES" =~ ^[1-9][0-9]*$ ]] || die "TOTAL_BYTES 必须是正整数"
 
-  log "公网 IPv4：$PUBLIC_IP"
-  log "默认网卡：$NETWORK_INTERFACE"
-  log "域名：$DOMAIN"
-  log "用户数量：$users_count"
-  log "套餐总量：$TOTAL_BYTES 字节"
+  echo
+  echo "------------------------------------------------------------"
+  echo " 即将安装，请确认："
+  echo "  公网 IP     : $PUBLIC_IP"
+  echo "  网卡        : $NETWORK_INTERFACE"
+  echo "  代理 UDP    : $HY2_PORT"
+  echo "  面板 HTTPS  : $PANEL_PORT"
+  echo "  域名        : $DOMAIN"
+  echo "  用户数量    : $users_count"
+  echo "  套餐流量    : $total_tb TB"
+  echo "  流量伪装    : $OBFS_ENABLED"
+  echo "------------------------------------------------------------"
+  if [ -t 0 ] && [ "${HY2_NONINTERACTIVE:-0}" != "1" ]; then
+    read -r -p "回车开始安装，输入 n 取消: " confirm || true
+    confirm="$(printf '%s' "$confirm" | tr '[:upper:]' '[:lower:]')"
+    case "$confirm" in
+      n|no) die "已取消安装" ;;
+    esac
+  fi
+  echo
+  log "开始安装…"
 
   configure_swap_and_kernel
   install_hysteria
@@ -378,6 +451,7 @@ DOMAIN=$DOMAIN
 NETWORK_INTERFACE=$NETWORK_INTERFACE
 TOTAL_BYTES=$TOTAL_BYTES
 OBFS_PASSWORD=$OBFS_PASSWORD
+OBFS_ENABLED=$OBFS_ENABLED
 API_SECRET=$API_SECRET
 PANEL_PATH=$PANEL_PATH
 PANEL_USER=$PANEL_USER
@@ -387,6 +461,8 @@ BACKUP_RETENTION_DAYS=$BACKUP_RETENTION_DAYS
 RATE_LIMIT_SUBSCRIPTION=$RATE_LIMIT_SUBSCRIPTION
 RATE_LIMIT_API=$RATE_LIMIT_API
 SPEED_TEST=$SPEED_TEST
+QUIC_KEEP_ALIVE_PERIOD=$QUIC_KEEP_ALIVE_PERIOD
+QUIC_MAX_IDLE_TIMEOUT=$QUIC_MAX_IDLE_TIMEOUT
 SNI_GUARD=$SNI_GUARD
 CLIENT_INSECURE=$CLIENT_INSECURE
 EOF
@@ -437,24 +513,20 @@ EOF
 
   echo
   echo "============================================================"
-  echo "HY2 AIO 安装完成"
+  echo " 安装完成"
   echo "============================================================"
-  echo "面板：https://${DOMAIN}${port_suffix}/${PANEL_PATH}/"
-  echo "面板用户名：${PANEL_USER}"
-  echo "面板密码：已写入 ${ACCESS_FILE}（不在终端显示）"
-  echo "账号资料：${ACCESS_FILE}"
+  echo "面板地址：https://${DOMAIN}${port_suffix}/${PANEL_PATH}/"
+  echo "面板账号：${PANEL_USER}"
+  echo "面板密码：请查看 ${ACCESS_FILE}"
+  echo "账号/订阅：sudo hy2 show"
+  echo "            或打开上面的面板复制订阅"
   echo
-  echo "常用命令："
-  echo "  sudo hy2              # 打开菜单"
-  echo "  sudo hy2 status       # 查看状态"
-  echo "  sudo hy2 show         # 显示账号"
-  echo "  sudo hy2 mode         # 速率模式"
-  echo "  sudo hy2 add-user 用户名"
-  echo "  sudo hy2 remove-user 用户名"
-  echo "  sudo hy2 rotate-user 用户名"
-  echo "  sudo hy2 backup       # 备份"
+  echo "以后常用："
+  echo "  sudo hy2           # 菜单"
+  echo "  sudo hy2 show      # 看账号和订阅"
+  echo "  sudo hy2 obfs off  # 断线频繁时可关伪装"
   echo
-  echo "云厂商防火墙必须放行：TCP 80、TCP 443、UDP 443"
+  echo "云控制台防火墙请放行：TCP 80、TCP ${PANEL_PORT}、UDP ${HY2_PORT}"
   echo "============================================================"
 }
 
@@ -480,7 +552,7 @@ test_https() {
   done
 
   if [ "$code" != "200" ]; then
-    warn "面板 HTTPS 暂未成功。请确认云厂商防火墙已放行 TCP 80、TCP 443、UDP 443。"
+    warn "面板 HTTPS 暂未成功。请确认云控制台已放行 TCP 80、TCP ${PANEL_PORT}、UDP ${HY2_PORT}。"
     warn "Caddy 日志：journalctl -u caddy -n 100 --no-pager"
   else
     log "HTTPS 面板测试成功：HTTP 200"
@@ -545,6 +617,8 @@ HY2 AIO v${AIO_VERSION}
   sudo hy2 restart             # 重启服务
   sudo hy2 update              # 更新 Hysteria
   sudo hy2 uninstall           # 卸载
+  sudo hy2 obfs show           # 查看混淆状态
+  sudo hy2 obfs on|off         # 开启/关闭 Salamander 混淆
 
 无人值守安装：
   sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
@@ -560,6 +634,8 @@ HY2 AIO v${AIO_VERSION}
   HY2_PANEL_PASS      面板密码
   HY2_PANEL_PATH      面板随机路径
   HY2_SNI             客户端 SNI，默认 www.amazon.sg
+  HY2_PORT            Hysteria UDP 端口，安装向导默认 8443
+  HY2_OBFS            Salamander 混淆 0/1，默认 1（开）
   HY2_SPEED_TEST      开启 Hysteria speedTest（默认 false）
   HY2_SNI_GUARD       SNI 校验：disable|strict（真实域名默认 strict）
   HY2_CLIENT_INSECURE 客户端 skip-cert-verify（真实域名默认 false）
@@ -567,7 +643,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_RATE_LIMIT_SUBSCRIPTION  订阅 /s/ 每 IP 每分钟次数，默认 30
   HY2_RATE_LIMIT_API  面板 API 每 IP 每分钟次数，默认 120
   HY2_REPO_URL        模块下载地址（默认 GitHub raw）
-  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.5
+  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.6
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
   CADDY_VERSION       钉死的 Caddy 版本（非 apt 回退），默认 v2.11.4
 EOF
@@ -616,6 +692,7 @@ main() {
     enable)     modify_user "enable" "${2:-}" ;;
     update)     update_cmd ;;
     uninstall)  uninstall_cmd ;;
+    obfs)       obfs_cmd "${2:-show}" ;;
     help|-h|--help) usage ;;
     *)          usage; exit 1 ;;
   esac
