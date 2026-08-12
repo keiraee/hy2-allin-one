@@ -700,6 +700,7 @@ proxies:
     sni: {q(env.get("SNI", "www.amazon.sg"))}
     skip-cert-verify: true
     udp: true
+    keepalive: 30s
 """
     return content.encode("utf-8")
 

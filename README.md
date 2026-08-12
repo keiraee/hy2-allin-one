@@ -1,4 +1,4 @@
-# HY2 AIO v1.3.2
+# HY2 AIO v1.3.3
 
 一键部署 Hysteria 2 + 多用户订阅 + 轻量面板
 
@@ -83,6 +83,9 @@ hy2-allin-one/
 ```
 
 ## 更新日志
+
+### v1.3.3
+- Clash 订阅新增 `keepalive: 30s`，客户端每 30 秒发送 QUIC PING 保活，解决部署在 AWS/GCP 等云平台时因 UDP 状态超时（~120s）导致的间歇性断连
 
 ### v1.3.2
 - 修复 Clash 订阅中 `nameserver` 缩进错误，确保自定义 DNS 正常生效
