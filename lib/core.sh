@@ -3,7 +3,7 @@
 
 set -Eeuo pipefail
 
-SCRIPT_VERSION="1.3.17"
+SCRIPT_VERSION="1.3.18"
 AIO_VERSION="$SCRIPT_VERSION"
 CONFIG_DIR="/etc/hy2-aio"
 ENV_FILE="${CONFIG_DIR}/config.env"
@@ -47,6 +47,14 @@ remove_hy2_cli() {
 
 ensure_hysteria_config_perms() {
   install -d -o hysteria -g hysteria -m 2770 /etc/hysteria 2>/dev/null || true
+  # Backend (hy2-aio) must create users.json.tmp here.
+  install -d -o root -g hy2-aio -m 0770 "$CONFIG_DIR" 2>/dev/null || true
+  chown root:hy2-aio "$CONFIG_DIR" 2>/dev/null || true
+  chmod 0770 "$CONFIG_DIR" 2>/dev/null || true
+  if [ -f "$USERS_FILE" ]; then
+    chown hy2-aio:hy2-aio "$USERS_FILE" 2>/dev/null || true
+    chmod 0640 "$USERS_FILE" 2>/dev/null || true
+  fi
   if [ -f "$HYSTERIA_CONFIG" ]; then
     chown hysteria:hysteria "$HYSTERIA_CONFIG" 2>/dev/null || true
     chmod 0660 "$HYSTERIA_CONFIG" 2>/dev/null || true

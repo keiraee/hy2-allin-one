@@ -2,7 +2,7 @@
 # mode.sh - BBR/Brutal 速率模式管理
 
 ensure_mode_file() {
-  install -d -o root -g hy2-aio -m 0750 "$CONFIG_DIR"
+  install -d -o root -g hy2-aio -m 0770 "$CONFIG_DIR"
   python3 - "$MODE_FILE" "$USERS_FILE" <<'PY'
 import json
 import os
