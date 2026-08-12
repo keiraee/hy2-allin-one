@@ -304,6 +304,10 @@ content = f"""{site_addr} {{
 site_file.write_text(content, encoding="utf-8")
 PY
   [ -f "$site_file" ] || die "写入 ${site_file} 失败"
+  # Caddy runs as user `caddy`; umask 077 would otherwise leave 0600 and break import.
+  chmod 0755 /etc/caddy
+  chown root:caddy "$site_file"
+  chmod 0640 "$site_file"
 
   if [ ! -f "$CADDY_FILE" ]; then
     cat > "$CADDY_FILE" <<EOF
@@ -336,6 +340,9 @@ EOF
 
   caddy fmt --overwrite "$site_file"
   caddy fmt --overwrite "$CADDY_FILE"
+  chown root:caddy "$site_file"
+  chmod 0640 "$site_file"
+  chmod 0644 "$CADDY_FILE" 2>/dev/null || true
   caddy validate --config "$CADDY_FILE" || die "Caddy 配置校验失败"
   configure_fail2ban_panel "$PANEL_PATH"
   log "Caddy 站点配置：${site_file}"

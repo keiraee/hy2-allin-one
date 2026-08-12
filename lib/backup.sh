@@ -100,6 +100,15 @@ PY
   write_systemd
   write_caddy
   ensure_hy2_aio_user
+
+  # Install CLI before service restarts so a later Caddy failure still leaves `hy2` usable.
+  local modules_dir
+  modules_dir="/usr/local/lib/hy2-aio/modules"
+  mkdir -p "$modules_dir/lib" "$modules_dir/bin"
+  cp -a "${SCRIPT_DIR}/lib/"* "$modules_dir/lib/"
+  cp -a "${SCRIPT_DIR}/bin/"* "$modules_dir/bin/"
+  install -m 0755 "${modules_dir}/bin/hy2.sh" "$SELF_INSTALL"
+
   systemctl daemon-reload
   systemctl enable hy2-aio.service hy2-aio-reload-hysteria.path >/dev/null
   systemctl start hy2-aio-reload-hysteria.path || true
@@ -111,20 +120,15 @@ PY
   systemctl start hy2-aio-reload-hysteria.path || true
 
   if ! systemctl reload caddy.service 2>/dev/null; then
-    systemctl restart caddy.service || die "Caddy 重载失败"
+    if ! systemctl restart caddy.service; then
+      journalctl -u caddy.service --no-pager -n 80 >&2 || true
+      die "Caddy 重载失败（hy2 命令已安装；修好 Caddy 后执行：sudo hy2 repair）"
+    fi
   fi
 
   sleep 2
   systemctl is-active --quiet hy2-aio.service || die "HY2 AIO 后端未运行"
   api_post sync >/dev/null || true
-
-  local script_path modules_dir
-  script_path="$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")"
-  modules_dir="/usr/local/lib/hy2-aio/modules"
-  mkdir -p "$modules_dir/lib" "$modules_dir/bin"
-  cp -a "${SCRIPT_DIR}/lib/"* "$modules_dir/lib/"
-  cp -a "${SCRIPT_DIR}/bin/"* "$modules_dir/bin/"
-  install -m 0755 "${modules_dir}/bin/hy2.sh" "$SELF_INSTALL"
   write_access_file
 
   log "HY2 AIO 已升级到 v${SCRIPT_VERSION}"
