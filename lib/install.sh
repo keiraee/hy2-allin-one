@@ -122,7 +122,13 @@ install_hysteria() {
     return
   fi
   log "通过官方脚本安装 Hysteria 2"
-  bash <(curl -fsSL https://get.hy2.sh/)
+  local tmp script
+  tmp="$(mktemp -d)"
+  script="$tmp/get-hy2.sh"
+  curl -fsSL https://get.hy2.sh/ -o "$script"
+  grep -q 'hysteria' "$script" || { rm -rf "$tmp"; die "Hysteria 安装脚本校验失败"; }
+  bash "$script"
+  rm -rf "$tmp"
   command -v hysteria >/dev/null 2>&1 || die "Hysteria 安装失败"
 }
 
