@@ -189,6 +189,7 @@ logs_cmd() {
 # 重启
 restart_cmd() {
   need_root restart
+  ensure_hysteria_config_perms
   systemctl restart hysteria-server.service hy2-aio.service caddy.service
   sleep 2
   status_cmd

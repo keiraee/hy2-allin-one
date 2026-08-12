@@ -3,7 +3,7 @@
 
 set -Eeuo pipefail
 
-SCRIPT_VERSION="1.3.13"
+SCRIPT_VERSION="1.3.14"
 AIO_VERSION="$SCRIPT_VERSION"
 CONFIG_DIR="/etc/hy2-aio"
 ENV_FILE="${CONFIG_DIR}/config.env"
@@ -43,6 +43,19 @@ install_hy2_cli() {
 
 remove_hy2_cli() {
   rm -f "$SELF_INSTALL" "$SELF_INSTALL_SBIN"
+}
+
+ensure_hysteria_config_perms() {
+  install -d -o hysteria -g hysteria -m 2770 /etc/hysteria 2>/dev/null || true
+  if [ -f "$HYSTERIA_CONFIG" ]; then
+    chown hysteria:hysteria "$HYSTERIA_CONFIG" 2>/dev/null || true
+    chmod 0660 "$HYSTERIA_CONFIG" 2>/dev/null || true
+  fi
+  if [ -f "${HYSTERIA_CERT:-}" ]; then
+    chown hysteria:hysteria "$HYSTERIA_CERT" "$HYSTERIA_KEY" 2>/dev/null || true
+    chmod 0640 "$HYSTERIA_CERT" 2>/dev/null || true
+    chmod 0600 "$HYSTERIA_KEY" 2>/dev/null || true
+  fi
 }
 
 have_systemd() {

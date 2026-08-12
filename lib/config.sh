@@ -80,12 +80,20 @@ lines.extend([
 
 temporary = OUT_FILE.with_suffix(".tmp")
 temporary.write_text("\n".join(lines), encoding="utf-8")
+os.chmod(temporary, 0o660)
 os.replace(temporary, OUT_FILE)
 os.chmod(OUT_FILE, 0o660)
+# hy2-aio may rewrite this file; ensure hysteria can still read it.
 try:
     import grp
     import pwd
-    os.chown(OUT_FILE, pwd.getpwnam("hysteria").pw_uid, grp.getgrnam("hysteria").gr_gid)
+    uid = pwd.getpwnam("hysteria").pw_uid
+    gid = grp.getgrnam("hysteria").gr_gid
+    try:
+        os.chown(OUT_FILE, uid, gid)
+    except PermissionError:
+        # Non-root: keep current owner, set group to hysteria (hy2-aio is in that group).
+        os.chown(OUT_FILE, -1, gid)
 except Exception:
     pass
 PY
@@ -167,11 +175,11 @@ ensure_hy2_aio_user() {
   install -d -o hy2-aio -g caddy -m 2750 "$WEB_DIR" "$WEB_DIR/downloads"
   # Group-writable so unprivileged backend can update users.json / mode atomically.
   install -d -o root -g hy2-aio -m 0770 "$CONFIG_DIR"
-  install -d -o hysteria -g hysteria -m 0770 /etc/hysteria
+  install -d -o hysteria -g hysteria -m 2770 /etc/hysteria
   chown root:hy2-aio "$CONFIG_DIR" 2>/dev/null || true
   chmod 0770 "$CONFIG_DIR" 2>/dev/null || true
   chown hysteria:hysteria /etc/hysteria 2>/dev/null || true
-  chmod 0770 /etc/hysteria 2>/dev/null || true
+  chmod 2770 /etc/hysteria 2>/dev/null || true
   # Allow hy2-aio (in hysteria group) to rewrite config.yaml via rebuild helper.
   if [ -f /etc/hysteria/config.yaml ]; then
     chown hysteria:hysteria /etc/hysteria/config.yaml
