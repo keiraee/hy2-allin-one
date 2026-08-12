@@ -626,10 +626,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(403, {"ok": False, "error": "账号已被禁用"})
             return
         try:
-            data = collect()
             env = load_env()
             body = subscription_yaml(env, username, str(info["password"]))
-            traffic = data["server"]["traffic"]
+            cached = read_json(DATA_FILE, {})
+            traffic = cached.get("server", {}).get("traffic", {})
+            if not isinstance(traffic, dict):
+                traffic = {}
+            rx = int(traffic.get("rx", 0) or 0)
+            tx = int(traffic.get("tx", 0) or 0)
+            limit = int(traffic.get("limit", 0) or 0) or int(env.get("TOTAL_BYTES", "0") or 0)
         except Exception as error:
             self.send_json(500, {"ok": False, "error": str(error)})
             return
@@ -639,8 +644,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Disposition", f'attachment; filename="HY2-{username}.yaml"')
         self.send_header(
             "Subscription-Userinfo",
-            f"upload={traffic['rx']}; download={traffic['tx']}; "
-            f"total={traffic['limit']}; expire=0",
+            f"upload={rx}; download={tx}; total={limit}; expire=0",
         )
         self.send_header("Profile-Update-Interval", "1")
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
