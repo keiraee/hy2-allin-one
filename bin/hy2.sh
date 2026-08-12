@@ -187,62 +187,6 @@ uninstall_cmd() {
   warn "Caddy 软件未卸载；Caddyfile 仍在 $CADDY_FILE"
 }
 
-# 修复/升级
-repair_cmd() {
-  need_root repair
-  read_env
-  log "回滚快照：$(snapshot_before_change)"
-
-  log "升级/修复 HY2 AIO 管理组件"
-  ensure_mode_file
-
-  python3 - "$ENV_FILE" "$SCRIPT_VERSION" <<'PY'
-import os
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-version = sys.argv[2]
-lines = path.read_text(encoding="utf-8").splitlines()
-found = False
-output = []
-for line in lines:
-    if line.startswith("AIO_VERSION="):
-        output.append(f"AIO_VERSION={version}")
-        found = True
-    else:
-        output.append(line)
-if not found:
-    output.insert(0, f"AIO_VERSION={version}")
-temporary = path.with_suffix(path.suffix + ".tmp")
-temporary.write_text("\n".join(output) + "\n", encoding="utf-8")
-os.replace(temporary, path)
-PY
-  chown root:root "$ENV_FILE"
-  chmod 0600 "$ENV_FILE"
-
-  write_backend
-  write_panel
-  write_systemd
-  systemctl daemon-reload
-  systemctl enable hy2-aio.service >/dev/null
-
-  if ! systemctl restart hy2-aio.service; then
-    journalctl -u hy2-aio.service --no-pager -n 100 >&2 || true
-    die "HY2 AIO 后端升级失败"
-  fi
-
-  sleep 2
-  systemctl is-active --quiet hy2-aio.service || die "HY2 AIO 后端未运行"
-  api_post sync >/dev/null || true
-
-  write_access_file
-
-  log "HY2 AIO 已升级到 v${SCRIPT_VERSION}"
-  log "Hysteria 服务未重启，当前连接不会因本次升级中断"
-  echo "运行速率模式菜单：sudo hy2 mode"
-}
-
 usage() {
   cat <<EOF
 HY2 AIO v${AIO_VERSION}
