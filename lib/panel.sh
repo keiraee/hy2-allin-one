@@ -106,9 +106,13 @@ tr.disabled td{opacity:.55}
 .modal .hint{margin-bottom:12px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 @media(max-width:900px){.metrics{grid-template-columns:repeat(2,1fr)}}
+.traffic-up{color:#0369a1}.traffic-down{color:#047857}
+@media(max-width:720px){
+  th:nth-child(5),td:nth-child(5){display:none}
+}
 @media(max-width:560px){
   .metrics{grid-template-columns:1fr}.main{padding:14px}
-  th:nth-child(3),td:nth-child(3){display:none}
+  th:nth-child(3),td:nth-child(3),th:nth-child(4),td:nth-child(4){display:none}
   .topbar{padding:12px 14px}
 }
 </style>
@@ -161,7 +165,9 @@ tr.disabled td{opacity:.55}
             <tr>
               <th>用户</th>
               <th>状态</th>
-              <th>本月 HY2</th>
+              <th>上行</th>
+              <th>下行</th>
+              <th>合计</th>
               <th style="text-align:right;width:52px">操作</th>
             </tr>
           </thead>
@@ -365,7 +371,7 @@ function renderUsers(users){
   const list=users||[];
   $("userSummary").textContent=list.length+" 个账号";
   if(!list.length){
-    root.append(el("tr",{},el("td",{colSpan:4,className:"hint",text:"暂无用户。打开右上角菜单添加。"})));
+    root.append(el("tr",{},el("td",{colSpan:6,className:"hint",text:"暂无用户。打开右上角菜单添加。"})));
     return;
   }
   list.forEach(user=>{
@@ -397,6 +403,8 @@ function renderUsers(users){
     root.append(el("tr",{className:user.disabled?"disabled":""},
       el("td",{},nameCell),
       el("td",{},el("span",{className:"status-dot "+statusClass,text:statusText})),
+      el("td",{className:"traffic-up",text:"↑ "+bytes(user.upload)}),
+      el("td",{className:"traffic-down",text:"↓ "+bytes(user.download)}),
       el("td",{text:bytes(user.total)}),
       el("td",{className:"ops"},btn,menu)
     ));
