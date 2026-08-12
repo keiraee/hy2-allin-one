@@ -117,19 +117,48 @@ configure_firewall_v12() {
 }
 
 install_hysteria() {
-  if command -v hysteria >/dev/null 2>&1; then
+  local force="${1:-0}"
+  if [ "$force" != "1" ] && command -v hysteria >/dev/null 2>&1; then
     log "Hysteria 已存在：$(hysteria version 2>/dev/null | head -1 || true)"
     return
   fi
-  log "通过官方脚本安装 Hysteria 2"
-  local tmp script
+
+  local version tag arch asset tmp hashes bin script expected
+  version="${HYSTERIA_VERSION:-v2.12.1}"
+  version="${version#app/}"
+  tag="app/${version}"
+  case "$(uname -m)" in
+    x86_64) arch=amd64; asset=hysteria-linux-amd64 ;;
+    aarch64|arm64) arch=arm64; asset=hysteria-linux-arm64 ;;
+    *) die "不支持的 CPU 架构：$(uname -m)" ;;
+  esac
+
+  log "下载并校验 Hysteria ${version}（${asset}）"
   tmp="$(mktemp -d)"
+  hashes="$tmp/hashes.txt"
+  bin="$tmp/$asset"
   script="$tmp/get-hy2.sh"
-  curl -fsSL https://get.hy2.sh/ -o "$script"
+  curl -fsSL "https://github.com/apernet/hysteria/releases/download/${tag}/hashes.txt" -o "$hashes" \
+    || { rm -rf "$tmp"; die "下载 hashes.txt 失败"; }
+  curl -fsSL "https://github.com/apernet/hysteria/releases/download/${tag}/${asset}" -o "$bin" \
+    || { rm -rf "$tmp"; die "下载 Hysteria 二进制失败"; }
+  expected="$(awk -v name="build/${asset}" '$2 == name { print $1; exit }' "$hashes")"
+  [ -n "$expected" ] || { rm -rf "$tmp"; die "hashes.txt 中找不到 ${asset}"; }
+  python3 - "$bin" "$expected" <<'PY' || { rm -rf "$tmp"; die "Hysteria SHA256 校验失败"; }
+import hashlib, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+expected = sys.argv[2].lower()
+digest = hashlib.sha256(path.read_bytes()).hexdigest()
+if digest != expected:
+    raise SystemExit(f"got {digest}, want {expected}")
+PY
+
+  curl -fsSL https://get.hy2.sh/ -o "$script" || { rm -rf "$tmp"; die "下载官方安装脚本失败"; }
   grep -q 'hysteria' "$script" || { rm -rf "$tmp"; die "Hysteria 安装脚本校验失败"; }
-  bash "$script"
+  bash "$script" --local "$bin"
   rm -rf "$tmp"
   command -v hysteria >/dev/null 2>&1 || die "Hysteria 安装失败"
+  log "Hysteria 已安装：$(hysteria version 2>/dev/null | head -1 || true)"
 }
 
 configure_swap_and_kernel() {

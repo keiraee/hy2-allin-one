@@ -156,14 +156,8 @@ restart_cmd() {
 # 更新
 update_cmd() {
   need_root update
-  log "升级 Hysteria 2"
-  local tmp script
-  tmp="$(mktemp -d)"
-  script="$tmp/get-hy2.sh"
-  curl -fsSL https://get.hy2.sh/ -o "$script"
-  grep -q 'hysteria' "$script" || { rm -rf "$tmp"; die "Hysteria 安装脚本校验失败"; }
-  bash "$script"
-  rm -rf "$tmp"
+  log "升级 Hysteria 2（钉死版本 + SHA256）"
+  install_hysteria 1
   systemctl restart hysteria-server.service
   hysteria version || true
 }
