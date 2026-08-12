@@ -86,8 +86,9 @@ write_systemd() {
 [Unit]
 Description=HY2 AIO subscription, statistics and dashboard backend
 After=network-online.target hysteria-server.service
-Wants=network-online.target
-Requires=hysteria-server.service
+Wants=network-online.target hysteria-server.service
+# Do NOT Requires=hysteria-server — user mutations restart Hysteria and would
+# otherwise tear down this backend mid-request (Caddy HTTP 502).
 
 [Service]
 Type=simple
