@@ -8,7 +8,7 @@ umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
-REPO_REF="${HY2_REPO_REF:-v1.3.12}"
+REPO_REF="${HY2_REPO_REF:-v1.3.13}"
 if [ -n "${HY2_REPO_URL:-}" ]; then
   REPO_URL="$HY2_REPO_URL"
 else
@@ -196,10 +196,10 @@ PY
         esac
         ;;
       16)
-        if [ -x "${SELF_INSTALL:-/usr/local/sbin/hy2}" ]; then
-          exec "${SELF_INSTALL:-/usr/local/sbin/hy2}" upgrade
+        if [ -x "${SELF_INSTALL:-/usr/local/bin/hy2}" ]; then
+          exec "${SELF_INSTALL:-/usr/local/bin/hy2}" upgrade
         else
-          echo "请先完成安装，或执行：sudo bash hy2.sh upgrade"
+          echo "请先完成安装，或执行：bash hy2.sh upgrade"
         fi
         ;;
       99) exit 0 ;;
@@ -289,7 +289,8 @@ uninstall_cmd() {
 
   api_post backup >/dev/null 2>&1 || true
   systemctl disable --now hy2-aio.service hysteria-server.service 2>/dev/null || true
-  rm -f "$SERVICE_FILE" "$SELF_INSTALL"
+  rm -f "$SERVICE_FILE"
+  remove_hy2_cli
   rm -rf "$APP_DIR" "$WEB_DIR"
   systemctl daemon-reload
   warn "保留配置与数据目录：$CONFIG_DIR、$STATE_DIR、/etc/hysteria"
@@ -306,7 +307,7 @@ install_stack() {
   detect_platform
 
   if [ -f "$ENV_FILE" ] && [ "${HY2_FORCE:-0}" != "1" ]; then
-    die "HY2 AIO 已安装。查看状态：sudo hy2 status"
+    die "HY2 AIO 已安装。查看状态：hy2 status"
   fi
 
   install_packages_v12
@@ -524,7 +525,7 @@ EOF
   api_post sync >/dev/null || true
 
   # 安装系统命令入口
-  install -m 0755 "${modules_dir}/bin/hy2.sh" "$SELF_INSTALL"
+  install_hy2_cli "${modules_dir}/bin/hy2.sh"
 
   write_access_file
   test_https
@@ -539,13 +540,14 @@ EOF
   echo "面板地址：https://${DOMAIN}${port_suffix}/${PANEL_PATH}/"
   echo "面板账号：${PANEL_USER}"
   echo "面板密码：请查看 ${ACCESS_FILE}"
-  echo "账号/订阅：sudo hy2 show"
+  echo "账号/订阅：hy2 show"
   echo "            或打开上面的面板复制订阅"
   echo
-  echo "以后常用："
-  echo "  sudo hy2           # 菜单"
-  echo "  sudo hy2 show      # 看账号和订阅"
-  echo "  sudo hy2 obfs off  # 断线频繁时可关伪装"
+  echo "以后常用（需 root；有 sudo 可加 sudo）："
+  echo "  hy2           # 菜单"
+  echo "  hy2 show      # 看账号和订阅"
+  echo "  hy2 obfs off  # 断线频繁时可关伪装"
+  echo "  hy2 upgrade   # 升级 AIO 到最新版"
   echo
   echo "云控制台防火墙请放行：TCP 80、TCP ${PANEL_PORT}、UDP ${HY2_PORT}"
   echo "============================================================"
@@ -613,36 +615,39 @@ usage() {
 HY2 AIO v${AIO_VERSION}
 
 用法：
-  sudo bash hy2.sh install     # 安装
-  sudo bash hy2.sh repair      # 按本脚本钉死的版本拉取并修复
-  sudo bash hy2.sh upgrade     # 拉 GitHub 最新版并修复
-  sudo hy2                     # 打开交互菜单
-  sudo hy2 upgrade             # 同上（装好后推荐）
+  bash hy2.sh install          # 安装（需 root）
+  bash hy2.sh repair           # 按本脚本钉死的版本拉取并修复
+  bash hy2.sh upgrade          # 拉 GitHub 最新版并修复
+  hy2                          # 打开交互菜单
+  hy2 upgrade                  # 同上（装好后推荐）
+
+说明：管理命令需要 root。已是 root 直接 hy2；有 sudo 可写 sudo hy2。
 
 菜单模式：
-  sudo hy2                     # 打开菜单
+  hy2                          # 打开菜单
 
 命令模式：
-  sudo hy2 status              # 查看状态
-  sudo hy2 show                # 显示账号
-  sudo hy2 sync                # 同步数据
-  sudo hy2 mode                # 速率模式菜单
-  sudo hy2 mode show           # 显示当前模式
-  sudo hy2 users               # 用户列表
-  sudo hy2 add-user <用户名>   # 添加用户
-  sudo hy2 remove-user <用户名> # 删除用户
-  sudo hy2 rotate-user <用户名> # 轮换密钥
-  sudo hy2 note <用户名> [备注] # 设置设备备注（留空清除）
-  sudo hy2 disable <用户名>    # 禁用用户
-  sudo hy2 enable <用户名>     # 启用用户
-  sudo hy2 backup              # 备份
-  sudo hy2 logs [行数]         # 查看日志
-  sudo hy2 restart             # 重启服务
-  sudo hy2 update              # 更新 Hysteria
-  sudo hy2 upgrade             # 升级 HY2 AIO 到最新 Release
-  sudo hy2 uninstall           # 卸载
-  sudo hy2 obfs show           # 查看混淆状态
-  sudo hy2 obfs on|off         # 开启/关闭 Salamander 混淆
+  hy2 status                   # 查看状态
+  hy2 show                     # 显示账号
+  hy2 sync                     # 同步数据
+  hy2 mode                     # 速率模式菜单
+  hy2 mode show                # 显示当前模式
+  hy2 users                    # 用户列表
+  hy2 add-user <用户名>        # 添加用户
+  hy2 remove-user <用户名>     # 删除用户
+  hy2 rotate-user <用户名>     # 轮换密钥
+  hy2 note <用户名> [备注]     # 设置设备备注（留空清除）
+  hy2 disable <用户名>         # 禁用用户
+  hy2 enable <用户名>          # 启用用户
+  hy2 backup                   # 备份
+  hy2 logs [行数]              # 查看日志
+  hy2 restart                  # 重启 Hysteria + 面板后端 + Caddy
+  hy2 update                   # 更新 Hysteria
+  hy2 upgrade                  # 升级 HY2 AIO 到最新 Release
+  hy2 uninstall                # 卸载
+  hy2 obfs show                # 查看混淆状态
+  hy2 obfs on|off              # 开启/关闭 Salamander 混淆
+  hy2 help|-h|--help|-help
 
 无人值守安装：
   sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
@@ -667,7 +672,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_RATE_LIMIT_SUBSCRIPTION  订阅 /s/ 每 IP 每分钟次数，默认 30
   HY2_RATE_LIMIT_API  面板 API 每 IP 每分钟次数，默认 120
   HY2_REPO_URL        模块下载地址（默认 GitHub raw）
-  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.12
+  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.13
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
   CADDY_VERSION       钉死的 Caddy 版本（非 apt 回退），默认 v2.11.4
 EOF
@@ -732,7 +737,7 @@ main() {
     update)     update_cmd ;;
     uninstall)  uninstall_cmd ;;
     obfs)       obfs_cmd "${2:-show}" ;;
-    help|-h|--help) usage ;;
+    help|-h|--help|-help) usage ;;
     *)          usage; exit 1 ;;
   esac
 }

@@ -105,12 +105,12 @@ PY
   local modules_dir src
   modules_dir="/usr/local/lib/hy2-aio/modules"
   src="${SCRIPT_DIR:-$modules_dir}"
-  [ -f "${src}/lib/core.sh" ] || die "找不到模块源：${src}/lib/core.sh（请用：sudo bash hy2.sh repair 或 sudo hy2 upgrade）"
+  [ -f "${src}/lib/core.sh" ] || die "找不到模块源：${src}/lib/core.sh（请用：bash hy2.sh repair 或 hy2 upgrade）"
   [ -f "${src}/bin/hy2.sh" ] || die "找不到模块源：${src}/bin/hy2.sh"
   mkdir -p "$modules_dir/lib" "$modules_dir/bin"
   cp -a "${src}/lib/"* "$modules_dir/lib/"
   cp -a "${src}/bin/"* "$modules_dir/bin/"
-  install -m 0755 "${modules_dir}/bin/hy2.sh" "$SELF_INSTALL"
+  install_hy2_cli "${modules_dir}/bin/hy2.sh"
 
   systemctl daemon-reload
   systemctl enable hy2-aio.service hy2-aio-reload-hysteria.path >/dev/null
@@ -125,7 +125,7 @@ PY
   if ! systemctl reload caddy.service 2>/dev/null; then
     if ! systemctl restart caddy.service; then
       journalctl -u caddy.service --no-pager -n 80 >&2 || true
-      die "Caddy 重载失败（hy2 命令已安装；修好 Caddy 后执行：sudo hy2 repair）"
+      die "Caddy 重载失败（hy2 已安装；修好 Caddy 后执行：hy2 repair）"
     fi
   fi
 
@@ -136,8 +136,8 @@ PY
 
   log "HY2 AIO 已升级到 v${SCRIPT_VERSION}"
   log "已写入 QUIC 保活与混淆开关到配置；Hysteria 未自动重启"
-  log "使配置生效：sudo hy2 restart   （或 sudo hy2 obfs on|off）"
-  echo "运行速率模式菜单：sudo hy2 mode"
+  log "使配置生效：hy2 restart   （或 hy2 obfs on|off）"
+  echo "运行速率模式菜单：hy2 mode"
 }
 
 backup_cmd() {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# hy2 - HY2 AIO 命令入口（安装到 /usr/local/sbin/hy2）
+# hy2 - HY2 AIO 命令入口（安装到 /usr/local/bin/hy2）
 
 set -Eeuo pipefail
 umask 077
@@ -10,7 +10,7 @@ REPO_SLUG="${HY2_REPO:-keiraee/hy2-allin-one}"
 
 # 自更新：先拉最新引导脚本再 repair，不依赖本机旧模块里的逻辑
 if [ "${1:-}" = "upgrade" ]; then
-  [ "$(id -u)" -eq 0 ] || { printf '%s\n' "请使用：sudo hy2 upgrade" >&2; exit 1; }
+  [ "$(id -u)" -eq 0 ] || { printf '%s\n' "需要 root。已是 root：hy2 upgrade；有 sudo：sudo hy2 upgrade" >&2; exit 1; }
   ref="${HY2_REPO_REF:-}"
   if [ -z "$ref" ] || [ "$ref" = "latest" ]; then
     ref="$(curl -fsSL "https://api.github.com/repos/${REPO_SLUG}/releases/latest" \
@@ -215,7 +215,8 @@ uninstall_cmd() {
 
   api_post backup >/dev/null 2>&1 || true
   systemctl disable --now hy2-aio.service hysteria-server.service 2>/dev/null || true
-  rm -f "$SERVICE_FILE" "$SELF_INSTALL"
+  rm -f "$SERVICE_FILE"
+  remove_hy2_cli
   rm -rf "$APP_DIR" "$WEB_DIR"
   systemctl daemon-reload
   warn "保留配置与数据目录：$CONFIG_DIR、$STATE_DIR、/etc/hysteria"
@@ -227,30 +228,33 @@ usage() {
 HY2 AIO v${AIO_VERSION}
 
 用法：
-  sudo hy2                     # 打开交互菜单
+  hy2                     # 打开交互菜单（需 root）
+
+说明：管理命令需要 root。已是 root 直接 hy2；有 sudo 的系统可写 sudo hy2。
 
 命令模式：
-  sudo hy2 status              # 查看状态
-  sudo hy2 show                # 显示账号
-  sudo hy2 sync                # 同步数据
-  sudo hy2 mode                # 速率模式菜单
-  sudo hy2 mode show           # 显示当前模式
-  sudo hy2 users               # 用户列表
-  sudo hy2 add-user <用户名>   # 添加用户
-  sudo hy2 remove-user <用户名> # 删除用户
-  sudo hy2 rotate-user <用户名> # 轮换密钥
-  sudo hy2 note <用户名> [备注] # 设置设备备注（留空清除）
-  sudo hy2 disable <用户名>    # 禁用用户
-  sudo hy2 enable <用户名>     # 启用用户
-  sudo hy2 backup              # 备份
-  sudo hy2 logs [行数]         # 查看日志
-  sudo hy2 restart             # 重启服务
-  sudo hy2 update              # 更新 Hysteria
-  sudo hy2 upgrade             # 升级 HY2 AIO 到 GitHub 最新版（无需再 curl）
-  sudo hy2 uninstall           # 卸载
-  sudo hy2 repair              # 用当前已装模块修复
-  sudo hy2 obfs show           # 查看混淆状态
-  sudo hy2 obfs on|off         # 开启/关闭 Salamander 混淆
+  hy2 status              # 查看状态
+  hy2 show                # 显示账号
+  hy2 sync                # 同步数据
+  hy2 mode                # 速率模式菜单
+  hy2 mode show           # 显示当前模式
+  hy2 users               # 用户列表
+  hy2 add-user <用户名>   # 添加用户
+  hy2 remove-user <用户名> # 删除用户
+  hy2 rotate-user <用户名> # 轮换密钥
+  hy2 note <用户名> [备注] # 设置设备备注（留空清除）
+  hy2 disable <用户名>    # 禁用用户
+  hy2 enable <用户名>     # 启用用户
+  hy2 backup              # 备份
+  hy2 logs [行数]         # 查看日志
+  hy2 restart             # 重启 Hysteria + 面板后端 + Caddy
+  hy2 update              # 更新 Hysteria
+  hy2 upgrade             # 升级 HY2 AIO 到 GitHub 最新版
+  hy2 uninstall           # 卸载
+  hy2 repair              # 用当前已装模块修复
+  hy2 obfs show           # 查看混淆状态
+  hy2 obfs on|off         # 开启/关闭 Salamander 混淆
+  hy2 help|-h|--help|-help
 EOF
 }
 
@@ -279,6 +283,6 @@ case "$command" in
   update)     update_cmd ;;
   uninstall)  uninstall_cmd ;;
   obfs)       obfs_cmd "${2:-show}" ;;
-  help|-h|--help) usage ;;
+  help|-h|--help|-help) usage ;;
   *)          usage; exit 1 ;;
 esac

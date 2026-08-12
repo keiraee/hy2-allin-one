@@ -3,7 +3,7 @@
 
 set -Eeuo pipefail
 
-SCRIPT_VERSION="1.3.12"
+SCRIPT_VERSION="1.3.13"
 AIO_VERSION="$SCRIPT_VERSION"
 CONFIG_DIR="/etc/hy2-aio"
 ENV_FILE="${CONFIG_DIR}/config.env"
@@ -20,14 +20,29 @@ STATE_DIR="/var/lib/hy2-aio"
 ACCESS_FILE="/root/hy2-aio-access.txt"
 CADDY_FILE="/etc/caddy/Caddyfile"
 SERVICE_FILE="/etc/systemd/system/hy2-aio.service"
-SELF_INSTALL="/usr/local/sbin/hy2"
+SELF_INSTALL="/usr/local/bin/hy2"
+SELF_INSTALL_SBIN="/usr/local/sbin/hy2"
 
 log() { printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "$*"; }
 warn() { printf '\033[1;33m[WARN]\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
 
 need_root() {
-  [ "$(id -u)" -eq 0 ] || die "请使用 root 运行：sudo hy2 ${1:-install}"
+  if [ "$(id -u)" -ne 0 ]; then
+    die "需要 root。已是 root：hy2 ${1:-}；有 sudo：sudo hy2 ${1:-}"
+  fi
+}
+
+install_hy2_cli() {
+  local src="${1:-}"
+  [ -n "$src" ] && [ -f "$src" ] || die "install_hy2_cli：缺少源文件"
+  install -d -m 0755 /usr/local/bin /usr/local/sbin
+  install -m 0755 "$src" "$SELF_INSTALL"
+  ln -sfn "$SELF_INSTALL" "$SELF_INSTALL_SBIN"
+}
+
+remove_hy2_cli() {
+  rm -f "$SELF_INSTALL" "$SELF_INSTALL_SBIN"
 }
 
 have_systemd() {
@@ -59,7 +74,7 @@ rand_hex() { openssl rand -hex "${1:-16}"; }
 valid_name() { [[ "${1:-}" =~ ^[A-Za-z0-9_-]{1,32}$ ]]; }
 
 read_env() {
-  [ -f "$ENV_FILE" ] || die "尚未安装。请运行：sudo hy2 install"
+  [ -f "$ENV_FILE" ] || die "尚未安装。请以 root 运行：bash hy2.sh install"
   local line key value
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line#"${line%%[![:space:]]*}"}"
