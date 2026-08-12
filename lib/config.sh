@@ -259,6 +259,7 @@ content = f"""{site_addr} {{
             roll_size 10mb
             roll_keep 3
         }}
+        format json
     }}
 
     route {{

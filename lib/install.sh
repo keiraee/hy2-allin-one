@@ -110,17 +110,20 @@ EOF
 }
 
 configure_fail2ban_panel() {
-  local panel_path="$1"
+  local panel_path="$1" filter_file jail_file sample_file now check_output
   command -v fail2ban-client >/dev/null 2>&1 || return 0
   install -d -m 0755 /etc/fail2ban/filter.d /etc/fail2ban/jail.d
+  filter_file="/etc/fail2ban/filter.d/hy2-caddy-auth.conf"
+  jail_file="/etc/fail2ban/jail.d/hy2-caddy-auth.conf"
 
-  cat > /etc/fail2ban/filter.d/hy2-caddy-auth.conf <<EOF
+  cat > "$filter_file" <<EOF
 [Definition]
-failregex = ^<HOST> - .* "(?:GET|POST) /${panel_path}/.*" 401
+datepattern = ^\{"level":"[a-z]+","ts":({EPOCH}),
+failregex = ^(?:\{"level":"[a-z]+","ts":(?:[0-9]+(?:\.[0-9]+)?|\s*(?:\.[0-9]+)?),)?"logger":"http\.log\.access(?:\.[^"]+)?","msg":"handled request","request":\{"remote_ip":"<HOST>","remote_port":"[0-9]+","client_ip":"[^"]*","proto":"HTTP/[^"]+","method":"[^"]+","host":"[^"]+","uri":"/${panel_path}(?:[/?](?:\\\\.|[^"\\\\])*)?",.*\},"bytes_read":[0-9]+,"user_id":"[^"]*","duration":[^,]+,"size":[0-9]+,"status":401,.*\}\s*$
 ignoreregex =
 EOF
 
-  cat > /etc/fail2ban/jail.d/hy2-caddy-auth.conf <<'EOF'
+  cat > "$jail_file" <<'EOF'
 [hy2-caddy-auth]
 enabled = true
 filter = hy2-caddy-auth
@@ -130,8 +133,30 @@ findtime = 300
 bantime = 3600
 EOF
 
-  fail2ban-client reload >/dev/null 2>&1 || systemctl reload fail2ban >/dev/null 2>&1 || true
-  log "fail2ban 已配置：面板 Basic Auth 连续失败将封禁 IP"
+  if command -v fail2ban-regex >/dev/null 2>&1; then
+    sample_file="$(mktemp)"
+    now="$(date +%s)"
+    printf '%s\n' "{\"level\":\"info\",\"ts\":${now}.125,\"logger\":\"http.log.access.log0\",\"msg\":\"handled request\",\"request\":{\"remote_ip\":\"203.0.113.10\",\"remote_port\":\"43110\",\"client_ip\":\"203.0.113.10\",\"proto\":\"HTTP/2.0\",\"method\":\"GET\",\"host\":\"panel.example.com\",\"uri\":\"/${panel_path}/\",\"headers\":{},\"tls\":{\"version\":772}},\"bytes_read\":0,\"user_id\":\"\",\"duration\":0.001,\"size\":0,\"status\":401,\"resp_headers\":{}}" > "$sample_file"
+    if ! check_output="$(fail2ban-regex "$sample_file" "$filter_file" --print-all-matched 2>/dev/null)" \
+      || ! grep -Fq '"remote_ip":"203.0.113.10"' <<<"$check_output"; then
+      rm -f "$sample_file"
+      warn "fail2ban 过滤器自检失败；未启用 HY2 面板 jail"
+      rm -f "$filter_file" "$jail_file"
+      return 0
+    fi
+    rm -f "$sample_file"
+  fi
+
+  if ! fail2ban-client reload >/dev/null 2>&1 \
+    && ! systemctl reload fail2ban >/dev/null 2>&1; then
+    warn "fail2ban 配置已写入，但服务重载失败；HY2 面板 jail 尚未生效"
+    return 0
+  fi
+  if ! fail2ban-client status hy2-caddy-auth >/dev/null 2>&1; then
+    warn "fail2ban 配置已写入，但 HY2 面板 jail 未运行"
+    return 0
+  fi
+  log "fail2ban 已生效：面板 Basic Auth 连续失败将封禁来源 IP"
 }
 
 configure_firewall_v12() {
