@@ -7,7 +7,12 @@ set -Eeuo pipefail
 umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_URL="${HY2_REPO_URL:-https://raw.githubusercontent.com/keiraee/hy2-allin-one/main}"
+REPO_REF="${HY2_REPO_REF:-main}"
+if [ -n "${HY2_REPO_URL:-}" ]; then
+  REPO_URL="$HY2_REPO_URL"
+else
+  REPO_URL="https://raw.githubusercontent.com/keiraee/hy2-allin-one/${REPO_REF}"
+fi
 
 # 临时函数（模块加载前使用）
 _bootstrap_log() { printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "$*"; }
@@ -30,9 +35,14 @@ fetch_modules() {
     "lib/backend.sh"
     "bin/hy2.sh"
   )
+  local f tmp
   for f in "${files[@]}"; do
     _bootstrap_log "下载：$f"
-    curl -fsSL "${REPO_URL}/${f}" -o "${target_dir}/${f}"
+    tmp="$(mktemp)"
+    curl -fsSL "${REPO_URL}/${f}" -o "$tmp" || { rm -f "$tmp"; _bootstrap_die "下载失败：$f"; }
+    head -1 "$tmp" | grep -qE '^#!|^#' || { rm -f "$tmp"; _bootstrap_die "模块内容校验失败：$f"; }
+    [ -s "$tmp" ] || { rm -f "$tmp"; _bootstrap_die "模块为空：$f"; }
+    mv "$tmp" "${target_dir}/${f}"
   done
 }
 
@@ -511,7 +521,8 @@ HY2 AIO v${AIO_VERSION}
   HY2_PANEL_PATH      面板随机路径
   HY2_SNI             客户端 SNI，默认 www.amazon.sg
   HY2_BACKUP_DAYS     备份保留天数，默认 14
-  HY2_REPO_URL        模块下载地址（默认 GitHub）
+  HY2_REPO_URL        模块下载地址（默认 GitHub raw）
+  HY2_REPO_REF        Git 分支/tag/commit，默认 main（仅默认 URL 时生效）
 EOF
 }
 
@@ -526,8 +537,8 @@ main() {
     load_installed_modules
   elif [ "${1:-}" = "install" ] || [ "${1:-}" = "help" ] || [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
     # 安装前：临时下载模块
-    local tmp_dir="/tmp/.hy2-aio-$$"
-    mkdir -p "$tmp_dir"
+    local tmp_dir
+    tmp_dir="$(mktemp -d)"
     fetch_modules "$tmp_dir"
     SCRIPT_DIR="$tmp_dir"
     load_local_modules
