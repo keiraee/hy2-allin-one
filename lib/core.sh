@@ -70,7 +70,9 @@ read_env() {
 }
 
 api_post() {
+  : "${API_SECRET:?API_SECRET 未设置，请先 read_env}"
   curl -fsS --connect-timeout 5 --max-time 60 \
+    -H "X-API-Secret: ${API_SECRET}" \
     -X POST "http://127.0.0.1:18081/$1"
 }
 

@@ -138,7 +138,9 @@ ${DOMAIN}:${PANEL_PORT} {
                 X-Frame-Options "DENY"
                 Referrer-Policy "no-referrer"
             }
-            reverse_proxy 127.0.0.1:18081
+            reverse_proxy 127.0.0.1:18081 {
+                header_up X-API-Secret ${API_SECRET}
+            }
         }
 
         handle_path /${PANEL_PATH}/* {

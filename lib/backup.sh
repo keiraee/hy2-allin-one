@@ -65,12 +65,17 @@ PY
   write_backend
   write_panel
   write_systemd
+  write_caddy
   systemctl daemon-reload
   systemctl enable hy2-aio.service >/dev/null
 
   if ! systemctl restart hy2-aio.service; then
     journalctl -u hy2-aio.service --no-pager -n 100 >&2 || true
     die "HY2 AIO 后端升级失败"
+  fi
+
+  if ! systemctl reload caddy.service 2>/dev/null; then
+    systemctl restart caddy.service || die "Caddy 重载失败"
   fi
 
   sleep 2

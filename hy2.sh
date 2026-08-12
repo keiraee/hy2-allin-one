@@ -368,7 +368,7 @@ EOF
   sleep 3
   wait_services
 
-  curl -fsS -X POST http://127.0.0.1:18081/sync >/dev/null || true
+  api_post sync >/dev/null || true
 
   # 安装系统命令入口
   install -m 0755 "${modules_dir}/bin/hy2.sh" "$SELF_INSTALL"

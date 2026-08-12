@@ -7,6 +7,7 @@ write_backend() {
 from __future__ import annotations
 
 import csv
+import hmac
 import json
 import os
 import re
@@ -578,6 +579,20 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, format_string: str, *args: Any) -> None:
         return
 
+    def require_api_secret(self) -> bool:
+        expected = str(load_env().get("API_SECRET", "") or "")
+        provided = str(self.headers.get("X-API-Secret", "") or "")
+        expected_b = expected.encode("utf-8")
+        provided_b = provided.encode("utf-8")
+        if (
+            not expected_b
+            or len(provided_b) != len(expected_b)
+            or not hmac.compare_digest(provided_b, expected_b)
+        ):
+            self.send_json(401, {"ok": False, "error": "unauthorized"})
+            return False
+        return True
+
     def send_json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
@@ -660,6 +675,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(200, {"ok": True, "generated_at": data["generated_at"]})
 
     def do_POST(self) -> None:
+        if not self.require_api_secret():
+            return
         path = self.path.split("?", 1)[0]
         try:
             if path == "/sync":
