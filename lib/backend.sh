@@ -663,7 +663,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def read_body(self) -> dict[str, Any]:
-        length = int(self.headers.get("Content-Length", 0) or 0)
+        try:
+            length = int(self.headers.get("Content-Length", 0) or 0)
+        except ValueError:
+            raise ValueError("Content-Length 无效")
+        if length < 0 or length > 65536:
+            raise ValueError("请求体过大或无效")
         raw = self.rfile.read(length) if length else b""
         try:
             payload = json.loads(raw.decode("utf-8") or "{}")
