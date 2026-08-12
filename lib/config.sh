@@ -430,7 +430,7 @@ obfs_cmd() {
       log "已关闭混淆（加密仍在）；请客户端更新订阅"
       ;;
     *)
-      die "用法：sudo hy2 obfs on|off|show"
+      die "用法：hy2 obfs on|off|show"
       ;;
   esac
 }

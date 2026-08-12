@@ -8,7 +8,7 @@ umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
-REPO_REF="${HY2_REPO_REF:-v1.3.15}"
+REPO_REF="${HY2_REPO_REF:-v1.3.16}"
 if [ -n "${HY2_REPO_URL:-}" ]; then
   REPO_URL="$HY2_REPO_URL"
 else
@@ -34,6 +34,7 @@ fetch_modules() {
     "lib/backup.sh"
     "lib/mode.sh"
     "lib/backend.sh"
+    "lib/cli.sh"
     "bin/hy2.sh"
   )
   local sums tmp f expected
@@ -74,6 +75,7 @@ load_local_modules() {
   source "${SCRIPT_DIR}/lib/backup.sh"
   source "${SCRIPT_DIR}/lib/mode.sh"
   source "${SCRIPT_DIR}/lib/backend.sh"
+  source "${SCRIPT_DIR}/lib/cli.sh"
 }
 
 # 加载已安装的模块
@@ -91,6 +93,7 @@ load_installed_modules() {
     source "${modules_dir}/lib/backup.sh"
     source "${modules_dir}/lib/mode.sh"
     source "${modules_dir}/lib/backend.sh"
+    source "${modules_dir}/lib/cli.sh"
   else
     die "模块未安装，请运行：sudo bash hy2.sh install"
   fi
@@ -105,204 +108,6 @@ resolve_latest_repo_ref() {
   REPO_REF="$tag"
   REPO_URL="https://raw.githubusercontent.com/keiraee/hy2-allin-one/${REPO_REF}"
   _bootstrap_log "目标版本：${REPO_REF}"
-}
-
-# 主菜单
-show_menu() {
-  clear
-  cat <<'EOF'
- _   _ ____   __     _____ ___
-| | | |___ \  \ \   / /_ _|_ _|
-| |_| | __) |  \ \ / / | | | |
-|  _  |/ __/    \ V /  | | | |
-|_| |_|_____|    \_/  |___|___|
-
-HY2 AIO - 一键部署 Hysteria 2
-
-EOF
-  echo "  0) 状态"
-  echo "  1) 安装说明（新机用 curl；已装请选 16）"
-  echo "  2) 显示账号"
-  echo "  3) 添加用户"
-  echo "  4) 删除用户"
-  echo "  5) 轮换用户密钥"
-  echo "  6) 速率模式"
-  echo "  7) 同步数据"
-  echo "  8) 备份"
-  echo "  9) 日志"
-  echo " 10) 重启服务"
-  echo " 11) 更新 Hysteria"
-  echo " 12) 卸载"
-  echo " 13) 设置用户备注"
-  echo " 14) 禁用/启用用户"
-  echo " 15) 混淆开关（obfs）"
-  echo " 16) 升级 HY2 AIO（拉最新版）"
-  echo "  99) 退出"
-  echo
-}
-
-# 菜单交互
-menu_interactive() {
-  while true; do
-    show_menu
-    read -r -p "请选择 [0-16/99]: " choice
-    case "$choice" in
-      0)  status_cmd ;;
-      1)
-        if [ -f "${ENV_FILE:-/etc/hy2-aio/config.env}" ]; then
-          echo "本机已安装，不能从菜单重复 install。"
-          echo "跨版本升级请选 16，或执行：hy2 upgrade && hy2 restart"
-        else
-          install_stack
-        fi
-        ;;
-      2)  show_cmd ;;
-      3)
-        read -r -p "请输入用户名：" username
-        modify_user "add-user" "$username"
-        ;;
-      4)
-        read -r -p "请输入用户名：" username
-        modify_user "remove-user" "$username"
-        ;;
-      5)
-        read -r -p "请输入用户名：" username
-        modify_user "rotate-user" "$username"
-        ;;
-      6)  mode_interactive ;;
-      7)  sync_cmd ;;
-      8)  backup_cmd ;;
-      9)  logs_cmd ;;
-      10) restart_cmd ;;
-      11) update_cmd ;;
-      12) uninstall_cmd ;;
-      13)
-        read -r -p "请输入用户名：" username
-        read -r -p "请输入设备备注（如 iPhone 13，留空清除）：" note
-        modify_user "note" "$username" "$note"
-        ;;
-      14)
-        read -r -p "请输入用户名：" username
-        local state
-        state="$(python3 - "$USERS_FILE" "$username" <<'PY'
-import json, sys
-users = json.load(open(sys.argv[1], encoding="utf-8"))
-print("enable" if users.get(sys.argv[2], {}).get("disabled") else "disable")
-PY
-)"
-        modify_user "$state" "$username"
-        ;;
-      15)
-        echo "0) 查看状态  1) 开启混淆  2) 关闭混淆"
-        read -r -p "请选择 [0-2]: " obfs_choice
-        case "$obfs_choice" in
-          0) obfs_cmd show ;;
-          1) obfs_cmd on ;;
-          2) obfs_cmd off ;;
-          *) echo "无效选择" ;;
-        esac
-        ;;
-      16)
-        if [ -x "${SELF_INSTALL:-/usr/local/bin/hy2}" ]; then
-          exec "${SELF_INSTALL:-/usr/local/bin/hy2}" upgrade
-        else
-          echo "请先完成安装，或执行：bash hy2.sh upgrade"
-        fi
-        ;;
-      99) exit 0 ;;
-      *)
-        echo "无效选择"
-        sleep 1
-        ;;
-    esac
-    echo
-    read -r -p "按回车返回菜单..." _
-  done
-}
-
-# 状态
-status_cmd() {
-  need_root status
-  read_env
-  local port_suffix=""
-  [ "${PANEL_PORT:-443}" != "443" ] && port_suffix=":${PANEL_PORT}"
-  echo "HY2 AIO v${AIO_VERSION:-unknown}"
-  echo "面板：https://${DOMAIN}${port_suffix}/${PANEL_PATH}/"
-  echo "Hysteria UDP：${HY2_PORT:-443}"
-  if obfs_is_enabled; then
-    echo "混淆：on (salamander)"
-  else
-    echo "混淆：off"
-  fi
-  echo "QUIC 保活：${QUIC_KEEP_ALIVE_PERIOD:-5s} / idle ${QUIC_MAX_IDLE_TIMEOUT:-120s}"
-  echo
-  systemctl --no-pager --full status \
-    hysteria-server.service hy2-aio.service caddy.service \
-    | sed -n '1,45p' || true
-  echo
-  ss -lntup | grep -E ":(80|443|18081|9999|${HY2_PORT:-443})\\b" || true
-}
-
-# 显示账号
-show_cmd() {
-  need_root show
-  read_env
-  write_access_file
-  cat "$ACCESS_FILE"
-}
-
-# 同步
-sync_cmd() {
-  need_root sync
-  read_env
-  api_post sync
-  echo
-}
-
-# 日志
-logs_cmd() {
-  need_root logs
-  local lines="${1:-120}"
-  journalctl -u hysteria-server.service -u hy2-aio.service -u caddy.service \
-    --no-pager -n "$lines"
-}
-
-# 重启
-restart_cmd() {
-  need_root restart
-  ensure_hysteria_config_perms
-  systemctl restart hysteria-server.service hy2-aio.service caddy.service
-  sleep 2
-  status_cmd
-}
-
-# 更新
-update_cmd() {
-  need_root update
-  log "升级 Hysteria 2（钉死版本 + SHA256）"
-  install_hysteria 1
-  systemctl restart hysteria-server.service
-  hysteria version || true
-}
-
-# 卸载
-uninstall_cmd() {
-  need_root uninstall
-  read_env
-  local answer="${HY2_YES:-}"
-  if [ "$answer" != "1" ]; then
-    read -r -p "确认卸载 HY2 AIO 服务？输入 YES：" answer
-    [ "$answer" = "YES" ] || die "已取消"
-  fi
-
-  api_post backup >/dev/null 2>&1 || true
-  systemctl disable --now hy2-aio.service hysteria-server.service 2>/dev/null || true
-  rm -f "$SERVICE_FILE"
-  remove_hy2_cli
-  rm -rf "$APP_DIR" "$WEB_DIR"
-  systemctl daemon-reload
-  warn "保留配置与数据目录：$CONFIG_DIR、$STATE_DIR、/etc/hysteria"
-  warn "Caddy 软件未卸载；Caddyfile 仍在 $CADDY_FILE"
 }
 
 # 安装主流程
@@ -648,10 +453,12 @@ HY2 AIO v${AIO_VERSION}
   hy2 disable <用户名>         # 禁用用户
   hy2 enable <用户名>          # 启用用户
   hy2 backup                   # 备份
+  hy2 rollback                 # 回滚最近快照
   hy2 logs [行数]              # 查看日志
   hy2 restart                  # 重启 Hysteria + 面板后端 + Caddy
   hy2 update                   # 更新 Hysteria
   hy2 upgrade                  # 升级 HY2 AIO 到最新 Release
+  hy2 repair                   # 用当前已装模块修复
   hy2 uninstall                # 卸载
   hy2 obfs show                # 查看混淆状态
   hy2 obfs on|off              # 开启/关闭 Salamander 混淆
@@ -680,7 +487,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_RATE_LIMIT_SUBSCRIPTION  订阅 /s/ 每 IP 每分钟次数，默认 30
   HY2_RATE_LIMIT_API  面板 API 每 IP 每分钟次数，默认 120
   HY2_REPO_URL        模块下载地址（默认 GitHub raw）
-  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.15
+  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.16
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
   CADDY_VERSION       钉死的 Caddy 版本（非 apt 回退），默认 v2.11.4
 EOF
