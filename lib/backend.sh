@@ -652,6 +652,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(500, {"ok": False, "error": "订阅生成失败"})
             print(f"[hy2-aio] subscription error: {error}", flush=True)
             return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/yaml; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="HY2-{username}.yaml"')
         self.send_header(
             "Subscription-Userinfo",
             f"upload={rx}; download={tx}; total={limit}; expire=0",
