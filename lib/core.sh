@@ -60,10 +60,24 @@ valid_name() { [[ "${1:-}" =~ ^[A-Za-z0-9_-]{1,32}$ ]]; }
 
 read_env() {
   [ -f "$ENV_FILE" ] || die "尚未安装。请运行：sudo hy2 install"
-  set -a
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +a
+  local line key value
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [ -z "$line" ] && continue
+    case "$line" in
+      \#*) continue ;;
+    esac
+    case "$line" in
+      *=*) ;;
+      *) die "config.env 含非法行：$line" ;;
+    esac
+    key="${line%%=*}"
+    value="${line#*=}"
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "config.env 含非法键名：$key"
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done < "$ENV_FILE"
   HY2_PORT="${HY2_PORT:-443}"
   PANEL_PORT="${PANEL_PORT:-443}"
   STATS_PORT="${STATS_PORT:-9999}"
