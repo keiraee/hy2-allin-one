@@ -1,16 +1,25 @@
-# HY2 AIO v1.3.4
+# HY2 AIO
 
-一键部署 Hysteria 2 + 多用户订阅 + 轻量面板
+一键部署 Hysteria 2 + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
-稳定版见 [Releases](https://github.com/keiraee/hy2-allin-one/releases)；开发版跟踪 `main`（安装时设 `HY2_REPO_REF=main`）。
+**稳定版**见 [Releases](https://github.com/keiraee/hy2-allin-one/releases)（含版本说明与变更记录）。  
+跟踪最新开发版：`HY2_REPO_REF=main`。
 
 ## 快速开始
 
 ```bash
-# 下载并安装（建议核对 hy2.sh 的 SHA256 后再执行）
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.4/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.5/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
+
+## 已安装 · 升级
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.5/hy2.sh -o hy2.sh
+sudo bash hy2.sh repair
+```
+
+`repair` 会打回滚快照、更新模块与配置、重启面板后端；**不会重启 Hysteria**，现有连接一般不受影响。
 
 ## 使用方法
 
@@ -65,7 +74,8 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref | `v1.3.4` |
+| `HY2_REPO_REF` | 模块 Git ref | `v1.3.5` |
+| `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
 | `CADDY_VERSION` | Caddy 回退安装版本 | `v2.11.4` |
 
@@ -90,28 +100,9 @@ hy2-allin-one/
     └── hy2.sh          # 系统命令入口
 ```
 
-## 更新日志
+## 说明
 
-### v1.3.4
-- 安全加固：凭据不再写入 data.json/Web 备份；内部 API 鉴权；后端降权；供应链 checksum
-- 面板/订阅限流：后端按 IP 限速；Caddy 访问日志 + fail2ban 防 Basic Auth 暴力破解
-- 移除旧单体脚本 `hy2-aio-v1.2.0.sh`
-- 远程安装默认 pin `v1.3.4` 并用 `SHA256SUMS` 校验模块
-
-### v1.3.3
-- Clash 订阅新增 `keepalive: 30s`，客户端每 30 秒发送 QUIC PING 保活，解决部署在 AWS/GCP 等云平台时因 UDP 状态超时（~120s）导致的间歇性断连
-
-### v1.3.2
-- 修复 Clash 订阅中 `nameserver` 缩进错误，确保自定义 DNS 正常生效
-- 自动将 HY2 服务器公网 IPv4 排除出 TUN 路由，避免全局模式下连接自身形成回环和间歇性超时
-
-### v1.3.1
-- 前端支持给用户添加设备备注（如 iPhone 13、笔记本）
-- 前端支持直接禁用/启用用户，禁用后立即无法连接，数据保留
-- 禁用用户的订阅地址返回 403
-
-### v1.3.0
-- 重构为模块化架构
-- 新增交互式菜单
-- 命令简化为 `hy2`
-- 支持多种 Linux 发行版
+- **整机流量**：面板顶部为网卡计数，尽量对齐云厂商套餐；Clash 订阅进度与此同源。
+- **用户流量**：用户表为 HY2 代理分摊参考，各用户之和通常小于整机。
+- **凭据**：密码/订阅 token 不在 `data.json` 公开；面板内按需复制。
+- **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
