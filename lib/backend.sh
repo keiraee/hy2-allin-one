@@ -433,10 +433,23 @@ def write_users_csv(users: list[dict[str, Any]]) -> None:
     os.replace(temporary, USERS_CSV)
 
 
+HISTORY_MAX_BYTES = 5 * 1024 * 1024
+
+
+def rotate_history_if_needed() -> None:
+    if not HISTORY_CSV.exists() or HISTORY_CSV.stat().st_size < HISTORY_MAX_BYTES:
+        return
+    rotated = HISTORY_CSV.with_name("history.csv.1")
+    if rotated.exists():
+        rotated.unlink()
+    HISTORY_CSV.replace(rotated)
+
+
 def write_history(state: dict[str, Any], data: dict[str, Any]) -> None:
     now = time.time()
     if now - float(state.get("last_history", 0)) < 300:
         return
+    rotate_history_if_needed()
     exists = HISTORY_CSV.exists()
     with HISTORY_CSV.open("a", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
