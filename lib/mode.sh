@@ -178,8 +178,8 @@ temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="u
 os.replace(temporary, mode_path)
 PY
   then
-    rm -f "$backup"
-    die "速率模式写入失败"
+    # Keep the pre-change copy so operators can recover after a write failure.
+    die "速率模式写入失败（已保留备份：$backup）"
   fi
 
   chown root:hysteria "$MODE_FILE"
