@@ -211,6 +211,31 @@ caddy_auth_directive() {
   fi
 }
 
+caddyfile_has_legacy_hy2_site() {
+  local caddyfile="${1:-$CADDY_FILE}"
+  [ -f "$caddyfile" ] || return 1
+  DOMAIN="$DOMAIN" PANEL_PORT="${PANEL_PORT:-443}" WEB_DIR="$WEB_DIR" \
+    python3 - "$caddyfile" <<'PY'
+import os
+import re
+import sys
+from pathlib import Path
+
+caddyfile = Path(sys.argv[1])
+text = caddyfile.read_text(encoding="utf-8")
+web_dir = os.environ.get("WEB_DIR", "")
+if web_dir and web_dir in text:
+    raise SystemExit(0)
+
+domain = os.environ["DOMAIN"]
+port = str(os.environ.get("PANEL_PORT") or "443")
+domain_re = re.escape(domain)
+port_suffix = rf":{re.escape(port)}" if port else ""
+pattern = re.compile(rf"^{domain_re}(?:{port_suffix})?\s*\{{", re.MULTILINE)
+raise SystemExit(0 if pattern.search(text) else 1)
+PY
+}
+
 write_caddy() {
   local auth site_file marker
   panel_port_is_valid "${PANEL_PORT:-}" \
@@ -342,8 +367,7 @@ ${marker}
 EOF
   elif grep -Fq "$marker" "$CADDY_FILE"; then
     :
-  elif grep -Fq "$WEB_DIR" "$CADDY_FILE" \
-    || grep -Eq "^${DOMAIN}(:${PANEL_PORT})?[[:space:]]*\\{" "$CADDY_FILE"; then
+  elif caddyfile_has_legacy_hy2_site "$CADDY_FILE"; then
     # Replace legacy HY2 Caddyfile with import-based layout.
     cat > "$CADDY_FILE" <<EOF
 {
