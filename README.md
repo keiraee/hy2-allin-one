@@ -1,4 +1,4 @@
-# HY2 AIO v1.3.20
+# HY2 AIO v1.3.21
 
 一键部署 Hysteria 2 + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -8,7 +8,7 @@
 ## 快速开始
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.20/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.21/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -26,7 +26,7 @@ hy2 restart
 若本机还没有 `hy2 upgrade`（很旧的安装），先执行一次：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.20/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.21/hy2.sh -o hy2.sh
 sudo bash hy2.sh repair
 ```
 
@@ -89,7 +89,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref | `v1.3.20` |
+| `HY2_REPO_REF` | 模块 Git ref | `v1.3.21` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
 | `CADDY_VERSION` | Caddy 回退安装版本 | `v2.11.4` |
@@ -126,6 +126,19 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v1.3.21
+- 备份失败不再报成功；校验归档必含私钥等关键文件，去掉重复打包
+- fail2ban 按 Caddy JSON 访问日志匹配面板 401
+- 非 Debian 安装尊重系统包提供的 Caddy 路径与 unit
+- 管理面板强制 HTTPS，拒绝端口 80
+- 回滚快照补齐 Caddy 片段、reload unit 与 hy2 CLI；归档改到 root-only 目录并校验成员
+- 面板与 CLI 用户修改改为跨进程锁 + 失败回滚
+- 安装前检查面板/统计/后端端口冲突与真实占用
+- Caddy 旧站点检测改为域名字面量匹配，避免误覆盖近似站点
+- 卸载会清掉站点片段、reload unit、fail2ban 与 sysctl；`HY2_PURGE=1` 可删数据
+- `hy2 upgrade` 始终按 `HY2_REPO` / ref 拉远程模块，不再误用仓库旁边的旧 `lib/`
+- 用户流量改为增量统计，避免 Hysteria `clear=1` 后崩溃丢数；删用户同步清理模式与历史状态
 
 ### v1.3.20
 - 全面修正面板可写权限：/etc/hy2-aio=0770，/etc/hysteria=2770，config.yaml=0660
