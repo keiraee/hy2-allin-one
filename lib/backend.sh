@@ -254,14 +254,36 @@ def accumulate_user_traffic(user_state: dict[str, Any], raw: dict[str, Any]) -> 
     return tx, rx
 
 
-def hysteria_api(path: str, secret: str) -> Any:
+def is_transient_hysteria_error(error: BaseException) -> bool:
+    if isinstance(error, (ConnectionRefusedError, ConnectionResetError, TimeoutError)):
+        return True
+    if isinstance(error, OSError) and getattr(error, "errno", None) in {111, 61, 104, 110}:
+        return True
+    reason = getattr(error, "reason", None)
+    if reason is not None and reason is not error:
+        return is_transient_hysteria_error(reason)
+    text = str(error).lower()
+    return "connection refused" in text or "timed out" in text or "temporarily unavailable" in text
+
+
+def hysteria_api(path: str, secret: str, *, attempts: int = 10, delay: float = 0.3) -> Any:
     stats_port = load_env().get("STATS_PORT", "9999")
-    request = urllib.request.Request(
-        f"http://127.0.0.1:{stats_port}" + path,
-        headers={"Authorization": secret, "Accept": "application/json"},
-    )
-    with urllib.request.urlopen(request, timeout=5) as response:
-        return json.load(response)
+    url = f"http://127.0.0.1:{stats_port}" + path
+    last_error: Optional[BaseException] = None
+    for attempt in range(max(attempts, 1)):
+        request = urllib.request.Request(
+            url,
+            headers={"Authorization": secret, "Accept": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response:
+                return json.load(response)
+        except Exception as error:
+            last_error = error
+            if attempt + 1 >= attempts or not is_transient_hysteria_error(error):
+                raise
+            time.sleep(delay)
+    raise last_error or RuntimeError(f"Hysteria API 失败：{path}")
 
 
 def service_status(name: str) -> str:

@@ -49,11 +49,38 @@ logs_cmd() {
 
 restart_cmd() {
   need_root restart
+  read_env
   ensure_hysteria_config_perms
   systemctl daemon-reload
-  systemctl restart hysteria-server.service hy2-aio.service caddy.service
+  systemctl restart hysteria-server.service
+  wait_hysteria_stats_api
+  systemctl restart hy2-aio.service
+  systemctl restart caddy.service
   sleep 2
   status_cmd
+}
+
+wait_hysteria_stats_api() {
+  local port="${STATS_PORT:-9999}"
+  if python3 - "$port" <<'PY'
+import socket
+import sys
+import time
+
+port = int(sys.argv[1])
+deadline = time.time() + 5
+while time.time() < deadline:
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.4):
+            raise SystemExit(0)
+    except OSError:
+        time.sleep(0.2)
+raise SystemExit(1)
+PY
+  then
+    return 0
+  fi
+  warn "Hysteria 统计接口 127.0.0.1:${port} 暂未就绪，面板可能短暂无法读取流量"
 }
 
 update_cmd() {

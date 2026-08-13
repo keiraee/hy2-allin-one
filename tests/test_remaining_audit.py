@@ -1,8 +1,10 @@
+import io
 import json
 import os
 import tempfile
 import time
 import unittest
+import urllib.error
 from pathlib import Path
 from unittest import mock
 
@@ -201,6 +203,54 @@ ensure_low_memory_swap
             capture_output=True,
             check=False,
         )
+
+
+class HysteriaApiRetryTests(unittest.TestCase):
+    def setUp(self):
+        self.ns = load_backend_namespace()
+        self.ns["load_env"] = lambda: {"STATS_PORT": "9999"}
+
+    def test_retries_connection_refused_then_succeeds(self):
+        calls = {"n": 0}
+
+        def fake_urlopen(_request, timeout=5):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+            handle = io.BytesIO(b'{"user":{"tx":1,"rx":2}}')
+            return mock.Mock(
+                __enter__=lambda _self: handle,
+                __exit__=mock.Mock(return_value=False),
+            )
+
+        with mock.patch.object(self.ns["urllib"].request, "urlopen", fake_urlopen):
+            with mock.patch.object(self.ns["time"], "sleep"):
+                payload = self.ns["hysteria_api"]("/traffic", "secret")
+        self.assertEqual(3, calls["n"])
+        self.assertEqual({"user": {"tx": 1, "rx": 2}}, payload)
+
+    def test_does_not_retry_http_errors(self):
+        def fake_urlopen(_request, timeout=5):
+            raise urllib.error.HTTPError(
+                "http://127.0.0.1:9999/traffic", 401, "Unauthorized", hdrs=None, fp=None
+            )
+
+        with mock.patch.object(self.ns["urllib"].request, "urlopen", fake_urlopen):
+            with self.assertRaises(urllib.error.HTTPError):
+                self.ns["hysteria_api"]("/traffic", "secret", attempts=5, delay=0)
+
+    def test_restart_waits_for_stats_before_backend(self):
+        source = (ROOT / "lib" / "cli.sh").read_text(encoding="utf-8")
+        self.assertIn("wait_hysteria_stats_api", source)
+        self.assertNotIn(
+            "systemctl restart hysteria-server.service hy2-aio.service caddy.service",
+            source,
+        )
+        hysteria = source.index("systemctl restart hysteria-server.service")
+        wait = source.index("wait_hysteria_stats_api")
+        backend = source.index("systemctl restart hy2-aio.service")
+        self.assertLess(hysteria, wait)
+        self.assertLess(wait, backend)
 
 
 if __name__ == "__main__":
