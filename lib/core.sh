@@ -18,6 +18,8 @@ APP_FILE="${APP_DIR}/server.py"
 REBUILD_FILE="${APP_DIR}/rebuild_config.py"
 WEB_DIR="/var/www/hy2-aio"
 STATE_DIR="/var/lib/hy2-aio"
+ROLLBACK_DIR="/var/lib/hy2-aio-rollbacks"
+readonly ROLLBACK_DIR
 ACCESS_FILE="/root/hy2-aio-access.txt"
 CADDY_FILE="/etc/caddy/Caddyfile"
 CADDY_SITE_FILE="/etc/caddy/hy2-aio.caddy"
