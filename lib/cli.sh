@@ -208,15 +208,20 @@ menu_install_help() {
 }
 
 menu_upgrade() {
-  local hy2_bin="${SELF_INSTALL:-/usr/local/bin/hy2}"
+  local hy2_bin="${SELF_INSTALL:-/usr/local/bin/hy2}" bootstrap=""
   if [ -x "$hy2_bin" ]; then
     # 不用 exec，升级完还能回菜单
     "$hy2_bin" upgrade
     return $?
   fi
-  if declare -F resolve_latest_repo_ref >/dev/null 2>&1 && declare -F repair_cmd >/dev/null 2>&1; then
-    resolve_latest_repo_ref
-    repair_cmd
+  # Re-enter bootstrap so upgrade fetches remote modules instead of repairing this checkout.
+  if [ -f "${SCRIPT_DIR}/hy2.sh" ]; then
+    bootstrap="${SCRIPT_DIR}/hy2.sh"
+  elif [ -f "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/hy2.sh" ]; then
+    bootstrap="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/hy2.sh"
+  fi
+  if [ -n "$bootstrap" ]; then
+    bash "$bootstrap" upgrade
     return $?
   fi
   echo "请执行：hy2 upgrade"

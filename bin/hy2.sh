@@ -6,7 +6,8 @@ umask 077
 
 MODULES_DIR="/usr/local/lib/hy2-aio/modules"
 SCRIPT_DIR="$MODULES_DIR"
-REPO_SLUG="${HY2_REPO:-keiraee/hy2-allin-one}"
+DEFAULT_REPO_SLUG="keiraee/hy2-allin-one"
+REPO_SLUG="${HY2_REPO:-$DEFAULT_REPO_SLUG}"
 
 # 自更新：先拉最新引导脚本再 repair，不依赖本机旧模块里的逻辑
 if [ "${1:-}" = "upgrade" ]; then
@@ -15,15 +16,23 @@ if [ "${1:-}" = "upgrade" ]; then
   if [ -z "$ref" ] || [ "$ref" = "latest" ]; then
     ref="$(curl -fsSL "https://api.github.com/repos/${REPO_SLUG}/releases/latest" \
       | python3 -c 'import sys, json; print(json.load(sys.stdin)["tag_name"])')" \
-      || { printf '%s\n' "无法获取 latest release" >&2; exit 1; }
+      || { printf '%s\n' "无法获取 latest release（${REPO_SLUG}）" >&2; exit 1; }
   fi
-  printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "升级 HY2 AIO → ${ref}"
+  [ -n "$ref" ] || { printf '%s\n' "latest release 为空" >&2; exit 1; }
+  if [ -n "${HY2_REPO_URL:-}" ]; then
+    bootstrap_url="${HY2_REPO_URL%/}/hy2.sh"
+  else
+    bootstrap_url="https://raw.githubusercontent.com/${REPO_SLUG}/${ref}/hy2.sh"
+  fi
+  printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "升级来源：${REPO_SLUG} @ ${ref}"
+  printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "引导脚本：${bootstrap_url}"
   tmp="$(mktemp -d)"
   # shellcheck disable=SC2064
   trap 'rm -rf "$tmp"' EXIT
-  curl -fsSL "https://raw.githubusercontent.com/${REPO_SLUG}/${ref}/hy2.sh" -o "$tmp/hy2.sh" \
+  curl -fsSL "$bootstrap_url" -o "$tmp/hy2.sh" \
     || { printf '%s\n' "下载 hy2.sh 失败" >&2; exit 1; }
-  HY2_REPO_REF="$ref" bash "$tmp/hy2.sh" repair
+  HY2_REPO="$REPO_SLUG" HY2_REPO_REF="$ref" HY2_REPO_URL="${HY2_REPO_URL:-}" \
+    bash "$tmp/hy2.sh" repair
   exit $?
 fi
 
