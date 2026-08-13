@@ -82,7 +82,8 @@ tr.disabled td{opacity:.55}
 .notice{background:#fffbeb;border:1px solid #fde68a;color:#92400e;position:relative;padding-right:36px}
 .notice-close{position:absolute;top:6px;right:6px;width:28px;height:28px;border:0;border-radius:8px;
   background:transparent;cursor:pointer;font:inherit;color:#92400e}
-.error{background:#fef2f2;border:1px solid #fecaca;color:var(--bad)}
+.error{background:#fef2f2;border:1px solid #fecaca;color:var(--bad);position:relative;padding-right:36px}
+.error .notice-close{color:var(--bad)}
 .footer{margin-top:18px;font-size:12px;color:var(--muted)}
 .scrim{display:none;position:fixed;inset:0;background:rgba(15,23,42,.35);z-index:50}
 .scrim.open{display:block}
@@ -133,7 +134,10 @@ tr.disabled td{opacity:.55}
   </header>
 
   <main class="main">
-    <div id="error" class="error"></div>
+    <div id="error" class="error">
+      <button id="errorClose" class="notice-close" type="button" aria-label="关闭">×</button>
+      <span id="errorText"></span>
+    </div>
     <div id="notice" class="notice" role="note">
       <button id="noticeClose" class="notice-close" type="button" aria-label="关闭">×</button>
       套餐用量以「本月整机流量」为准（网卡本地计数，对齐云厂商限制）；Clash 订阅进度与此同步。用户表为 HY2 代理分摊参考。云厂商控制台仍是最终账单。
@@ -465,11 +469,13 @@ async function load(){
     $("disk").textContent=data.server.disk.percent+"%";$("uptime").textContent="运行 "+duration(data.server.uptime);
     renderServices(data.server.services);
     renderUsers(data.users);
-    $("error").classList.toggle("show",!!(data.errors&&data.errors.length));
-    $("error").textContent=(data.errors||[]).join("；");
+    $("errorText").textContent=(data.errors||[]).join("；");
+    const errorText=$("errorText").textContent;
+    const dismissed=(()=>{try{return localStorage.getItem(ERROR_KEY)}catch(e){return ""}})();
+    $("error").classList.toggle("show",!!errorText&&dismissed!==errorText);
   }catch(error){
+    $("errorText").textContent="读取失败："+error.message;
     $("error").classList.add("show");
-    $("error").textContent="读取失败："+error.message;
   }
 }
 
@@ -491,10 +497,15 @@ document.addEventListener("keydown",event=>{
   if(event.key==="Escape"){closeMenus();setDrawer(false);setNoteModal(false)}
 });
 const NOTICE_KEY="hy2-aio-notice-dismissed-v3";
+const ERROR_KEY="hy2-aio-error-dismissed";
 if(localStorage.getItem(NOTICE_KEY)!=="1")$("notice").classList.add("show");
 $("noticeClose").onclick=()=>{
   $("notice").classList.remove("show");
   try{localStorage.setItem(NOTICE_KEY,"1")}catch(e){}
+};
+$("errorClose").onclick=()=>{
+  $("error").classList.remove("show");
+  try{localStorage.setItem(ERROR_KEY,$("errorText").textContent)}catch(e){}
 };
 load();
 setInterval(load,60000);

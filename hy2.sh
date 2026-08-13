@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
 DEFAULT_REPO_SLUG="keiraee/hy2-allin-one"
 REPO_SLUG="${HY2_REPO:-$DEFAULT_REPO_SLUG}"
-REPO_REF="${HY2_REPO_REF:-v1.3.22}"
+REPO_REF="${HY2_REPO_REF:-v1.3.23}"
 
 apply_repo_url() {
   if [ -n "${HY2_REPO_URL:-}" ]; then
@@ -24,6 +24,36 @@ log_repo_source() {
   local label="${1:-来源}"
   _bootstrap_log "${label}：${REPO_SLUG} @ ${REPO_REF}"
   _bootstrap_log "模块地址：${REPO_URL}"
+}
+
+normalize_aio_version() {
+  local v="${1:-}"
+  v="${v#"${v%%[![:space:]]*}"}"
+  v="${v%"${v##*[![:space:]]}"}"
+  [ -n "$v" ] || { printf '%s' "未知"; return 0; }
+  case "$v" in
+    v*) printf '%s' "$v" ;;
+    [0-9]*) printf 'v%s' "$v" ;;
+    *) printf '%s' "$v" ;;
+  esac
+}
+
+read_installed_aio_version() {
+  local env_file="${1:-/etc/hy2-aio/config.env}" value=""
+  if [ -f "$env_file" ]; then
+    value="$(awk -F= '/^AIO_VERSION=/{gsub(/\r/,""); print $2; exit}' "$env_file" || true)"
+  fi
+  normalize_aio_version "$value"
+}
+
+log_upgrade_plan() {
+  local from to env_file="${1:-/etc/hy2-aio/config.env}"
+  [ "${HY2_UPGRADE_BANNER:-0}" = "1" ] && return 0
+  from="$(read_installed_aio_version "$env_file")"
+  to="$(normalize_aio_version "${REPO_REF:-}")"
+  _bootstrap_log "升级 ${from} → ${to}"
+  HY2_UPGRADE_BANNER=1
+  export HY2_UPGRADE_BANNER
 }
 
 apply_repo_url
@@ -122,18 +152,18 @@ resolve_latest_repo_ref() {
   [ -n "$tag" ] || _bootstrap_die "latest release 为空"
   REPO_REF="$tag"
   apply_repo_url
-  log_repo_source "目标版本"
 }
 
 resolve_upgrade_source() {
   REPO_SLUG="${HY2_REPO:-$DEFAULT_REPO_SLUG}"
   if [ -z "${HY2_REPO_REF:-}" ] || [ "${HY2_REPO_REF}" = "latest" ]; then
     resolve_latest_repo_ref
-    return
+  else
+    REPO_REF="$HY2_REPO_REF"
+    apply_repo_url
   fi
-  REPO_REF="$HY2_REPO_REF"
-  apply_repo_url
-  log_repo_source "升级来源"
+  log_upgrade_plan
+  log_repo_source "模块来源"
 }
 
 # upgrade always fetches remote modules. Other commands use a checkout's lib/ when present.
@@ -558,7 +588,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_RATE_LIMIT_API  面板 API 每 IP 每分钟次数，默认 120
   HY2_REPO            GitHub 仓库 slug，默认 keiraee/hy2-allin-one
   HY2_REPO_URL        模块下载地址（覆盖 raw 默认；fork 请优先用 HY2_REPO）
-  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.22；upgrade 空值=latest
+  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.23；upgrade 空值=latest
   HY2_YES             设为 1 跳过卸载确认
   HY2_PURGE           设为 1 时卸载并删除配置/数据
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
@@ -579,6 +609,9 @@ main() {
         resolve_upgrade_source
       else
         apply_repo_url
+        if [ "$command" = "repair" ]; then
+          log_upgrade_plan
+        fi
         log_repo_source "模块来源"
       fi
       tmp_dir="$(mktemp -d)"

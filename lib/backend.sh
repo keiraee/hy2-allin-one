@@ -42,14 +42,6 @@ STATE_DIR = Path("/var/lib/hy2-aio")
 STATE_FILE = STATE_DIR / "state.json"
 BACKUP_DIR = STATE_DIR / "backups"
 BACKUP_ROOT = Path("/")
-BACKUP_REQUIRED = (
-    "etc/hy2-aio",
-    "etc/hysteria/config.yaml",
-    "etc/hysteria/server.crt",
-    "etc/hysteria/server.key",
-    "etc/caddy/Caddyfile",
-    "usr/local/lib/hy2-aio",
-)
 BACKUP_REQUIRED_MEMBERS = (
     "etc/hy2-aio/config.env",
     "etc/hy2-aio/users.json",
@@ -62,6 +54,7 @@ BACKUP_REQUIRED_MEMBERS = (
     "usr/local/lib/hy2-aio/rebuild_config.py",
 )
 BACKUP_OPTIONAL = (
+    "etc/caddy/hy2-aio.caddy",
     "var/lib/hy2-aio/state.json",
     "var/www/hy2-aio/history.csv",
     "var/www/hy2-aio/users.csv",
@@ -78,6 +71,8 @@ LISTEN = (BACKEND_HOST, BACKEND_PORT)
 LOCK = threading.RLock()
 BACKUP_LOCK = threading.Lock()
 BACKUP_VALIDATED: dict[Path, tuple[int, int]] = {}
+LAST_BACKUP_ERROR: Optional[str] = None
+BACKUP_RETRY_AFTER = 0.0
 
 
 def load_env() -> dict[str, str]:
@@ -430,6 +425,7 @@ def blank_state(iface: str) -> dict[str, Any]:
 
 
 def collect(run_backup: bool = True) -> dict[str, Any]:
+    global LAST_BACKUP_ERROR, BACKUP_RETRY_AFTER
     with LOCK:
         env = load_env()
         users = load_users()
@@ -579,12 +575,20 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
         write_users_csv(output_users)
         write_history(state, data)
         if run_backup:
-            try:
-                create_backup()
-            except RuntimeError as error:
-                errors.append(f"backup: {error}")
+            now = time.time()
+            if now >= BACKUP_RETRY_AFTER:
+                try:
+                    create_backup()
+                    LAST_BACKUP_ERROR = None
+                    BACKUP_RETRY_AFTER = 0.0
+                except RuntimeError as error:
+                    LAST_BACKUP_ERROR = str(error)
+                    BACKUP_RETRY_AFTER = now + 3600
+                    print(f"[hy2-aio] automatic backup failed: {error}", flush=True)
+            if LAST_BACKUP_ERROR:
+                errors.append(f"backup: {LAST_BACKUP_ERROR}")
+                data["errors"] = errors
                 atomic_json(DATA_FILE, data)
-                print(f"[hy2-aio] automatic backup failed: {error}", flush=True)
         apply_web_permissions()
         return data
 
@@ -647,6 +651,44 @@ def write_history(state: dict[str, Any], data: dict[str, Any]) -> None:
     atomic_json(STATE_FILE, state)
 
 
+def tar_error_message(stderr: str, returncode: int) -> str:
+    lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
+    useful = [line for line in lines if "Exiting with failure status" not in line]
+    chosen = useful[-3:] if useful else lines[-2:]
+    if chosen:
+        return "；".join(chosen)
+    return f"tar 退出码 {returncode}"
+
+
+def backup_member_readable(relative: str) -> bool:
+    path = BACKUP_ROOT / relative
+    try:
+        return path.is_file() and os.access(path, os.R_OK)
+    except OSError:
+        return False
+
+
+def backup_include_list() -> list[str]:
+    missing = [
+        relative for relative in BACKUP_REQUIRED_MEMBERS
+        if not (BACKUP_ROOT / relative).exists()
+    ]
+    if missing:
+        raise RuntimeError(f"备份缺少必需路径：{', '.join(missing)}")
+    unreadable = [
+        relative for relative in BACKUP_REQUIRED_MEMBERS
+        if not backup_member_readable(relative)
+    ]
+    if unreadable:
+        raise RuntimeError(f"备份无法读取必需文件：{', '.join(unreadable)}")
+    include = list(BACKUP_REQUIRED_MEMBERS)
+    include.extend(
+        relative for relative in BACKUP_OPTIONAL
+        if backup_member_readable(relative)
+    )
+    return include
+
+
 def validate_backup_archive(path: Path) -> None:
     try:
         with tarfile.open(path, "r:gz") as archive:
@@ -694,18 +736,7 @@ def create_backup(force: bool = False) -> Optional[Path]:
                     create = True
 
         if create:
-            missing = [
-                relative for relative in BACKUP_REQUIRED_MEMBERS
-                if not (BACKUP_ROOT / relative).exists()
-            ]
-            if missing:
-                raise RuntimeError(f"备份缺少必需路径：{', '.join(missing)}")
-
-            include = list(BACKUP_REQUIRED)
-            include.extend(
-                relative for relative in BACKUP_OPTIONAL
-                if (BACKUP_ROOT / relative).exists()
-            )
+            include = backup_include_list()
             temporary = Path(str(backup) + ".tmp")
             try:
                 result = subprocess.run(
@@ -716,9 +747,19 @@ def create_backup(force: bool = False) -> Optional[Path]:
                     check=False,
                 )
                 if result.returncode != 0:
-                    detail = result.stderr.strip().splitlines()
-                    message = detail[-1] if detail else f"tar 退出码 {result.returncode}"
-                    raise RuntimeError(f"备份创建失败：{message}")
+                    message = tar_error_message(result.stderr, result.returncode)
+                    archive_ok = (
+                        result.returncode == 1
+                        and temporary.exists()
+                        and temporary.stat().st_size > 0
+                    )
+                    if archive_ok:
+                        try:
+                            validate_backup_archive(temporary)
+                        except RuntimeError as error:
+                            raise RuntimeError(f"备份创建失败：{message}") from error
+                    else:
+                        raise RuntimeError(f"备份创建失败：{message}")
                 if not temporary.exists() or temporary.stat().st_size == 0:
                     raise RuntimeError("备份创建失败：未生成有效归档")
                 validate_backup_archive(temporary)

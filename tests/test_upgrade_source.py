@@ -1,4 +1,5 @@
 import os
+import re
 import shlex
 import subprocess
 import tempfile
@@ -7,6 +8,17 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def log_messages(stdout: str) -> list[str]:
+    lines = []
+    for raw in stdout.strip().splitlines():
+        line = ANSI.sub("", raw)
+        if "] " in line:
+            line = line.split("] ", 1)[1]
+        lines.append(line)
+    return lines
 
 
 def run_bash(script: str, *, env=None, cwd=ROOT) -> subprocess.CompletedProcess:
@@ -179,6 +191,50 @@ bash bin/hy2.sh upgrade
             self.assertIn("alice/hy2-fork", trace_text)
             self.assertIn("v9.9.9/hy2.sh", trace_text)
             self.assertNotIn("keiraee/hy2-allin-one", trace_text)
+            self.assertIn("升级 未知 → v9.9.9", result.stdout)
+
+    def test_upgrade_banner_uses_installed_version_to_target(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "tests") as tmp:
+            env_file = Path(tmp) / "config.env"
+            env_file.write_text("AIO_VERSION=1.3.21\n", encoding="utf-8")
+            result = run_bash(
+                f"""
+set -Eeuo pipefail
+source ./hy2.sh
+REPO_REF=v1.3.22
+printf '%s\\n' "$(normalize_aio_version 1.3.21)"
+printf '%s\\n' "$(normalize_aio_version v1.3.22)"
+printf '%s\\n' "$(normalize_aio_version main)"
+printf '%s\\n' "$(normalize_aio_version '')"
+printf '%s\\n' "$(read_installed_aio_version {shlex.quote(str(env_file))})"
+log_upgrade_plan {shlex.quote(str(env_file))}
+HY2_UPGRADE_BANNER=1
+log_upgrade_plan {shlex.quote(str(env_file))}
+"""
+            )
+            self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+            self.assertEqual(
+                ["v1.3.21", "v1.3.22", "main", "未知", "v1.3.21", "升级 v1.3.21 → v1.3.22"],
+                log_messages(result.stdout),
+            )
+
+    def test_pinned_upgrade_source_logs_version_then_module_origin(self):
+        result = run_bash(
+            """
+set -Eeuo pipefail
+source ./hy2.sh
+HY2_REPO=alice/hy2-fork
+HY2_REPO_REF=v9.9.9
+unset HY2_REPO_URL
+unset HY2_UPGRADE_BANNER
+resolve_upgrade_source
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        messages = log_messages(result.stdout)
+        self.assertEqual("升级 未知 → v9.9.9", messages[0])
+        self.assertEqual("模块来源：alice/hy2-fork @ v9.9.9", messages[1])
+        self.assertTrue(messages[2].startswith("模块地址："))
 
 
 if __name__ == "__main__":

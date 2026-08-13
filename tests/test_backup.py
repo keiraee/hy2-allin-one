@@ -80,7 +80,10 @@ class BackupTests(unittest.TestCase):
             command.extend(args)
             return SimpleNamespace(
                 returncode=2,
-                stderr="tar: etc/hysteria/server.key: Cannot open: Permission denied",
+                stderr=(
+                    "tar: etc/hysteria/server.key: Cannot open: Permission denied\n"
+                    "tar: Exiting with failure status due to previous errors\n"
+                ),
             )
 
         with mock.patch.object(self.namespace["subprocess"], "run", permission_denied):
@@ -88,7 +91,54 @@ class BackupTests(unittest.TestCase):
                 self.namespace["create_backup"](force=True)
 
         self.assertNotIn("--ignore-failed-read", command)
+        self.assertNotIn("etc/hy2-aio", command)
+        self.assertIn("etc/hy2-aio/config.env", command)
         self.assertEqual([], list(self.namespace["BACKUP_DIR"].glob("*")))
+
+    def test_tar_error_message_prefers_real_cause_over_generic_footer(self):
+        message = self.namespace["tar_error_message"](
+            "tar: etc/caddy/Caddyfile: Cannot open: Permission denied\n"
+            "tar: Exiting with failure status due to previous errors\n",
+            2,
+        )
+        self.assertIn("Permission denied", message)
+        self.assertNotIn("Exiting with failure status", message)
+
+    def test_leftover_unreadable_file_in_config_dir_is_not_packed(self):
+        leftover = self.root / "etc/hy2-aio/root-only.secret"
+        leftover.write_text("secret\n", encoding="utf-8")
+        backup = self.namespace["create_backup"](force=True)
+        with tarfile.open(backup, "r:gz") as archive:
+            members = set(archive.getnames())
+        self.assertIn("etc/hy2-aio/config.env", members)
+        self.assertNotIn("etc/hy2-aio/root-only.secret", members)
+        self.assertNotIn("etc/hy2-aio", members)
+
+    def test_tar_exit_1_is_accepted_when_archive_validates(self):
+        def write_archive_and_warn(args, **_kwargs):
+            destination = Path(args[2])
+            with tarfile.open(destination, "w:gz") as archive:
+                for relative in self.namespace["BACKUP_REQUIRED_MEMBERS"]:
+                    archive.add(self.root / relative, arcname=relative)
+            return SimpleNamespace(
+                returncode=1,
+                stderr=(
+                    "tar: var/lib/hy2-aio/state.json: file changed as we read it\n"
+                    "tar: Exiting with failure status due to previous errors\n"
+                ),
+            )
+
+        with mock.patch.object(self.namespace["subprocess"], "run", write_archive_and_warn):
+            backup = self.namespace["create_backup"](force=True)
+        self.assertTrue(backup.exists())
+        with tarfile.open(backup, "r:gz") as archive:
+            self.assertIn("etc/hysteria/server.key", archive.getnames())
+
+    def test_panel_error_banner_can_be_dismissed(self):
+        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        self.assertIn('id="errorClose"', panel)
+        self.assertIn("hy2-aio-error-dismissed", panel)
+        self.assertIn("$(\"errorClose\").onclick", panel)
 
     def test_unchanged_daily_backup_is_not_revalidated_every_minute(self):
         backup = self.namespace["create_backup"]()
@@ -149,6 +199,7 @@ class BackupTests(unittest.TestCase):
         self.assertIn('chown hysteria:hysteria "$HYSTERIA_CERT" "$HYSTERIA_KEY"', cert)
         self.assertIn('chmod 0640 "$HYSTERIA_KEY"', cert)
         self.assertIn("SupplementaryGroups=hysteria caddy", systemd)
+        self.assertIn("ReadOnlyPaths=/usr/local/lib/hy2-aio -/etc/caddy", systemd)
 
 
 if __name__ == "__main__":

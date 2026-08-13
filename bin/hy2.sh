@@ -24,7 +24,22 @@ if [ "${1:-}" = "upgrade" ]; then
   else
     bootstrap_url="https://raw.githubusercontent.com/${REPO_SLUG}/${ref}/hy2.sh"
   fi
-  printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "升级来源：${REPO_SLUG} @ ${ref}"
+  current="未知"
+  if [ -f /etc/hy2-aio/config.env ]; then
+    current="$(awk -F= '/^AIO_VERSION=/{gsub(/\r/,""); print $2; exit}' /etc/hy2-aio/config.env || true)"
+    [ -n "$current" ] || current="未知"
+  fi
+  case "$current" in
+    未知) ;;
+    v*) ;;
+    [0-9]*) current="v${current}" ;;
+  esac
+  target="$ref"
+  case "$target" in
+    v*) ;;
+    [0-9]*) target="v${target}" ;;
+  esac
+  printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "升级 ${current} → ${target}"
   printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "引导脚本：${bootstrap_url}"
   tmp="$(mktemp -d)"
   # shellcheck disable=SC2064
@@ -32,6 +47,7 @@ if [ "${1:-}" = "upgrade" ]; then
   curl -fsSL "$bootstrap_url" -o "$tmp/hy2.sh" \
     || { printf '%s\n' "下载 hy2.sh 失败" >&2; exit 1; }
   HY2_REPO="$REPO_SLUG" HY2_REPO_REF="$ref" HY2_REPO_URL="${HY2_REPO_URL:-}" \
+    HY2_UPGRADE_BANNER=1 \
     bash "$tmp/hy2.sh" repair
   exit $?
 fi

@@ -141,7 +141,7 @@ RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 LockPersonality=true
 SystemCallArchitectures=native
 ReadWritePaths=/etc/hy2-aio /var/lib/hy2-aio /var/www/hy2-aio /etc/hysteria /run/hy2-aio
-ReadOnlyPaths=/usr/local/lib/hy2-aio
+ReadOnlyPaths=/usr/local/lib/hy2-aio -/etc/caddy
 
 [Install]
 WantedBy=multi-user.target

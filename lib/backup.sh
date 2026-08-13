@@ -179,6 +179,8 @@ rollback_cmd() {
 repair_cmd() {
   need_root repair
   read_env
+  local from_version="${AIO_VERSION:-未知}"
+  from_version="${from_version#v}"
   log "回滚快照：$(snapshot_before_change)"
 
   log "升级/修复 HY2 AIO 管理组件"
@@ -276,7 +278,14 @@ PY
   api_post sync >/dev/null || true
   write_access_file
 
-  log "HY2 AIO 已升级到 v${SCRIPT_VERSION}"
+  local to_version="${SCRIPT_VERSION#v}"
+  if [ "$from_version" = "未知" ]; then
+    log "已升级到 v${to_version}"
+  elif [ "$from_version" = "$to_version" ]; then
+    log "已修复，版本仍为 v${to_version}"
+  else
+    log "已从 v${from_version} 升级到 v${to_version}"
+  fi
   log "已写入 QUIC 保活与混淆开关到配置；Hysteria 未自动重启"
   log "使配置生效：hy2 restart   （或 hy2 obfs on|off）"
   echo "运行速率模式菜单：hy2 mode"

@@ -3,7 +3,7 @@
 
 set -Eeuo pipefail
 
-SCRIPT_VERSION="1.3.22"
+SCRIPT_VERSION="1.3.23"
 AIO_VERSION="$SCRIPT_VERSION"
 CONFIG_DIR="/etc/hy2-aio"
 HYSTERIA_DIR="/etc/hysteria"
