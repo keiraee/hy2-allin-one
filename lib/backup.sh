@@ -1,12 +1,32 @@
 #!/usr/bin/env bash
 # backup.sh - 备份、恢复、回滚
 
+rollback_artifacts() {
+  printf '%s\n' \
+    "$CONFIG_DIR" \
+    "$HYSTERIA_DIR" \
+    "$APP_DIR" \
+    "$WEB_DIR" \
+    "$CADDY_FILE" \
+    "$CADDY_SITE_FILE" \
+    "$SERVICE_FILE" \
+    "$HYSTERIA_SERVICE_FILE" \
+    "$RELOAD_PATH_FILE" \
+    "$RELOAD_SERVICE_FILE" \
+    "$SELF_INSTALL" \
+    "$SELF_INSTALL_SBIN"
+}
+
 snapshot_before_change() {
   install -d -m 0700 "$STATE_DIR/rollbacks"
-  local snapshot="$STATE_DIR/rollbacks/hy2-before-$(date +%Y%m%d-%H%M%S).tar.gz"
-  tar -czf "$snapshot" --ignore-failed-read \
-    "$CONFIG_DIR" /etc/hysteria "$APP_DIR" "$WEB_DIR" "$CADDY_FILE" \
-    "$SERVICE_FILE" /etc/systemd/system/hysteria-server.service
+  local snapshot="$STATE_DIR/rollbacks/hy2-before-$(date +%Y%m%d-%H%M%S).tar.gz" artifact
+  local artifacts=()
+  while IFS= read -r artifact; do
+    [ -e "$artifact" ] || [ -L "$artifact" ] || continue
+    artifacts+=("$artifact")
+  done < <(rollback_artifacts)
+  [ "${#artifacts[@]}" -gt 0 ] || die "没有可写入回滚快照的安装产物"
+  tar -czf "$snapshot" --ignore-failed-read -- "${artifacts[@]}"
   chmod 600 "$snapshot"
   # Keep only the newest 10 rollback snapshots.
   local old
@@ -31,6 +51,8 @@ rollback_cmd() {
   [ "$choice" = "0" ] || return 0
   tar -xzf "$snapshot" -C /
   systemctl daemon-reload
+  systemctl enable hy2-aio-reload-hysteria.path >/dev/null || true
+  systemctl restart hy2-aio-reload-hysteria.path || true
   systemctl restart hysteria-server.service hy2-aio.service caddy.service || true
   log "回滚完成"
 }

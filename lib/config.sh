@@ -137,7 +137,7 @@ ReadOnlyPaths=/usr/local/lib/hy2-aio
 WantedBy=multi-user.target
 EOF
 
-  cat > /etc/systemd/system/hy2-aio-reload-hysteria.path <<'EOF'
+  cat > "$RELOAD_PATH_FILE" <<'EOF'
 [Unit]
 Description=Watch HY2 AIO request to reload Hysteria
 
@@ -149,7 +149,7 @@ Unit=hy2-aio-reload-hysteria.service
 WantedBy=multi-user.target
 EOF
 
-  cat > /etc/systemd/system/hy2-aio-reload-hysteria.service <<'EOF'
+  cat > "$RELOAD_SERVICE_FILE" <<'EOF'
 [Unit]
 Description=Restart hysteria-server for HY2 AIO
 After=hysteria-server.service
@@ -206,7 +206,7 @@ write_caddy() {
   panel_port_is_valid "${PANEL_PORT:-}" \
     || die "面板端口 ${PANEL_PORT:-<empty>} 无效或不安全；管理面板仅支持 HTTPS，禁止使用 80"
   auth="$(caddy_auth_directive)"
-  site_file="/etc/caddy/hy2-aio.caddy"
+  site_file="$CADDY_SITE_FILE"
   marker="import ${site_file}"
   install -d -m 0755 /etc/caddy
   install -d -o caddy -g caddy -m 0750 /var/log/caddy
