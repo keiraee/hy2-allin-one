@@ -160,8 +160,8 @@ install_stack() {
   echo
   echo "[3/6] 面板端口"
   PANEL_PORT="${HY2_PANEL_PORT:-$(prompt_panel_port)}"
-  [[ "$PANEL_PORT" =~ ^[0-9]+$ ]] && [ "$PANEL_PORT" -ge 1 ] && [ "$PANEL_PORT" -le 65535 ] \
-    || die "面板端口无效：${PANEL_PORT}"
+  panel_port_is_valid "$PANEL_PORT" \
+    || die "面板端口 ${PANEL_PORT} 无效或不安全；管理面板仅支持 HTTPS，禁止使用 80"
   STATS_PORT="${HY2_STATS_PORT:-$(prompt_stats_port)}"
 
   NETWORK_INTERFACE="${HY2_INTERFACE:-$(detect_iface)}"

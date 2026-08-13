@@ -93,6 +93,13 @@ detect_platform() {
 
 rand_hex() { openssl rand -hex "${1:-16}"; }
 valid_name() { [[ "${1:-}" =~ ^[A-Za-z0-9_-]{1,32}$ ]]; }
+panel_port_is_valid() {
+  local value="${1:-}"
+  [[ "$value" =~ ^[0-9]+$ ]] \
+    && [ "$value" -ge 1 ] \
+    && [ "$value" -le 65535 ] \
+    && [ "$value" -ne 80 ]
+}
 
 read_env() {
   [ -f "$ENV_FILE" ] || die "尚未安装。请以 root 运行：bash hy2.sh install"
@@ -116,6 +123,8 @@ read_env() {
   done < "$ENV_FILE"
   HY2_PORT="${HY2_PORT:-443}"
   PANEL_PORT="${PANEL_PORT:-443}"
+  panel_port_is_valid "$PANEL_PORT" \
+    || die "面板端口 ${PANEL_PORT} 无效或不安全；管理面板仅支持 HTTPS，禁止使用 80"
   STATS_PORT="${STATS_PORT:-9999}"
   OBFS_ENABLED="${OBFS_ENABLED:-true}"
   QUIC_KEEP_ALIVE_PERIOD="${QUIC_KEEP_ALIVE_PERIOD:-5s}"
@@ -185,6 +194,11 @@ prompt_panel_port() {
       value=""
       continue
     }
+    if [ "$value" -eq 80 ]; then
+      warn "管理面板仅支持 HTTPS，不能使用端口 80"
+      value=""
+      continue
+    fi
     if tcp_port_is_used "$value"; then
       warn "TCP 端口 $value 已被占用，请换一个"
       value=""

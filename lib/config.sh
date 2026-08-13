@@ -203,6 +203,8 @@ caddy_auth_directive() {
 
 write_caddy() {
   local auth site_file marker
+  panel_port_is_valid "${PANEL_PORT:-}" \
+    || die "面板端口 ${PANEL_PORT:-<empty>} 无效或不安全；管理面板仅支持 HTTPS，禁止使用 80"
   auth="$(caddy_auth_directive)"
   site_file="/etc/caddy/hy2-aio.caddy"
   marker="import ${site_file}"
@@ -242,10 +244,7 @@ password_hash = subprocess.check_output(
 ).strip()
 
 port = str(port or "443")
-if port == "80":
-    # Explicit HTTP only on port 80.
-    site_addr = f"http://{domain}"
-elif port == "443":
+if port == "443":
     site_addr = domain
 else:
     # Custom panel port: enable Caddy auto HTTPS (same as pre-v1.3.4 behavior).
