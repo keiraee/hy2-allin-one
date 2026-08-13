@@ -20,14 +20,23 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import tempfile
 from typing import Any, Optional
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - production is Linux; keeps local Windows checks usable.
+    fcntl = None
 
 ENV_FILE = Path("/etc/hy2-aio/config.env")
 USERS_FILE = Path("/etc/hy2-aio/users.json")
+USER_MUTATION_LOCK = Path("/etc/hy2-aio/.users.lock")
 MODE_FILE = Path("/etc/hy2-aio/client-mode.json")
+HYSTERIA_CONFIG = Path("/etc/hysteria/config.yaml")
 STATE_DIR = Path("/var/lib/hy2-aio")
 STATE_FILE = STATE_DIR / "state.json"
 BACKUP_DIR = STATE_DIR / "backups"
@@ -131,11 +140,47 @@ def mode_label(mode: dict[str, Any]) -> str:
     return f"Brutal ↑{up:g} / ↓{down:g} Mbps"
 
 
-def atomic_json(path: Path, data: Any) -> None:
+def atomic_bytes(path: Path, data: bytes, mode: Optional[int] = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(temporary, path)
+    if mode is None:
+        try:
+            mode = path.stat().st_mode & 0o777
+        except FileNotFoundError:
+            mode = 0o644
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as file:
+            file.write(data)
+            file.flush()
+            os.fsync(file.fileno())
+        os.chmod(temporary, mode)
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def atomic_json(path: Path, data: Any) -> None:
+    content = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+    atomic_bytes(path, content)
+
+
+@contextmanager
+def user_mutation_lock():
+    """Coordinate panel mutations with root CLI processes."""
+    USER_MUTATION_LOCK.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(USER_MUTATION_LOCK, os.O_CREAT | os.O_RDWR, 0o660)
+    try:
+        os.chmod(USER_MUTATION_LOCK, 0o660)
+        if fcntl is not None:
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        if fcntl is not None:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
 
 
 def assert_writable_dir(path: Path, label: str) -> None:
@@ -698,9 +743,12 @@ USERNAME_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,32}")
 
 def mutate_users(mutator) -> dict[str, Any]:
     """修改 users.json 并重建 Hysteria；失败时回滚。"""
-    with LOCK:
+    with LOCK, user_mutation_lock():
         users = load_users()
-        backup = json.dumps(users, ensure_ascii=False, indent=2)
+        users_backup = USERS_FILE.read_bytes()
+        users_mode = USERS_FILE.stat().st_mode & 0o777
+        config_backup = HYSTERIA_CONFIG.read_bytes()
+        config_mode = HYSTERIA_CONFIG.stat().st_mode & 0o777
         try:
             mutator(users)
         except ValueError:
@@ -716,8 +764,8 @@ def mutate_users(mutator) -> dict[str, Any]:
                 raise RuntimeError(result.stderr.strip() or "rebuild_config.py 执行失败")
             restart_hysteria()
         except Exception:
-            atomic_json(USERS_FILE, json.loads(backup))
-            subprocess.run([str(REBUILD_FILE)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            atomic_bytes(USERS_FILE, users_backup, users_mode)
+            atomic_bytes(HYSTERIA_CONFIG, config_backup, config_mode)
             try:
                 restart_hysteria()
             except Exception:

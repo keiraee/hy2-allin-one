@@ -7,6 +7,7 @@ write_rebuild_helper() {
 #!/usr/bin/env python3
 import json
 import os
+import tempfile
 from pathlib import Path
 
 ENV_FILE = Path("/etc/hy2-aio/config.env")
@@ -78,10 +79,19 @@ lines.extend([
     "",
 ])
 
-temporary = OUT_FILE.with_suffix(".tmp")
-temporary.write_text("\n".join(lines), encoding="utf-8")
-os.chmod(temporary, 0o660)
-os.replace(temporary, OUT_FILE)
+descriptor, temporary_name = tempfile.mkstemp(
+    prefix=f".{OUT_FILE.name}.", suffix=".tmp", dir=OUT_FILE.parent
+)
+temporary = Path(temporary_name)
+try:
+    with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+        file.write("\n".join(lines))
+        file.flush()
+        os.fsync(file.fileno())
+    os.chmod(temporary, 0o660)
+    os.replace(temporary, OUT_FILE)
+finally:
+    temporary.unlink(missing_ok=True)
 os.chmod(OUT_FILE, 0o660)
 # hy2-aio may rewrite this file; ensure hysteria can still read it.
 try:

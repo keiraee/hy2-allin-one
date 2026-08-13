@@ -9,6 +9,8 @@ CONFIG_DIR="/etc/hy2-aio"
 HYSTERIA_DIR="/etc/hysteria"
 ENV_FILE="${CONFIG_DIR}/config.env"
 USERS_FILE="${CONFIG_DIR}/users.json"
+USER_MUTATION_LOCK="${CONFIG_DIR}/.users.lock"
+readonly USER_MUTATION_LOCK
 MODE_FILE="${CONFIG_DIR}/client-mode.json"
 HYSTERIA_CONFIG="/etc/hysteria/config.yaml"
 HYSTERIA_CERT="/etc/hysteria/server.crt"
@@ -58,6 +60,9 @@ ensure_hysteria_config_perms() {
   install -d -o root -g hy2-aio -m 0770 "$CONFIG_DIR" 2>/dev/null || true
   chown root:hy2-aio "$CONFIG_DIR" 2>/dev/null || true
   chmod 0770 "$CONFIG_DIR" 2>/dev/null || true
+  touch "$USER_MUTATION_LOCK" 2>/dev/null || true
+  chown hy2-aio:hy2-aio "$USER_MUTATION_LOCK" 2>/dev/null || true
+  chmod 0660 "$USER_MUTATION_LOCK" 2>/dev/null || true
   if [ -f "$USERS_FILE" ]; then
     chown hy2-aio:hy2-aio "$USERS_FILE" 2>/dev/null || true
     chmod 0640 "$USERS_FILE" 2>/dev/null || true

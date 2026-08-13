@@ -4,7 +4,7 @@
 generate_users() {
   local count="$1"
   python3 - "$count" "$USERS_FILE" <<'PY'
-import json, os, secrets, sys
+import json, os, secrets, sys, tempfile
 count = int(sys.argv[1])
 path = sys.argv[2]
 users = {}
@@ -15,125 +15,125 @@ for index in range(1, count + 1):
         "note": "",
         "disabled": False,
     }
-temporary = path + ".tmp"
-with open(temporary, "w", encoding="utf-8") as file:
-    json.dump(users, file, ensure_ascii=False, indent=2)
-os.replace(temporary, path)
+descriptor, temporary = tempfile.mkstemp(prefix=".users.json.", suffix=".tmp", dir=os.path.dirname(path))
+try:
+    with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+        json.dump(users, file, ensure_ascii=False, indent=2)
+        file.flush()
+        os.fsync(file.fileno())
+    os.replace(temporary, path)
+finally:
+    try:
+        os.unlink(temporary)
+    except FileNotFoundError:
+        pass
 PY
   chmod 0640 "$USERS_FILE"
   chown hy2-aio:hy2-aio "$USERS_FILE"
+}
+
+mutate_user_json() {
+  local action="$1" username="$2" value="${3:-}"
+  python3 - "$USERS_FILE" "$action" "$username" "$value" <<'PY'
+import json, os, secrets, sys, tempfile
+
+path, action, username, value = sys.argv[1:]
+with open(path, "r", encoding="utf-8") as file:
+    users = json.load(file)
+
+if action == "add-user":
+    if username in users:
+        raise SystemExit("用户已存在")
+    users[username] = {
+        "password": secrets.token_hex(16),
+        "token": secrets.token_hex(24),
+        "note": "",
+        "disabled": False,
+    }
+elif action == "remove-user":
+    if username not in users:
+        raise SystemExit("用户不存在")
+    if len(users) <= 1:
+        raise SystemExit("不能删除最后一个用户")
+    del users[username]
+elif action == "rotate-user":
+    if username not in users:
+        raise SystemExit("用户不存在")
+    users[username]["password"] = secrets.token_hex(16)
+    users[username]["token"] = secrets.token_hex(24)
+elif action == "note":
+    if len(value) > 100:
+        raise SystemExit("备注最长 100 字符")
+    if username not in users:
+        raise SystemExit("用户不存在")
+    users[username]["note"] = value
+elif action in ("disable", "enable"):
+    if username not in users:
+        raise SystemExit("用户不存在")
+    users[username]["disabled"] = action == "disable"
+else:
+    raise SystemExit(f"未知用户操作：{action}")
+
+directory = os.path.dirname(path)
+descriptor, temporary = tempfile.mkstemp(prefix=".users.json.", suffix=".tmp", dir=directory)
+try:
+    with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+        json.dump(users, file, ensure_ascii=False, indent=2)
+        file.flush()
+        os.fsync(file.fileno())
+    os.chmod(temporary, 0o640)
+    os.replace(temporary, path)
+finally:
+    try:
+        os.unlink(temporary)
+    except FileNotFoundError:
+        pass
+PY
 }
 
 modify_user() {
   local action="$1" username="${2:-}"
+  local value="${3:-}" user_lock_fd users_backup config_backup failure=""
   need_root "$action"
   read_env
   valid_name "$username" || die "用户名仅允许字母、数字、下划线、短横线，长度 1-32"
 
-  cp "$USERS_FILE" "${USERS_FILE}.bak"
-  case "$action" in
-    add-user)
-      python3 - "$USERS_FILE" "$username" <<'PY'
-import json, os, secrets, sys
-path, username = sys.argv[1:]
-with open(path, "r", encoding="utf-8") as file:
-    users = json.load(file)
-if username in users:
-    raise SystemExit("用户已存在")
-users[username] = {
-    "password": secrets.token_hex(16),
-    "token": secrets.token_hex(24),
-    "note": "",
-    "disabled": False,
-}
-temporary = path + ".tmp"
-with open(temporary, "w", encoding="utf-8") as file:
-    json.dump(users, file, ensure_ascii=False, indent=2)
-os.replace(temporary, path)
-PY
-      ;;
-    remove-user)
-      python3 - "$USERS_FILE" "$username" <<'PY'
-import json, os, sys
-path, username = sys.argv[1:]
-with open(path, "r", encoding="utf-8") as file:
-    users = json.load(file)
-if username not in users:
-    raise SystemExit("用户不存在")
-if len(users) <= 1:
-    raise SystemExit("不能删除最后一个用户")
-del users[username]
-temporary = path + ".tmp"
-with open(temporary, "w", encoding="utf-8") as file:
-    json.dump(users, file, ensure_ascii=False, indent=2)
-os.replace(temporary, path)
-PY
-      ;;
-    rotate-user)
-      python3 - "$USERS_FILE" "$username" <<'PY'
-import json, os, secrets, sys
-path, username = sys.argv[1:]
-with open(path, "r", encoding="utf-8") as file:
-    users = json.load(file)
-if username not in users:
-    raise SystemExit("用户不存在")
-users[username]["password"] = secrets.token_hex(16)
-users[username]["token"] = secrets.token_hex(24)
-temporary = path + ".tmp"
-with open(temporary, "w", encoding="utf-8") as file:
-    json.dump(users, file, ensure_ascii=False, indent=2)
-os.replace(temporary, path)
-PY
-      ;;
-    note)
-      python3 - "$USERS_FILE" "$username" "${3:-}" <<'PY'
-import json, os, sys
-path, username, note = sys.argv[1:]
-if len(note) > 100:
-    raise SystemExit("备注最长 100 字符")
-with open(path, "r", encoding="utf-8") as file:
-    users = json.load(file)
-if username not in users:
-    raise SystemExit("用户不存在")
-users[username]["note"] = note
-temporary = path + ".tmp"
-with open(temporary, "w", encoding="utf-8") as file:
-    json.dump(users, file, ensure_ascii=False, indent=2)
-os.replace(temporary, path)
-PY
-      ;;
-    disable|enable)
-      python3 - "$USERS_FILE" "$username" "$action" <<'PY'
-import json, os, sys
-path, username, action = sys.argv[1:]
-with open(path, "r", encoding="utf-8") as file:
-    users = json.load(file)
-if username not in users:
-    raise SystemExit("用户不存在")
-users[username]["disabled"] = action == "disable"
-temporary = path + ".tmp"
-with open(temporary, "w", encoding="utf-8") as file:
-    json.dump(users, file, ensure_ascii=False, indent=2)
-os.replace(temporary, path)
-PY
-      ;;
-    *) die "未知用户操作：$action" ;;
-  esac
+  touch "$USER_MUTATION_LOCK"
+  chown hy2-aio:hy2-aio "$USER_MUTATION_LOCK"
+  chmod 0660 "$USER_MUTATION_LOCK"
+  exec {user_lock_fd}>"$USER_MUTATION_LOCK"
+  flock -x "$user_lock_fd"
 
-  chown hy2-aio:hy2-aio "$USERS_FILE"
-  chmod 0640 "$USERS_FILE"
-  "$REBUILD_FILE"
-  chown hysteria:hysteria "$HYSTERIA_CONFIG"
-  chmod 0660 "$HYSTERIA_CONFIG"
+  users_backup="$(mktemp "${CONFIG_DIR}/.users.json.rollback.XXXXXX")"
+  config_backup="$(mktemp "${HYSTERIA_DIR}/.config.yaml.rollback.XXXXXX")"
+  cp -a "$USERS_FILE" "$users_backup"
+  cp -a "$HYSTERIA_CONFIG" "$config_backup"
 
-  if ! systemctl restart hysteria-server.service; then
-    warn "Hysteria 重启失败，恢复用户配置"
-    mv "${USERS_FILE}.bak" "$USERS_FILE"
-    "$REBUILD_FILE"
-    systemctl restart hysteria-server.service || true
-    die "修改失败"
+  if ! mutate_user_json "$action" "$username" "$value"; then
+    failure="用户数据修改失败"
+  elif ! chown hy2-aio:hy2-aio "$USERS_FILE" || ! chmod 0640 "$USERS_FILE"; then
+    failure="用户文件权限设置失败"
+  elif ! "$REBUILD_FILE"; then
+    failure="Hysteria 配置重建失败"
+  elif ! chown hysteria:hysteria "$HYSTERIA_CONFIG" || ! chmod 0660 "$HYSTERIA_CONFIG"; then
+    failure="Hysteria 配置权限设置失败"
+  elif ! systemctl restart hysteria-server.service; then
+    failure="Hysteria 重启失败"
   fi
-  rm -f "${USERS_FILE}.bak"
+
+  if [ -n "$failure" ]; then
+    warn "${failure}，恢复修改前状态"
+    mv -f "$users_backup" "$USERS_FILE"
+    mv -f "$config_backup" "$HYSTERIA_CONFIG"
+    systemctl restart hysteria-server.service || true
+    flock -u "$user_lock_fd"
+    exec {user_lock_fd}>&-
+    die "修改失败：$failure"
+  fi
+
+  rm -f "$users_backup" "$config_backup"
+  flock -u "$user_lock_fd"
+  exec {user_lock_fd}>&-
   systemctl restart hy2-aio.service
   sleep 2
   api_post sync >/dev/null || true
