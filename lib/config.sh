@@ -236,6 +236,36 @@ raise SystemExit(0 if pattern.search(text) else 1)
 PY
 }
 
+caddyfile_remove_hy2_site() {
+  local caddyfile="${1:-$CADDY_FILE}"
+  local site_file="${2:-$CADDY_SITE_FILE}"
+  local marker="import ${site_file}"
+  rm -f "$site_file"
+  [ -f "$caddyfile" ] || return 0
+  python3 - "$caddyfile" "$marker" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+marker = sys.argv[2].strip()
+lines = path.read_text(encoding="utf-8").splitlines()
+kept = [line for line in lines if line.strip() != marker]
+collapsed = []
+blank = False
+for line in kept:
+    if not line.strip():
+        if blank:
+            continue
+        blank = True
+        collapsed.append("")
+        continue
+    blank = False
+    collapsed.append(line)
+text = "\n".join(collapsed).strip()
+path.write_text((text + "\n") if text else "", encoding="utf-8")
+PY
+}
+
 write_caddy() {
   local auth site_file marker
   panel_port_is_valid "${PANEL_PORT:-}" \

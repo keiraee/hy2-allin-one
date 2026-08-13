@@ -69,7 +69,7 @@ HY2 AIO v${AIO_VERSION}
   hy2 update              # 更新 Hysteria
   hy2 upgrade             # 升级 HY2 AIO 到 GitHub 最新版
   hy2 repair              # 用当前已装模块修复
-  hy2 uninstall           # 卸载
+  hy2 uninstall           # 卸载（保留配置；彻底删除用 HY2_PURGE=1）
   hy2 obfs show           # 查看混淆状态
   hy2 obfs on|off         # 开启/关闭 Salamander 混淆
   hy2 help|-h|--help|-help

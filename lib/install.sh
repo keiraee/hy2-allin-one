@@ -140,12 +140,44 @@ EOF
   systemctl cat caddy.service >/dev/null 2>&1 || die "Caddy systemd 服务缺失"
 }
 
+HY2_FAIL2BAN_FILTER="/etc/fail2ban/filter.d/hy2-caddy-auth.conf"
+HY2_FAIL2BAN_JAIL="/etc/fail2ban/jail.d/hy2-caddy-auth.conf"
+HY2_SYSCTL_FILE="/etc/sysctl.d/99-hy2-aio.conf"
+
+remove_fail2ban_panel() {
+  local filter_file="${HY2_FAIL2BAN_FILTER}" jail_file="${HY2_FAIL2BAN_JAIL}"
+  rm -f "$filter_file" "$jail_file"
+  command -v fail2ban-client >/dev/null 2>&1 || return 0
+  fail2ban-client reload >/dev/null 2>&1 \
+    || systemctl reload fail2ban >/dev/null 2>&1 \
+    || true
+}
+
+remove_hy2_sysctl() {
+  rm -f "${HY2_SYSCTL_FILE}"
+  /usr/sbin/sysctl --system >/dev/null 2>&1 || true
+}
+
+remove_hy2_firewall_rules() {
+  local panel_port="${PANEL_PORT:-443}" hy2_port="${HY2_PORT:-443}"
+  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
+    ufw delete allow "${panel_port}/tcp" >/dev/null 2>&1 || true
+    ufw delete allow "${hy2_port}/udp" >/dev/null 2>&1 || true
+    return 0
+  fi
+  if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    firewall-cmd --permanent --remove-port="${panel_port}/tcp" >/dev/null 2>&1 || true
+    firewall-cmd --permanent --remove-port="${hy2_port}/udp" >/dev/null 2>&1 || true
+    firewall-cmd --reload >/dev/null 2>&1 || true
+  fi
+}
+
 configure_fail2ban_panel() {
   local panel_path="$1" filter_file jail_file sample_file now check_output
   command -v fail2ban-client >/dev/null 2>&1 || return 0
   install -d -m 0755 /etc/fail2ban/filter.d /etc/fail2ban/jail.d
-  filter_file="/etc/fail2ban/filter.d/hy2-caddy-auth.conf"
-  jail_file="/etc/fail2ban/jail.d/hy2-caddy-auth.conf"
+  filter_file="${HY2_FAIL2BAN_FILTER}"
+  jail_file="${HY2_FAIL2BAN_JAIL}"
 
   cat > "$filter_file" <<EOF
 [Definition]

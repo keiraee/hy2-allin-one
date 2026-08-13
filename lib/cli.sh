@@ -63,23 +63,105 @@ update_cmd() {
   hysteria version || true
 }
 
+soft_read_env_for_uninstall() {
+  # Uninstall must still work when config.env is missing or historically invalid.
+  if [ -f "$ENV_FILE" ]; then
+    local line key value
+    while IFS= read -r line || [ -n "$line" ]; do
+      line="${line#"${line%%[![:space:]]*}"}"
+      line="${line%"${line##*[![:space:]]}"}"
+      [ -z "$line" ] && continue
+      case "$line" in
+        \#*) continue ;;
+        *=*) ;;
+        *) continue ;;
+      esac
+      key="${line%%=*}"
+      value="${line#*=}"
+      [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+      printf -v "$key" '%s' "$value"
+      export "$key"
+    done < "$ENV_FILE"
+  fi
+  HY2_PORT="${HY2_PORT:-443}"
+  PANEL_PORT="${PANEL_PORT:-443}"
+  API_SECRET="${API_SECRET:-}"
+}
+
 uninstall_cmd() {
   need_root uninstall
-  read_env
-  local answer="${HY2_YES:-}"
+  soft_read_env_for_uninstall
+  local answer="${HY2_YES:-}" purge="${HY2_PURGE:-0}"
   if [ "$answer" != "1" ]; then
+    echo "将停用并移除 HY2 AIO 服务、面板站点、reload 单元与 fail2ban 规则。"
+    echo "默认保留：$CONFIG_DIR、$STATE_DIR、$ROLLBACK_DIR、/etc/hysteria"
+    echo "彻底删除数据请再用：HY2_PURGE=1 hy2 uninstall"
     read -r -p "确认卸载 HY2 AIO 服务？输入 YES：" answer
     [ "$answer" = "YES" ] || die "已取消"
   fi
+  if [ "$purge" = "1" ] && [ "${HY2_YES:-}" != "1" ]; then
+    read -r -p "彻底删除配置与数据不可恢复。输入 PURGE 确认：" answer
+    [ "$answer" = "PURGE" ] || die "已取消彻底删除"
+  fi
 
-  api_post backup >/dev/null 2>&1 || true
-  systemctl disable --now hy2-aio.service hysteria-server.service 2>/dev/null || true
-  rm -f "$SERVICE_FILE"
+  if [ -n "${API_SECRET:-}" ]; then
+    api_post backup >/dev/null 2>&1 || true
+  fi
+
+  systemctl disable --now \
+    hy2-aio.service \
+    hy2-aio-reload-hysteria.path \
+    hysteria-server.service \
+    2>/dev/null || true
+  systemctl stop hy2-aio-reload-hysteria.service 2>/dev/null || true
+
   remove_hy2_cli
+  rm -f \
+    "$SERVICE_FILE" \
+    "$HYSTERIA_SERVICE_FILE" \
+    "$RELOAD_PATH_FILE" \
+    "$RELOAD_SERVICE_FILE"
   rm -rf "$APP_DIR" "$WEB_DIR"
-  systemctl daemon-reload
-  warn "保留配置与数据目录：$CONFIG_DIR、$STATE_DIR、/etc/hysteria"
-  warn "Caddy 软件未卸载；Caddyfile 仍在 $CADDY_FILE"
+  rm -f /run/hy2-aio/reload-hysteria
+
+  if declare -F caddyfile_remove_hy2_site >/dev/null 2>&1; then
+    caddyfile_remove_hy2_site "$CADDY_FILE" "$CADDY_SITE_FILE"
+  else
+    rm -f "$CADDY_SITE_FILE"
+  fi
+  if command -v caddy >/dev/null 2>&1 && [ -f "$CADDY_FILE" ]; then
+    caddy validate --config "$CADDY_FILE" >/dev/null 2>&1 \
+      && systemctl reload caddy.service 2>/dev/null \
+      || systemctl restart caddy.service 2>/dev/null \
+      || true
+  fi
+
+  if declare -F remove_fail2ban_panel >/dev/null 2>&1; then
+    remove_fail2ban_panel
+  else
+    rm -f /etc/fail2ban/filter.d/hy2-caddy-auth.conf /etc/fail2ban/jail.d/hy2-caddy-auth.conf
+  fi
+  if declare -F remove_hy2_sysctl >/dev/null 2>&1; then
+    remove_hy2_sysctl
+  else
+    rm -f /etc/sysctl.d/99-hy2-aio.conf
+  fi
+  if declare -F remove_hy2_firewall_rules >/dev/null 2>&1; then
+    remove_hy2_firewall_rules || true
+  fi
+
+  systemctl daemon-reload 2>/dev/null || true
+
+  if [ "$purge" = "1" ]; then
+    rm -rf "$CONFIG_DIR" "$STATE_DIR" "$ROLLBACK_DIR" "$HYSTERIA_DIR"
+    rm -f "$ACCESS_FILE"
+    rm -f /var/log/caddy/hy2-aio.log /var/log/caddy/hy2-aio.log.* 2>/dev/null || true
+    log "已彻底卸载：服务、站点片段与配置/数据均已删除"
+  else
+    warn "已卸载服务与站点残留；保留配置与数据：$CONFIG_DIR、$STATE_DIR、$ROLLBACK_DIR、/etc/hysteria"
+    warn "彻底删除数据：HY2_PURGE=1 hy2 uninstall"
+  fi
+  warn "Caddy / Hysteria 二进制未卸载；防火墙 80/tcp（若曾放行）可能仍保留"
 }
 
 menu_call() {

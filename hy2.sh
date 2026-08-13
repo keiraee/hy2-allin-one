@@ -470,7 +470,7 @@ HY2 AIO v${AIO_VERSION}
   hy2 update                   # 更新 Hysteria
   hy2 upgrade                  # 升级 HY2 AIO 到最新 Release
   hy2 repair                   # 用当前已装模块修复
-  hy2 uninstall                # 卸载
+  hy2 uninstall                # 卸载（保留配置；彻底删除用 HY2_PURGE=1）
   hy2 obfs show                # 查看混淆状态
   hy2 obfs on|off              # 开启/关闭 Salamander 混淆
   hy2 help|-h|--help|-help
@@ -499,6 +499,8 @@ HY2 AIO v${AIO_VERSION}
   HY2_RATE_LIMIT_API  面板 API 每 IP 每分钟次数，默认 120
   HY2_REPO_URL        模块下载地址（默认 GitHub raw）
   HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.20
+  HY2_YES             设为 1 跳过卸载确认
+  HY2_PURGE           设为 1 时卸载并删除配置/数据
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
   CADDY_VERSION       钉死的 Caddy 版本（非 apt 回退），默认 v2.11.4
 EOF
