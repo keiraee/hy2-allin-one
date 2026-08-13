@@ -15,6 +15,9 @@ MODE_FILE="${CONFIG_DIR}/client-mode.json"
 HYSTERIA_CONFIG="/etc/hysteria/config.yaml"
 HYSTERIA_CERT="/etc/hysteria/server.crt"
 HYSTERIA_KEY="/etc/hysteria/server.key"
+BACKEND_HOST="127.0.0.1"
+BACKEND_PORT="18081"
+readonly BACKEND_HOST BACKEND_PORT
 APP_DIR="/usr/local/lib/hy2-aio"
 APP_FILE="${APP_DIR}/server.py"
 REBUILD_FILE="${APP_DIR}/rebuild_config.py"
@@ -113,6 +116,36 @@ panel_port_is_valid() {
     && [ "$value" -ne 80 ]
 }
 
+port_number_is_valid() {
+  local value="${1:-}"
+  [[ "$value" =~ ^[0-9]+$ ]] \
+    && [ "$value" -ge 1 ] \
+    && [ "$value" -le 65535 ]
+}
+
+port_layout_is_valid() {
+  local panel_port="${1:-}" stats_port="${2:-}"
+  panel_port_is_valid "$panel_port" \
+    && port_number_is_valid "$stats_port" \
+    && [ "$panel_port" -ne "$stats_port" ] \
+    && [ "$panel_port" -ne "$BACKEND_PORT" ] \
+    && [ "$stats_port" -ne "$BACKEND_PORT" ]
+}
+
+validate_port_layout() {
+  local panel_port="${1:-}" stats_port="${2:-}"
+  panel_port_is_valid "$panel_port" \
+    || die "面板端口 ${panel_port:-<empty>} 无效或不安全；管理面板仅支持 HTTPS，禁止使用 80"
+  port_number_is_valid "$stats_port" \
+    || die "统计端口 ${stats_port:-<empty>} 无效；必须是 1-65535 的整数"
+  [ "$panel_port" -ne "$stats_port" ] \
+    || die "端口冲突：面板端口与统计端口不能同为 $panel_port"
+  [ "$panel_port" -ne "$BACKEND_PORT" ] \
+    || die "端口冲突：面板端口不能使用内部后端端口 $BACKEND_PORT"
+  [ "$stats_port" -ne "$BACKEND_PORT" ] \
+    || die "端口冲突：统计端口不能使用内部后端端口 $BACKEND_PORT"
+}
+
 read_env() {
   [ -f "$ENV_FILE" ] || die "尚未安装。请以 root 运行：bash hy2.sh install"
   local line key value
@@ -135,9 +168,8 @@ read_env() {
   done < "$ENV_FILE"
   HY2_PORT="${HY2_PORT:-443}"
   PANEL_PORT="${PANEL_PORT:-443}"
-  panel_port_is_valid "$PANEL_PORT" \
-    || die "面板端口 ${PANEL_PORT} 无效或不安全；管理面板仅支持 HTTPS，禁止使用 80"
   STATS_PORT="${STATS_PORT:-9999}"
+  validate_port_layout "$PANEL_PORT" "$STATS_PORT"
   OBFS_ENABLED="${OBFS_ENABLED:-true}"
   QUIC_KEEP_ALIVE_PERIOD="${QUIC_KEEP_ALIVE_PERIOD:-5s}"
   QUIC_MAX_IDLE_TIMEOUT="${QUIC_MAX_IDLE_TIMEOUT:-120s}"
@@ -147,7 +179,7 @@ api_post() {
   : "${API_SECRET:?API_SECRET 未设置，请先 read_env}"
   curl -fsS --connect-timeout 5 --max-time 60 \
     -H "X-API-Secret: ${API_SECRET}" \
-    -X POST "http://127.0.0.1:18081/$1"
+    -X POST "http://${BACKEND_HOST}:${BACKEND_PORT}/$1"
 }
 
 detect_public_ipv4() {
@@ -187,12 +219,26 @@ prompt_value() {
 
 port_is_used() {
   local port="$1"
-  ss -Hlunp 2>/dev/null | awk -v p=":$port" '$5 ~ p"$" || $5 ~ p" " {found=1} END {exit !found}'
+  ss -Hlunp 2>/dev/null | awk -v p=":$port" '$4 ~ p"$" || $4 ~ p" " {found=1} END {exit !found}'
 }
 
 tcp_port_is_used() {
   local port="$1"
   ss -Hlntp 2>/dev/null | awk -v p=":$port" '$4 ~ p"$" || $4 ~ p" " {found=1} END {exit !found}'
+}
+
+ensure_install_ports_available() {
+  local hy2_port="$1" panel_port="$2" stats_port="$3"
+  validate_port_layout "$panel_port" "$stats_port"
+  port_is_used "$hy2_port" \
+    && die "代理 UDP 端口 $hy2_port 已被占用"
+  tcp_port_is_used "$panel_port" \
+    && die "面板 TCP 端口 $panel_port 已被占用"
+  tcp_port_is_used "$stats_port" \
+    && die "统计 TCP 端口 $stats_port 已被占用"
+  tcp_port_is_used "$BACKEND_PORT" \
+    && die "内部后端 TCP 端口 $BACKEND_PORT 已被占用"
+  return 0
 }
 
 prompt_panel_port() {

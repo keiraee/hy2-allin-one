@@ -163,6 +163,8 @@ install_stack() {
   panel_port_is_valid "$PANEL_PORT" \
     || die "面板端口 ${PANEL_PORT} 无效或不安全；管理面板仅支持 HTTPS，禁止使用 80"
   STATS_PORT="${HY2_STATS_PORT:-$(prompt_stats_port)}"
+  validate_port_layout "$PANEL_PORT" "$STATS_PORT"
+  ensure_install_ports_available "$HY2_PORT" "$PANEL_PORT" "$STATS_PORT"
 
   NETWORK_INTERFACE="${HY2_INTERFACE:-$(detect_iface)}"
   [ -n "$NETWORK_INTERFACE" ] || die "无法检测默认网卡"

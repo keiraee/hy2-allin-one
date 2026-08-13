@@ -4,11 +4,13 @@
 status_cmd() {
   need_root status
   read_env
-  local port_suffix=""
+  local port_suffix="" status_ports
   [ "${PANEL_PORT:-443}" != "443" ] && port_suffix=":${PANEL_PORT}"
   echo "HY2 AIO v${AIO_VERSION:-unknown}"
   echo "面板：https://${DOMAIN}${port_suffix}/${PANEL_PATH}/"
   echo "Hysteria UDP：${HY2_PORT:-443}"
+  echo "统计 API：127.0.0.1:${STATS_PORT}"
+  echo "面板后端：${BACKEND_HOST}:${BACKEND_PORT}"
   if command -v obfs_is_enabled >/dev/null 2>&1 && obfs_is_enabled; then
     echo "混淆：on (salamander)"
   else
@@ -20,7 +22,8 @@ status_cmd() {
     hysteria-server.service hy2-aio.service caddy.service \
     | sed -n '1,45p' || true
   echo
-  ss -lntup | grep -E ":(80|443|18081|9999|${HY2_PORT:-443})\\b" || true
+  status_ports="${PANEL_PORT}|${STATS_PORT}|${BACKEND_PORT}|${HY2_PORT}"
+  ss -lntup | grep -E ":(${status_ports})\\b" || true
 }
 
 show_cmd() {

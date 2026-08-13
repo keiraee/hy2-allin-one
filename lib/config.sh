@@ -233,6 +233,7 @@ write_caddy() {
   DOMAIN="$DOMAIN" PANEL_PORT="$PANEL_PORT" PANEL_PATH="$PANEL_PATH" \
     PANEL_USER="$PANEL_USER" PANEL_PASS="$PANEL_PASS" API_SECRET="$API_SECRET" \
     WEB_DIR="$WEB_DIR" AUTH_DIRECTIVE="$auth" SITE_FILE="$site_file" \
+    BACKEND_HOST="$BACKEND_HOST" BACKEND_PORT="$BACKEND_PORT" \
     python3 <<'PY'
 import os
 import subprocess
@@ -247,6 +248,8 @@ api_secret = os.environ["API_SECRET"]
 web_dir = os.environ["WEB_DIR"]
 auth = os.environ["AUTH_DIRECTIVE"]
 site_file = Path(os.environ["SITE_FILE"])
+backend_host = os.environ["BACKEND_HOST"]
+backend_port = os.environ["BACKEND_PORT"]
 
 password_hash = subprocess.check_output(
     ["caddy", "hash-password", "--plaintext", panel_pass],
@@ -284,7 +287,7 @@ content = f"""{site_addr} {{
                 X-Frame-Options "DENY"
                 Referrer-Policy "no-referrer"
             }}
-            reverse_proxy 127.0.0.1:18081 {{
+            reverse_proxy {backend_host}:{backend_port} {{
                 header_up X-API-Secret "{api_secret}"
                 header_up X-Forwarded-For {{remote_host}}
                 header_up X-Real-IP {{remote_host}}
@@ -307,7 +310,7 @@ content = f"""{site_addr} {{
         }}
 
         handle /s/* {{
-            reverse_proxy 127.0.0.1:18081 {{
+            reverse_proxy {backend_host}:{backend_port} {{
                 header_up X-Forwarded-For {{remote_host}}
                 header_up X-Real-IP {{remote_host}}
             }}
