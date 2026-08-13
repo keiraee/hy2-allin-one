@@ -3,6 +3,7 @@
 
 write_panel() {
   install -d -o hy2-aio -g caddy -m 2750 "$WEB_DIR" "$WEB_DIR/downloads"
+  log "写入面板：${WEB_DIR}/index.html"
   cat > "$WEB_DIR/index.html" <<'HTML'
 <!doctype html>
 <html lang="zh-CN">

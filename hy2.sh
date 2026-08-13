@@ -61,6 +61,10 @@ apply_repo_url
 # 临时函数（模块加载前使用）
 _bootstrap_log() { printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "$*"; }
 _bootstrap_die() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
+# GitHub raw CDN can keep serving the previous main tree for a few minutes after push.
+_bootstrap_curl() {
+  curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$@"
+}
 
 # 下载远程模块（先拉 SHA256SUMS，再逐文件校验）
 fetch_modules() {
@@ -83,12 +87,12 @@ fetch_modules() {
   local sums tmp f expected
   sums="$(mktemp)"
   _bootstrap_log "下载：SHA256SUMS"
-  curl -fsSL "${REPO_URL}/SHA256SUMS" -o "$sums" || { rm -f "$sums"; _bootstrap_die "下载 SHA256SUMS 失败（请确认已发布 ${REPO_REF}）"; }
+  _bootstrap_curl "${REPO_URL}/SHA256SUMS?nocache=$(date +%s)" -o "$sums" || { rm -f "$sums"; _bootstrap_die "下载 SHA256SUMS 失败（请确认已发布 ${REPO_REF}）"; }
 
   for f in "${files[@]}"; do
     _bootstrap_log "下载：$f"
     tmp="$(mktemp)"
-    curl -fsSL "${REPO_URL}/${f}" -o "$tmp" || { rm -f "$tmp" "$sums"; _bootstrap_die "下载失败：$f"; }
+    _bootstrap_curl "${REPO_URL}/${f}?nocache=$(date +%s)" -o "$tmp" || { rm -f "$tmp" "$sums"; _bootstrap_die "下载失败：$f"; }
     head -1 "$tmp" | grep -qE '^#!|^#' || { rm -f "$tmp" "$sums"; _bootstrap_die "模块内容校验失败：$f"; }
     [ -s "$tmp" ] || { rm -f "$tmp" "$sums"; _bootstrap_die "模块为空：$f"; }
     expected="$(awk -v name="$f" '{ gsub(/\r/, ""); if ($2 == name) { print $1; exit } }' "$sums")"
@@ -145,7 +149,7 @@ load_installed_modules() {
 resolve_latest_repo_ref() {
   local tag payload
   REPO_SLUG="${HY2_REPO:-$DEFAULT_REPO_SLUG}"
-  payload="$(curl -fsSL "https://api.github.com/repos/${REPO_SLUG}/releases/latest")" \
+  payload="$(_bootstrap_curl "https://api.github.com/repos/${REPO_SLUG}/releases/latest")" \
     || _bootstrap_die "无法获取 GitHub latest release（${REPO_SLUG}）"
   tag="$(printf '%s' "$payload" | python3 -c 'import sys, json; print(json.load(sys.stdin)["tag_name"])')" \
     || _bootstrap_die "无法解析 latest release"

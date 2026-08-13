@@ -14,7 +14,8 @@ if [ "${1:-}" = "upgrade" ]; then
   [ "$(id -u)" -eq 0 ] || { printf '%s\n' "需要 root。已是 root：hy2 upgrade；有 sudo：sudo hy2 upgrade" >&2; exit 1; }
   ref="${HY2_REPO_REF:-}"
   if [ -z "$ref" ] || [ "$ref" = "latest" ]; then
-    ref="$(curl -fsSL "https://api.github.com/repos/${REPO_SLUG}/releases/latest" \
+    ref="$(curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+      "https://api.github.com/repos/${REPO_SLUG}/releases/latest" \
       | python3 -c 'import sys, json; print(json.load(sys.stdin)["tag_name"])')" \
       || { printf '%s\n' "无法获取 latest release（${REPO_SLUG}）" >&2; exit 1; }
   fi
@@ -44,7 +45,8 @@ if [ "${1:-}" = "upgrade" ]; then
   tmp="$(mktemp -d)"
   # shellcheck disable=SC2064
   trap 'rm -rf "$tmp"' EXIT
-  curl -fsSL "$bootstrap_url" -o "$tmp/hy2.sh" \
+  curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+    "${bootstrap_url}?nocache=$(date +%s)" -o "$tmp/hy2.sh" \
     || { printf '%s\n' "下载 hy2.sh 失败" >&2; exit 1; }
   HY2_REPO="$REPO_SLUG" HY2_REPO_REF="$ref" HY2_REPO_URL="${HY2_REPO_URL:-}" \
     HY2_UPGRADE_BANNER=1 \
