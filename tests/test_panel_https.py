@@ -52,6 +52,20 @@ panel_port_is_valid 8443
         )
         write_caddy = config[config.index("write_caddy()") :]
         self.assertLess(write_caddy.index(config_check), write_caddy.index("install -d"))
+        env_idx = write_caddy.index("\n  env \\\n")
+        host_idx = write_caddy.index('BACKEND_HOST="$BACKEND_HOST"')
+        self.assertLess(env_idx, host_idx)
+
+    def test_readonly_backend_host_can_be_passed_to_child_via_env(self):
+        result = run_bash(
+            """
+set -Eeuo pipefail
+source lib/core.sh
+env BACKEND_HOST="$BACKEND_HOST" BACKEND_PORT="$BACKEND_PORT" \
+  python3 -c 'import os; assert os.environ["BACKEND_HOST"]=="127.0.0.1"'
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
 
     def test_generated_public_urls_have_no_plain_http_panel_fallback(self):
         for relative in ("lib/access.sh", "lib/backend.sh", "lib/config.sh"):
