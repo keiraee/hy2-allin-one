@@ -13,6 +13,7 @@ rollback_artifacts() {
     "$HYSTERIA_SERVICE_FILE" \
     "$RELOAD_PATH_FILE" \
     "$RELOAD_SERVICE_FILE" \
+    "$HYSTERIA_DROPIN_DIR" \
     "$SELF_INSTALL" \
     "$SELF_INSTALL_SBIN"
 }

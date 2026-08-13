@@ -55,11 +55,17 @@ BACKUP_REQUIRED_MEMBERS = (
 )
 BACKUP_OPTIONAL = (
     "etc/caddy/hy2-aio.caddy",
+    "etc/hy2-aio/hy2.off",
+    "etc/systemd/system/hysteria-server.service.d/hy2-switch.conf",
+    "usr/local/lib/hy2-aio/hysteria-control.sh",
     "var/lib/hy2-aio/state.json",
     "var/www/hy2-aio/history.csv",
     "var/www/hy2-aio/users.csv",
 )
 REBUILD_FILE = Path("/usr/local/lib/hy2-aio/rebuild_config.py")
+HY2_OFF_FILE = Path("/etc/hy2-aio/hy2.off")
+HYSTERIA_CMD_FILE = Path("/run/hy2-aio/hysteria-cmd")
+HYSTERIA_RELOAD_FLAG = Path("/run/hy2-aio/reload-hysteria")
 WEB_DIR = Path("/var/www/hy2-aio")
 DOWNLOAD_DIR = WEB_DIR / "downloads"
 DATA_FILE = WEB_DIR / "data.json"
@@ -91,6 +97,49 @@ def load_users() -> dict[str, dict[str, str]]:
     if not isinstance(data, dict):
         raise RuntimeError("users.json 格式错误")
     return data
+
+
+def user_is_disabled(info: dict[str, Any]) -> bool:
+    value = info.get("disabled", False)
+    if value is True:
+        return True
+    if value is False or value is None:
+        return False
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
+def has_enabled_users(users: Optional[dict[str, Any]] = None) -> bool:
+    if users is None:
+        users = load_users()
+    for info in users.values():
+        if isinstance(info, dict) and not user_is_disabled(info):
+            return True
+    return False
+
+
+def hy2_is_off() -> bool:
+    return HY2_OFF_FILE.exists()
+
+
+def set_hy2_off() -> None:
+    HY2_OFF_FILE.write_text("1\n", encoding="utf-8")
+    try:
+        os.chmod(HY2_OFF_FILE, 0o640)
+    except OSError:
+        pass
+
+
+def set_hy2_on() -> None:
+    try:
+        HY2_OFF_FILE.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
 
 
 def normalize_mode(value: Any) -> dict[str, Any]:
@@ -476,22 +525,24 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
         network["last_tx"] = raw_tx
 
         errors: list[str] = []
-        try:
-            # Snapshot only. Clearing here would drop bytes if we crash before persist.
-            traffic = hysteria_api("/traffic", env["API_SECRET"])
-            if not isinstance(traffic, dict):
+        hy2_enabled = not hy2_is_off()
+        traffic: dict[str, Any] = {}
+        online: dict[str, Any] = {}
+        if hy2_enabled:
+            try:
+                # Snapshot only. Clearing here would drop bytes if we crash before persist.
+                payload = hysteria_api("/traffic", env["API_SECRET"])
+                traffic = payload if isinstance(payload, dict) else {}
+            except Exception as error:
                 traffic = {}
-        except Exception as error:
-            traffic = {}
-            errors.append(f"traffic API: {error}")
+                errors.append(f"traffic API: {error}")
 
-        try:
-            online = hysteria_api("/online", env["API_SECRET"])
-            if not isinstance(online, dict):
+            try:
+                payload = hysteria_api("/online", env["API_SECRET"])
+                online = payload if isinstance(payload, dict) else {}
+            except Exception as error:
                 online = {}
-        except Exception as error:
-            online = {}
-            errors.append(f"online API: {error}")
+                errors.append(f"online API: {error}")
 
         state_users = state.setdefault("users", {})
         output_users: list[dict[str, Any]] = []
@@ -570,10 +621,13 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
                     "percent": round(disk.used / disk.total * 100, 1),
                 },
                 "services": {
-                    "Hysteria": service_status("hysteria-server.service"),
+                    "Hysteria": (
+                        "off" if not hy2_enabled else service_status("hysteria-server.service")
+                    ),
                     "HY2 AIO": service_status("hy2-aio.service"),
                     "Caddy": service_status("caddy.service"),
                 },
+                "hy2_enabled": hy2_enabled,
                 "traffic": {
                     "rx": int(network["rx"]),
                     "tx": int(network["tx"]),
@@ -829,22 +883,66 @@ def apply_web_permissions() -> None:
                 pass
 
 
-def restart_hysteria() -> None:
-    """Ask root path unit to restart hysteria-server (backend runs unprivileged)."""
-    flag = Path("/run/hy2-aio/reload-hysteria")
+def _unlink_quiet(path: Path) -> None:
     try:
-        flag.unlink(missing_ok=True)
+        path.unlink(missing_ok=True)
     except TypeError:
-        if flag.exists():
-            flag.unlink()
+        if path.exists():
+            path.unlink()
     except OSError:
         pass
-    flag.write_text(str(time.time()), encoding="utf-8")
+
+
+def request_hysteria(action: str) -> None:
+    """Ask root path unit to stop/start/restart hysteria-server (backend is unprivileged)."""
+    if action not in ("stop", "start", "restart"):
+        raise ValueError(f"未知 Hysteria 操作：{action}")
+    _unlink_quiet(HYSTERIA_RELOAD_FLAG)
+    HYSTERIA_CMD_FILE.write_text(action + "\n", encoding="utf-8")
+    HYSTERIA_RELOAD_FLAG.write_text(str(time.time()), encoding="utf-8")
     for _ in range(75):
         time.sleep(0.2)
-        if not flag.exists():
+        if not HYSTERIA_RELOAD_FLAG.exists():
             return
-    raise RuntimeError("等待 Hysteria 重启超时")
+    raise RuntimeError("等待 Hysteria 操作超时")
+
+
+def restart_hysteria() -> None:
+    request_hysteria("restart")
+
+
+def apply_hysteria_after_users(users: dict[str, Any]) -> None:
+    if not has_enabled_users(users):
+        set_hy2_off()
+        request_hysteria("stop")
+        return
+    if hy2_is_off():
+        return
+    restart_hysteria()
+
+
+def hy2_turn_off() -> dict[str, Any]:
+    set_hy2_off()
+    request_hysteria("stop")
+    return collect()
+
+
+def hy2_turn_on() -> dict[str, Any]:
+    users = load_users()
+    if not has_enabled_users(users):
+        raise ValueError("请先启用至少一个用户")
+    set_hy2_on()
+    try:
+        result = subprocess.run(
+            [str(REBUILD_FILE)], capture_output=True, text=True, timeout=30
+        )
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.strip() or "rebuild_config.py 执行失败")
+    except Exception:
+        set_hy2_off()
+        raise
+    request_hysteria("start")
+    return collect()
 
 
 USERNAME_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,32}")
@@ -876,6 +974,7 @@ def mutate_users(mutator) -> dict[str, Any]:
         users_mode = USERS_FILE.stat().st_mode & 0o777
         config_backup = HYSTERIA_CONFIG.read_bytes()
         config_mode = HYSTERIA_CONFIG.stat().st_mode & 0o777
+        was_off = hy2_is_off()
         try:
             mutator(users)
         except ValueError:
@@ -889,12 +988,17 @@ def mutate_users(mutator) -> dict[str, Any]:
             )
             if result.returncode != 0:
                 raise RuntimeError(result.stderr.strip() or "rebuild_config.py 执行失败")
-            restart_hysteria()
+            apply_hysteria_after_users(users)
         except Exception:
             atomic_bytes(USERS_FILE, users_backup, users_mode)
             atomic_bytes(HYSTERIA_CONFIG, config_backup, config_mode)
             try:
-                restart_hysteria()
+                if was_off:
+                    set_hy2_off()
+                    request_hysteria("stop")
+                else:
+                    set_hy2_on()
+                    restart_hysteria()
             except Exception:
                 pass
             raise
@@ -1214,7 +1318,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(500, {"ok": False, "error": str(error)})
             print(f"[hy2-aio] runtime error: {error}", flush=True)
             return
-        self.send_json(200, {"ok": True, "generated_at": data["generated_at"]})
+        response: dict[str, Any] = {
+            "ok": True,
+            "generated_at": data["generated_at"],
+            "hy2_enabled": bool(data.get("server", {}).get("hy2_enabled", True)),
+        }
+        if action in ("disable", "remove") and not response["hy2_enabled"]:
+            response["message"] = "已无启用用户，HY2 已关闭"
+        self.send_json(200, response)
 
     def handle_user_credentials(self, payload: dict[str, Any]) -> None:
         username = str(payload.get("username", ""))
@@ -1235,6 +1346,32 @@ class Handler(BaseHTTPRequestHandler):
             return
         path = self.path.split("?", 1)[0]
         try:
+            if path == "/hy2/off":
+                data = hy2_turn_off()
+                self.send_json(
+                    200,
+                    {
+                        "ok": True,
+                        "hy2_enabled": False,
+                        "generated_at": data["generated_at"],
+                    },
+                )
+                return
+            if path == "/hy2/on":
+                try:
+                    data = hy2_turn_on()
+                except ValueError as error:
+                    self.send_json(400, {"ok": False, "error": str(error)})
+                    return
+                self.send_json(
+                    200,
+                    {
+                        "ok": True,
+                        "hy2_enabled": True,
+                        "generated_at": data["generated_at"],
+                    },
+                )
+                return
             if path == "/sync":
                 data = collect()
                 self.send_json(200, {"ok": True, "generated_at": data["generated_at"]})

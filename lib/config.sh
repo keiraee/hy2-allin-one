@@ -7,13 +7,13 @@ write_rebuild_helper() {
 #!/usr/bin/env python3
 import json
 import os
+import sys
 import tempfile
 from pathlib import Path
 
-ENV_FILE = Path("/etc/hy2-aio/config.env")
-USERS_FILE = Path("/etc/hy2-aio/users.json")
-MODE_FILE = Path("/etc/hy2-aio/client-mode.json")
-OUT_FILE = Path("/etc/hysteria/config.yaml")
+ENV_FILE = Path(os.environ.get("HY2_ENV_FILE", "/etc/hy2-aio/config.env"))
+USERS_FILE = Path(os.environ.get("HY2_USERS_FILE", "/etc/hy2-aio/users.json"))
+OUT_FILE = Path(os.environ.get("HY2_HYSTERIA_CONFIG", "/etc/hysteria/config.yaml"))
 
 def read_env(path: Path) -> dict:
     values = {}
@@ -25,10 +25,42 @@ def read_env(path: Path) -> dict:
         values[key] = value
     return values
 
+def user_is_disabled(info: dict) -> bool:
+    value = info.get("disabled", False)
+    if value is True:
+        return True
+    if value is False or value is None:
+        return False
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+
+def user_password(info: dict, username: str) -> str:
+    password = info.get("password")
+    if password is None or str(password).strip() == "":
+        raise SystemExit(f"用户 {username} 缺少 password")
+    return str(password)
+
+
 env = read_env(ENV_FILE)
 users = json.loads(USERS_FILE.read_text(encoding="utf-8"))
-if not users:
+if not isinstance(users, dict) or not users:
     raise SystemExit("users.json 不能为空")
+
+userpass_lines = []
+for username, info in sorted(users.items()):
+    if not isinstance(info, dict):
+        raise SystemExit(f"用户 {username} 格式错误")
+    if user_is_disabled(info):
+        continue
+    userpass_lines.append(
+        f"    {json.dumps(username)}: {json.dumps(user_password(info, username))}"
+    )
+if not userpass_lines:
+    print("所有用户已禁用：未写入任何认证账号", file=sys.stderr)
 
 def truthy(key: str, default: str = "false") -> bool:
     return str(env.get(key, default)).strip().lower() in ("1", "true", "yes", "on")
@@ -47,12 +79,12 @@ lines = [
     "",
     "auth:",
     "  type: userpass",
-    "  userpass:",
 ]
-for username, info in sorted(users.items()):
-    if info.get("disabled"):
-        continue
-    lines.append(f"    {json.dumps(username)}: {json.dumps(str(info['password']))}")
+if userpass_lines:
+    lines.append("  userpass:")
+    lines.extend(userpass_lines)
+else:
+    lines.append("  userpass: {}")
 
 speed_test = truthy("SPEED_TEST", "false")
 obfs_enabled = truthy("OBFS_ENABLED", "true")
@@ -159,15 +191,48 @@ Unit=hy2-aio-reload-hysteria.service
 WantedBy=multi-user.target
 EOF
 
-  cat > "$RELOAD_SERVICE_FILE" <<'EOF'
+  cat > "$RELOAD_SERVICE_FILE" <<EOF
 [Unit]
-Description=Restart hysteria-server for HY2 AIO
+Description=Control hysteria-server for HY2 AIO
 After=hysteria-server.service
 
 [Service]
 Type=oneshot
-ExecStart=/bin/systemctl restart hysteria-server.service
-ExecStartPost=/bin/rm -f /run/hy2-aio/reload-hysteria
+ExecStart=${HYSTERIA_CONTROL_FILE}
+EOF
+
+  install -d -m 0755 "$APP_DIR"
+  cat > "$HYSTERIA_CONTROL_FILE" <<'EOF'
+#!/bin/sh
+set -eu
+cmd_file=/run/hy2-aio/hysteria-cmd
+flag=/run/hy2-aio/reload-hysteria
+cmd=restart
+if [ -f "$cmd_file" ]; then
+  cmd=$(tr -d ' \n\r\t' < "$cmd_file")
+fi
+case "$cmd" in
+  stop)
+    /bin/systemctl stop hysteria-server.service
+    ;;
+  start)
+    /bin/systemctl start hysteria-server.service
+    ;;
+  restart)
+    /bin/systemctl restart hysteria-server.service
+    ;;
+  *)
+    /bin/systemctl restart hysteria-server.service
+    ;;
+esac
+rm -f "$cmd_file" "$flag"
+EOF
+  chmod 0755 "$HYSTERIA_CONTROL_FILE"
+
+  install -d -m 0755 "$HYSTERIA_DROPIN_DIR"
+  cat > "$HYSTERIA_DROPIN_FILE" <<EOF
+[Unit]
+ConditionPathExists=!${HY2_OFF_FILE}
 EOF
 }
 
@@ -468,7 +533,11 @@ apply_hysteria_client_settings() {
   chown hysteria:hysteria "$HYSTERIA_CONFIG"
   chmod 0660 "$HYSTERIA_CONFIG"
   write_access_file
-  systemctl restart hysteria-server.service
+  if [ -f "${HY2_OFF_FILE:-/etc/hy2-aio/hy2.off}" ]; then
+    log "Hysteria 已关闭，配置已写入（开启：hy2 on）"
+  else
+    systemctl restart hysteria-server.service
+  fi
   api_post sync >/dev/null || true
 }
 

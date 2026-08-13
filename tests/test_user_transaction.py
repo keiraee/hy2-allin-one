@@ -50,6 +50,7 @@ class BackendUserTransactionTests(unittest.TestCase):
                 "HYSTERIA_CONFIG": self.config_file,
                 "USER_MUTATION_LOCK": self.lock_file,
                 "REBUILD_FILE": self.rebuild_file,
+                "HY2_OFF_FILE": self.root / "hy2.off",
                 "collect": lambda: {"ok": True},
             }
         )
@@ -99,6 +100,51 @@ class BackendUserTransactionTests(unittest.TestCase):
         self.assertEqual(self.original_users, self.users_file.read_bytes())
         self.assertEqual(self.original_config, self.config_file.read_bytes())
 
+    def test_disabling_last_user_stops_hysteria_instead_of_restart(self):
+        def successful_rebuild(*_args, **_kwargs):
+            self.config_file.write_text("userpass: {}\n", encoding="utf-8")
+            return SimpleNamespace(returncode=0, stderr="")
+
+        self.namespace["subprocess"] = SimpleNamespace(
+            run=mock.Mock(side_effect=successful_rebuild), DEVNULL=subprocess.DEVNULL
+        )
+        self.namespace["request_hysteria"] = mock.Mock()
+        self.namespace["restart_hysteria"] = mock.Mock()
+
+        self.namespace["mutate_users"](
+            lambda users: users["alice"].update({"disabled": True})
+        )
+
+        self.assertTrue(self.namespace["HY2_OFF_FILE"].exists())
+        self.namespace["request_hysteria"].assert_called_once_with("stop")
+        self.namespace["restart_hysteria"].assert_not_called()
+
+    def test_enabling_user_while_off_does_not_start_hysteria(self):
+        self.users_file.write_text(
+            json.dumps({"alice": {"password": "old", "disabled": True}}, indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
+        self.namespace["HY2_OFF_FILE"].write_text("1\n", encoding="utf-8")
+
+        def successful_rebuild(*_args, **_kwargs):
+            self.config_file.write_text("userpass:\n  alice: old\n", encoding="utf-8")
+            return SimpleNamespace(returncode=0, stderr="")
+
+        self.namespace["subprocess"] = SimpleNamespace(
+            run=mock.Mock(side_effect=successful_rebuild), DEVNULL=subprocess.DEVNULL
+        )
+        self.namespace["request_hysteria"] = mock.Mock()
+        self.namespace["restart_hysteria"] = mock.Mock()
+
+        self.namespace["mutate_users"](
+            lambda users: users["alice"].update({"disabled": False})
+        )
+
+        self.assertTrue(self.namespace["HY2_OFF_FILE"].exists())
+        self.namespace["request_hysteria"].assert_not_called()
+        self.namespace["restart_hysteria"].assert_not_called()
+
 
 @unittest.skipIf(os.name == "nt", "CLI transaction harness requires bash and flock")
 class CliUserTransactionTests(unittest.TestCase):
@@ -139,6 +185,7 @@ USERS_FILE={str(self.users_file)!r}
 HYSTERIA_CONFIG={str(self.config_file)!r}
 USER_MUTATION_LOCK={str(self.lock_file)!r}
 REBUILD_FILE={str(self.rebuild_file)!r}
+HY2_OFF_FILE={str(self.config_dir / "hy2.off")!r}
 export HYSTERIA_CONFIG
 need_root() {{ :; }}
 read_env() {{ :; }}

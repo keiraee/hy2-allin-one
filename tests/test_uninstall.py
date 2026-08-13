@@ -32,6 +32,8 @@ class UninstallCleanupTests(unittest.TestCase):
         self.hysteria_service = self.systemd / "hysteria-server.service"
         self.reload_path = self.systemd / "hy2-aio-reload-hysteria.path"
         self.reload_service = self.systemd / "hy2-aio-reload-hysteria.service"
+        self.dropin_dir = self.systemd / "hysteria-server.service.d"
+        self.dropin_file = self.dropin_dir / "hy2-switch.conf"
         self.cli = self.root / "usr/local/bin/hy2"
         self.cli_sbin = self.root / "usr/local/sbin/hy2"
         self.trace = self.root / "trace.log"
@@ -81,6 +83,8 @@ class UninstallCleanupTests(unittest.TestCase):
             self.cli,
         ):
             path.write_text("fixture\n", encoding="utf-8")
+        self.dropin_dir.mkdir(parents=True, exist_ok=True)
+        self.dropin_file.write_text("fixture\n", encoding="utf-8")
         self.cli_sbin.symlink_to(self.cli)
         (self.config_dir / "config.env").write_text(
             "DOMAIN=panel.example.com\nPANEL_PORT=443\nHY2_PORT=8443\nAPI_SECRET=test\n",
@@ -135,6 +139,7 @@ class UninstallCleanupTests(unittest.TestCase):
             "HYSTERIA_SERVICE_FILE": self.hysteria_service,
             "RELOAD_PATH_FILE": self.reload_path,
             "RELOAD_SERVICE_FILE": self.reload_service,
+            "HYSTERIA_DROPIN_DIR": self.dropin_dir,
             "SELF_INSTALL": self.cli,
             "SELF_INSTALL_SBIN": self.cli_sbin,
             "HY2_FAIL2BAN_FILTER": self.fail2ban_filter,
@@ -192,6 +197,7 @@ uninstall_cmd
         self.assertFalse(self.hysteria_service.exists())
         self.assertFalse(self.reload_path.exists())
         self.assertFalse(self.reload_service.exists())
+        self.assertFalse(self.dropin_dir.exists())
         self.assertFalse(self.fail2ban_filter.exists())
         self.assertFalse(self.fail2ban_jail.exists())
         self.assertFalse(self.sysctl.exists())

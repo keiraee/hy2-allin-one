@@ -32,6 +32,8 @@ class RollbackSnapshotTests(unittest.TestCase):
             / "etc/systemd/system/hy2-aio-reload-hysteria.path",
             "RELOAD_SERVICE_FILE": self.root
             / "etc/systemd/system/hy2-aio-reload-hysteria.service",
+            "HYSTERIA_DROPIN_DIR": self.root
+            / "etc/systemd/system/hysteria-server.service.d",
             "SELF_INSTALL": self.root / "usr/local/bin/hy2",
             "SELF_INSTALL_SBIN": self.root / "usr/local/sbin/hy2",
         }

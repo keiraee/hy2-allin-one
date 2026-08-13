@@ -49,6 +49,7 @@ a{color:inherit}
 .pill{font-size:12px;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:var(--panel)}
 .pill.ok{color:var(--ok);border-color:#a7f3d0;background:#ecfdf5}
 .pill.bad{color:var(--bad);border-color:#fecaca;background:#fef2f2}
+.pill.off{color:#92400e;border-color:#fde68a;background:#fffbeb}
 .table-wrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
 table{width:100%;border-collapse:collapse}
 th,td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--line);font-size:14px;vertical-align:middle}
@@ -138,6 +139,9 @@ tr.disabled td{opacity:.55}
       <button id="errorClose" class="notice-close" type="button" aria-label="关闭">×</button>
       <span id="errorText"></span>
     </div>
+    <div id="hy2OffBanner" class="notice" role="status">
+      HY2 已关闭。UDP 未监听，客户端无法连接。整机流量仍计入面板与 SSH。
+    </div>
     <div id="notice" class="notice" role="note">
       <button id="noticeClose" class="notice-close" type="button" aria-label="关闭">×</button>
       套餐用量以「本月整机流量」为准（网卡本地计数，对齐云厂商限制）；Clash 订阅进度与此同步。用户表为 HY2 代理分摊参考。云厂商控制台仍是最终账单。
@@ -156,7 +160,10 @@ tr.disabled td{opacity:.55}
     </div>
 
     <section class="section">
-      <div class="section-h"><h2>服务</h2></div>
+      <div class="section-h">
+        <h2>服务</h2>
+        <button id="hy2Toggle" class="btn" type="button">关闭 HY2</button>
+      </div>
       <div id="services" class="pills"></div>
     </section>
 
@@ -197,7 +204,7 @@ tr.disabled td{opacity:.55}
       <div class="stack">
         <input id="newUser" class="input" type="text" maxlength="32" placeholder="新用户名（字母数字 _ -）" autocomplete="off">
         <button id="addBtn" class="btn primary" type="button">添加用户</button>
-        <p class="hint">添加后会重建配置并短暂重启 Hysteria。</p>
+        <p class="hint">添加后会重建配置；HY2 开启时会短暂重启 Hysteria。全员禁用会自动关闭 HY2。</p>
       </div>
     </div>
     <div class="drawer-sec">
@@ -342,8 +349,8 @@ async function toggleUser(username,disabled){
   closeMenus();
   if(!disabled&&!confirm("确认禁用 "+username+"？该用户将立即无法连接，数据保留。"))return;
   try{
-    await apiPost(disabled?"api/user/enable":"api/user/disable",{username});
-    toast(disabled?"已启用 "+username:"已禁用 "+username);
+    const result=await apiPost(disabled?"api/user/enable":"api/user/disable",{username});
+    toast(result.message||(disabled?"已启用 "+username:"已禁用 "+username));
     await load();
   }catch(error){toast("操作失败："+error.message)}
 }
@@ -395,8 +402,23 @@ async function syncNow(){
 function renderServices(services){
   const root=$("services");clearNode(root);
   Object.entries(services||{}).forEach(([name,status])=>{
-    root.append(el("span",{className:"pill "+(status==="active"?"ok":"bad"),text:name+"："+status}));
+    let cls="bad", label=status;
+    if(status==="active")cls="ok";
+    else if(status==="off"){cls="off";label="已关闭"}
+    root.append(el("span",{className:"pill "+cls,text:name+"："+label}));
   });
+}
+async function toggleHy2(){
+  const enabled=window.__hy2Enabled!==false;
+  if(enabled&&!confirm("确认关闭 Hysteria？客户端将无法连接。"))return;
+  const btn=$("hy2Toggle");
+  if(btn)btn.disabled=true;
+  try{
+    await apiPost(enabled?"api/hy2/off":"api/hy2/on",{});
+    toast(enabled?"HY2 已关闭":"HY2 已开启");
+    await load();
+  }catch(error){toast("操作失败："+error.message)}
+  if(btn)btn.disabled=false;
 }
 function menuItem(text,handler,bad){
   return el("button",{type:"button",className:bad?"bad":"",text,onclick:handler});
@@ -468,6 +490,14 @@ async function load(){
     $("memory").textContent=data.server.memory.percent+"%";$("swap").textContent="Swap "+data.server.memory.swap_percent+"%";
     $("disk").textContent=data.server.disk.percent+"%";$("uptime").textContent="运行 "+duration(data.server.uptime);
     renderServices(data.server.services);
+    const hy2On=data.server.hy2_enabled!==false;
+    window.__hy2Enabled=hy2On;
+    $("hy2OffBanner").classList.toggle("show",!hy2On);
+    const toggle=$("hy2Toggle");
+    if(toggle){
+      toggle.textContent=hy2On?"关闭 HY2":"开启 HY2";
+      toggle.classList.toggle("bad",hy2On);
+    }
     renderUsers(data.users);
     $("errorText").textContent=(data.errors||[]).join("；");
     const errorText=$("errorText").textContent;
@@ -479,6 +509,7 @@ async function load(){
   }
 }
 
+$("hy2Toggle").onclick=toggleHy2;
 $("syncBtn").onclick=syncNow;
 $("drawerSync").onclick=()=>{setDrawer(false);syncNow()};
 $("menuBtn").onclick=()=>setDrawer(true);

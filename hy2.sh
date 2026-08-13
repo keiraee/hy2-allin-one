@@ -552,6 +552,8 @@ HY2 AIO v${AIO_VERSION}
   hy2 note <用户名> [备注]     # 设置设备备注（留空清除）
   hy2 disable <用户名>         # 禁用用户
   hy2 enable <用户名>          # 启用用户
+  hy2 on                       # 开启 Hysteria（需至少一个已启用用户）
+  hy2 off                      # 关闭 Hysteria（停监听，不删用户）
   hy2 backup                   # 备份
   hy2 rollback                 # 回滚最近快照
   hy2 logs [行数]              # 查看日志
@@ -652,6 +654,8 @@ main() {
     note)       modify_user "note" "${2:-}" "${3:-}" ;;
     disable)    modify_user "disable" "${2:-}" ;;
     enable)     modify_user "enable" "${2:-}" ;;
+    on)         hy2_on_cmd ;;
+    off)        hy2_off_cmd ;;
     update)     update_cmd ;;
     uninstall)  uninstall_cmd ;;
     obfs)       obfs_cmd "${2:-show}" ;;

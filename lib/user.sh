@@ -141,9 +141,77 @@ PY
   chmod 0640 "$MODE_FILE" 2>/dev/null || true
 }
 
+hy2_off_path() {
+  printf '%s\n' "${HY2_OFF_FILE:-/etc/hy2-aio/hy2.off}"
+}
+
+hy2_is_off() {
+  [ -f "$(hy2_off_path)" ]
+}
+
+hy2_set_off_flag() {
+  local off
+  off="$(hy2_off_path)"
+  printf '1\n' > "$off"
+  chown root:hy2-aio "$off" 2>/dev/null || true
+  chmod 0640 "$off" 2>/dev/null || true
+}
+
+hy2_clear_off_flag() {
+  rm -f "$(hy2_off_path)"
+}
+
+hy2_has_enabled_user() {
+  [ -f "${USERS_FILE:-}" ] || return 1
+  python3 - "$USERS_FILE" <<'PY'
+import json, sys
+users = json.load(open(sys.argv[1], encoding="utf-8"))
+if not isinstance(users, dict):
+    raise SystemExit(1)
+
+def disabled(info):
+    if not isinstance(info, dict):
+        return True
+    value = info.get("disabled", False)
+    if value is True:
+        return True
+    if value is False or value is None:
+        return False
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
+
+raise SystemExit(0 if any(not disabled(info) for info in users.values()) else 1)
+PY
+}
+
+hy2_sync_service_to_users() {
+  if ! hy2_has_enabled_user; then
+    hy2_set_off_flag
+    systemctl stop hysteria-server.service
+    return
+  fi
+  if hy2_is_off; then
+    return 0
+  fi
+  systemctl restart hysteria-server.service
+}
+
+hy2_restore_service_state() {
+  if [ "${1:-0}" = "1" ]; then
+    hy2_set_off_flag
+    systemctl stop hysteria-server.service || true
+  else
+    hy2_clear_off_flag
+    systemctl restart hysteria-server.service || true
+  fi
+}
+
 modify_user() {
   local action="$1" username="${2:-}"
-  local value="${3:-}" user_lock_fd users_backup config_backup failure=""
+  local value="${3:-}" user_lock_fd users_backup config_backup failure="" was_off=0
   need_root "$action"
   read_env
   valid_name "$username" || die "用户名仅允许字母、数字、下划线、短横线，长度 1-32"
@@ -154,6 +222,7 @@ modify_user() {
   exec {user_lock_fd}>"$USER_MUTATION_LOCK"
   flock -x "$user_lock_fd"
 
+  hy2_is_off && was_off=1
   users_backup="$(mktemp "${CONFIG_DIR}/.users.json.rollback.XXXXXX")"
   config_backup="$(mktemp "${HYSTERIA_DIR}/.config.yaml.rollback.XXXXXX")"
   cp -a "$USERS_FILE" "$users_backup"
@@ -167,15 +236,15 @@ modify_user() {
     failure="Hysteria 配置重建失败"
   elif ! chown hysteria:hysteria "$HYSTERIA_CONFIG" || ! chmod 0660 "$HYSTERIA_CONFIG"; then
     failure="Hysteria 配置权限设置失败"
-  elif ! systemctl restart hysteria-server.service; then
-    failure="Hysteria 重启失败"
+  elif ! hy2_sync_service_to_users; then
+    failure="Hysteria 服务切换失败"
   fi
 
   if [ -n "$failure" ]; then
     warn "${failure}，恢复修改前状态"
     mv -f "$users_backup" "$USERS_FILE"
     mv -f "$config_backup" "$HYSTERIA_CONFIG"
-    systemctl restart hysteria-server.service || true
+    hy2_restore_service_state "$was_off"
     flock -u "$user_lock_fd"
     exec {user_lock_fd}>&-
     die "修改失败：$failure"
@@ -192,6 +261,9 @@ modify_user() {
   api_post sync >/dev/null || true
   write_access_file
   log "用户操作完成：$action $username"
+  if ! hy2_has_enabled_user; then
+    log "已无启用用户，HY2 已关闭"
+  fi
   show_cmd
 }
 

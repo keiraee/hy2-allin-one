@@ -17,6 +17,9 @@ status_cmd() {
     echo "混淆：off"
   fi
   echo "QUIC 保活：${QUIC_KEEP_ALIVE_PERIOD:-5s} / idle ${QUIC_MAX_IDLE_TIMEOUT:-120s}"
+  if [ -f "${HY2_OFF_FILE:-/etc/hy2-aio/hy2.off}" ]; then
+    echo "Hysteria：已关闭（开启：hy2 on）"
+  fi
   echo
   systemctl --no-pager --full status \
     hysteria-server.service hy2-aio.service caddy.service \
@@ -52,8 +55,12 @@ restart_cmd() {
   read_env
   ensure_hysteria_config_perms
   systemctl daemon-reload
-  systemctl restart hysteria-server.service
-  wait_hysteria_stats_api
+  if [ -f "${HY2_OFF_FILE:-/etc/hy2-aio/hy2.off}" ]; then
+    log "Hysteria 已关闭，跳过重启（开启：hy2 on）"
+  else
+    systemctl restart hysteria-server.service
+    wait_hysteria_stats_api
+  fi
   systemctl restart hy2-aio.service
   systemctl restart caddy.service
   sleep 2
@@ -83,11 +90,38 @@ PY
   warn "Hysteria 统计接口 127.0.0.1:${port} 暂未就绪，面板可能短暂无法读取流量"
 }
 
+hy2_off_cmd() {
+  need_root off
+  read_env
+  hy2_set_off_flag
+  systemctl stop hysteria-server.service
+  systemctl restart hy2-aio.service || true
+  log "Hysteria 已关闭。开启：hy2 on"
+}
+
+hy2_on_cmd() {
+  need_root on
+  read_env
+  hy2_has_enabled_user || die "请先启用至少一个用户"
+  hy2_clear_off_flag
+  "$REBUILD_FILE"
+  chown hysteria:hysteria "$HYSTERIA_CONFIG" 2>/dev/null || true
+  chmod 0660 "$HYSTERIA_CONFIG" 2>/dev/null || true
+  systemctl start hysteria-server.service
+  wait_hysteria_stats_api
+  systemctl restart hy2-aio.service || true
+  log "Hysteria 已开启"
+}
+
 update_cmd() {
   need_root update
   log "升级 Hysteria 2（钉死版本 + SHA256）"
   install_hysteria 1
-  systemctl restart hysteria-server.service
+  if [ -f "${HY2_OFF_FILE:-/etc/hy2-aio/hy2.off}" ]; then
+    log "Hysteria 已关闭，内核已更新（开启：hy2 on）"
+  else
+    systemctl restart hysteria-server.service
+  fi
   hysteria version || true
 }
 
@@ -149,8 +183,9 @@ uninstall_cmd() {
     "$HYSTERIA_SERVICE_FILE" \
     "$RELOAD_PATH_FILE" \
     "$RELOAD_SERVICE_FILE"
+  rm -rf "${HYSTERIA_DROPIN_DIR:-/etc/systemd/system/hysteria-server.service.d}"
   rm -rf "$APP_DIR" "$WEB_DIR"
-  rm -f /run/hy2-aio/reload-hysteria
+  rm -f /run/hy2-aio/reload-hysteria /run/hy2-aio/hysteria-cmd
 
   if declare -F caddyfile_remove_hy2_site >/dev/null 2>&1; then
     caddyfile_remove_hy2_site "$CADDY_FILE" "$CADDY_SITE_FILE"
@@ -291,6 +326,8 @@ EOF
   echo " 16) 备份"
   echo " 17) 回滚最近快照"
   echo " 18) 日志"
+  echo " 21) 开启 HY2"
+  echo " 22) 关闭 HY2"
   echo
   echo "── 其他 ──────────────────────────"
   echo " 19) 安装说明（仅新机）"
@@ -303,7 +340,7 @@ menu_interactive() {
   local choice username note obfs_choice
   while true; do
     show_menu
-    read -r -p "请选择 [1-20/99]: " choice
+    read -r -p "请选择 [1-22/99]: " choice
     case "$choice" in
       1)  menu_upgrade ;;
       2)  menu_call repair_cmd ;;
@@ -347,6 +384,8 @@ menu_interactive() {
       18) menu_call logs_cmd ;;
       19) menu_install_help ;;
       20) menu_call uninstall_cmd ;;
+      21) menu_call hy2_on_cmd ;;
+      22) menu_call hy2_off_cmd ;;
       99) exit 0 ;;
       *)
         echo "无效选择"

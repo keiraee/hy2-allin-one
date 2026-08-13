@@ -252,6 +252,13 @@ class HysteriaApiRetryTests(unittest.TestCase):
         self.assertLess(hysteria, wait)
         self.assertLess(wait, backend)
 
+    def test_restart_skips_hysteria_when_switched_off(self):
+        source = (ROOT / "lib" / "cli.sh").read_text(encoding="utf-8")
+        restart = source[source.index("restart_cmd()") :]
+        restart = restart[: restart.index("\n}\n", 1) + 3]
+        self.assertIn("HY2_OFF_FILE", restart)
+        self.assertIn("跳过重启", restart)
+
 
 if __name__ == "__main__":
     unittest.main()
