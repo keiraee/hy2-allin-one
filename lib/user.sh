@@ -91,6 +91,56 @@ finally:
 PY
 }
 
+forget_deleted_user_files() {
+  local username="$1"
+  python3 - "$MODE_FILE" "${STATE_DIR}/state.json" "$username" <<'PY'
+import json, os, sys, tempfile
+from pathlib import Path
+
+mode_path = Path(sys.argv[1])
+state_path = Path(sys.argv[2])
+username = sys.argv[3]
+
+
+def atomic_write(path: Path, data) -> None:
+    directory = str(path.parent)
+    descriptor, temporary = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=directory)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+            json.dump(data, file, ensure_ascii=False, indent=2)
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temporary, path)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+
+
+if mode_path.is_file():
+    try:
+        modes = json.loads(mode_path.read_text(encoding="utf-8"))
+    except Exception:
+        modes = {}
+    if isinstance(modes, dict) and isinstance(modes.get("users"), dict) and username in modes["users"]:
+        modes["users"].pop(username, None)
+        atomic_write(mode_path, modes)
+
+if state_path.is_file():
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except Exception:
+        state = {}
+    users_state = state.get("users") if isinstance(state, dict) else None
+    if isinstance(users_state, dict) and username in users_state:
+        users_state.pop(username, None)
+        atomic_write(state_path, state)
+PY
+  chown hy2-aio:hy2-aio "$MODE_FILE" 2>/dev/null || true
+  chmod 0640 "$MODE_FILE" 2>/dev/null || true
+}
+
 modify_user() {
   local action="$1" username="${2:-}"
   local value="${3:-}" user_lock_fd users_backup config_backup failure=""
@@ -134,6 +184,9 @@ modify_user() {
   rm -f "$users_backup" "$config_backup"
   flock -u "$user_lock_fd"
   exec {user_lock_fd}>&-
+  if [ "$action" = "remove-user" ]; then
+    forget_deleted_user_files "$username"
+  fi
   systemctl restart hy2-aio.service
   sleep 2
   api_post sync >/dev/null || true

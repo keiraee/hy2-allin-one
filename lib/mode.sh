@@ -160,6 +160,9 @@ else:
             down_value = float(sys.argv[7])
         except ValueError:
             raise SystemExit("上传和下载必须是数字")
+        import math
+        if not math.isfinite(up_value) or not math.isfinite(down_value):
+            raise SystemExit("上传和下载必须是有限数字")
         if up_value <= 0 or down_value <= 0:
             raise SystemExit("Brutal 上传和下载必须大于 0")
         if up_value > 2000 or down_value > 2000:

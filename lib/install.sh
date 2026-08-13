@@ -286,19 +286,50 @@ PY
   log "Hysteria 已安装：$(hysteria version 2>/dev/null | head -1 || true)"
 }
 
+ensure_low_memory_swap() {
+  local mem_kb available_bytes swap_need
+  mem_kb="$(awk '/MemTotal:/ {print $2}' /proc/meminfo)"
+  if [ "${mem_kb:-0}" -ge 1048576 ]; then
+    return 0
+  fi
+  if swapon --show --noheadings 2>/dev/null | grep -q .; then
+    return 0
+  fi
+  if grep -q '^/swapfile ' /proc/swaps 2>/dev/null; then
+    return 0
+  fi
+  if [ -f /swapfile ]; then
+    chmod 600 /swapfile
+    if swapon /swapfile 2>/dev/null; then
+      grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    else
+      warn "已有 /swapfile，跳过 mkswap/fstab，避免覆盖未知文件"
+    fi
+    return 0
+  fi
+  available_bytes="$(df -B1 / | awk 'NR==2 {print $4}')"
+  swap_need=$((1024 * 1024 * 1024 + 64 * 1024 * 1024))
+  if [ "${available_bytes:-0}" -lt "$swap_need" ]; then
+    warn "磁盘余量不足，跳过创建 /swapfile"
+    return 0
+  fi
+  if ! { fallocate -l 1G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=1024 status=none; }; then
+    warn "无法分配 /swapfile"
+    rm -f /swapfile
+    return 0
+  fi
+  chmod 600 /swapfile
+  if mkswap /swapfile >/dev/null && swapon /swapfile; then
+    grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  else
+    warn "创建 swap 失败，未写入 /etc/fstab"
+    rm -f /swapfile
+  fi
+}
+
 configure_swap_and_kernel() {
   log "配置 Swap、BBR 与 UDP 缓冲"
-  local mem_kb
-  mem_kb="$(awk '/MemTotal:/ {print $2}' /proc/meminfo)"
-  if [ "${mem_kb:-0}" -lt 1048576 ] && ! swapon --show --noheadings | grep -q .; then
-    if [ ! -f /swapfile ]; then
-      fallocate -l 1G /swapfile 2>/dev/null || dd if=/dev/zero of=/swapfile bs=1M count=1024 status=none
-    fi
-    chmod 600 /swapfile
-    mkswap /swapfile >/dev/null 2>&1 || true
-    swapon /swapfile || true
-    grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
-  fi
+  ensure_low_memory_swap
 
   modprobe tcp_bbr 2>/dev/null || true
   echo tcp_bbr > /etc/modules-load.d/tcp_bbr.conf

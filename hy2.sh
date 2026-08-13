@@ -297,6 +297,18 @@ PYV
   esac
   [[ "$SNI" =~ ^[A-Za-z0-9.-]+$ ]] || die "SNI 格式错误"
   [[ "$TOTAL_BYTES" =~ ^[1-9][0-9]*$ ]] || die "TOTAL_BYTES 必须是正整数"
+  [[ "$BACKUP_RETENTION_DAYS" =~ ^[1-9][0-9]{0,3}$ ]] \
+    && [ "$BACKUP_RETENTION_DAYS" -le 3650 ] \
+    || die "备份保留天数必须是 1-3650 的整数"
+  [[ "$RATE_LIMIT_SUBSCRIPTION" =~ ^[0-9]+$ ]] || die "订阅限流必须是整数"
+  [[ "$RATE_LIMIT_API" =~ ^[0-9]+$ ]] || die "面板 API 限流必须是整数"
+  case "$SPEED_TEST" in
+    true|false) ;;
+    *) die "SPEED_TEST 只能是 true 或 false" ;;
+  esac
+  case "$BACKUP_RETENTION_DAYS$RATE_LIMIT_SUBSCRIPTION$RATE_LIMIT_API$SPEED_TEST" in
+    *$'\n'*|*$'\r'*) die "配置值不能包含换行" ;;
+  esac
 
   echo
   echo "------------------------------------------------------------"

@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import hmac
 import json
+import math
 import os
 import re
 import secrets
@@ -108,7 +109,9 @@ def normalize_mode(value: Any) -> dict[str, Any]:
         down = float(value.get("down_mbps", 0))
     except (TypeError, ValueError):
         return {"mode": "bbr", "up_mbps": 0.0, "down_mbps": 0.0}
-    if up <= 0 or down <= 0:
+    if not math.isfinite(up) or not math.isfinite(down) or up <= 0 or down <= 0:
+        return {"mode": "bbr", "up_mbps": 0.0, "down_mbps": 0.0}
+    if up > 2000 or down > 2000:
         return {"mode": "bbr", "up_mbps": 0.0, "down_mbps": 0.0}
     return {"mode": "brutal", "up_mbps": up, "down_mbps": down}
 
@@ -232,6 +235,28 @@ def net_counters(iface: str) -> tuple[int, int]:
     rx = int((base / "rx_bytes").read_text(encoding="utf-8").strip())
     tx = int((base / "tx_bytes").read_text(encoding="utf-8").strip())
     return rx, tx
+
+
+def counter_delta(current: int, last: int) -> int:
+    current = max(int(current or 0), 0)
+    last = max(int(last or 0), 0)
+    if current >= last:
+        return current - last
+    return current
+
+
+def accumulate_user_traffic(user_state: dict[str, Any], raw: dict[str, Any]) -> tuple[int, int]:
+    raw_tx = int(raw.get("tx", 0) or 0)
+    raw_rx = int(raw.get("rx", 0) or 0)
+    tx = counter_delta(raw_tx, int(user_state.get("last_tx", 0) or 0))
+    rx = counter_delta(raw_rx, int(user_state.get("last_rx", 0) or 0))
+    user_state["last_tx"] = raw_tx
+    user_state["last_rx"] = raw_rx
+    user_state["month_tx"] = int(user_state.get("month_tx", 0)) + tx
+    user_state["month_rx"] = int(user_state.get("month_rx", 0)) + rx
+    user_state["lifetime_tx"] = int(user_state.get("lifetime_tx", 0)) + tx
+    user_state["lifetime_rx"] = int(user_state.get("lifetime_rx", 0)) + rx
+    return tx, rx
 
 
 def hysteria_api(path: str, secret: str) -> Any:
@@ -434,7 +459,8 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
 
         errors: list[str] = []
         try:
-            traffic = hysteria_api("/traffic?clear=1", env["API_SECRET"])
+            # Snapshot only. Clearing here would drop bytes if we crash before persist.
+            traffic = hysteria_api("/traffic", env["API_SECRET"])
             if not isinstance(traffic, dict):
                 traffic = {}
         except Exception as error:
@@ -464,14 +490,12 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
                     "last_active": "从未",
                 },
             )
-            raw = traffic.get(username, {})
-            raw = raw if isinstance(raw, dict) else {}
-            tx = int(raw.get("tx", 0))
-            rx = int(raw.get("rx", 0))
-            user_state["month_tx"] = int(user_state.get("month_tx", 0)) + tx
-            user_state["month_rx"] = int(user_state.get("month_rx", 0)) + rx
-            user_state["lifetime_tx"] = int(user_state.get("lifetime_tx", 0)) + tx
-            user_state["lifetime_rx"] = int(user_state.get("lifetime_rx", 0)) + rx
+            raw = traffic.get(username)
+            raw = raw if isinstance(raw, dict) else None
+            if raw is not None:
+                tx, rx = accumulate_user_traffic(user_state, raw)
+            else:
+                tx = rx = 0
             devices = int(online.get(username, 0) or 0)
             if tx or rx or devices:
                 user_state["last_active"] = timestamp
@@ -491,6 +515,17 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
                     "mode": mode_label(client_mode),
                 }
             )
+
+        for stale in [name for name in list(state_users) if name not in users]:
+            state_users.pop(stale, None)
+
+        stored_modes = read_json(MODE_FILE, {})
+        if isinstance(stored_modes, dict) and isinstance(stored_modes.get("users"), dict):
+            leftover_modes = [name for name in stored_modes["users"] if name not in users]
+            if leftover_modes:
+                for name in leftover_modes:
+                    stored_modes["users"].pop(name, None)
+                atomic_json(MODE_FILE, stored_modes)
 
         disk = shutil.disk_usage("/")
         memory = memory_info()
@@ -704,12 +739,21 @@ def create_backup(force: bool = False) -> Optional[Path]:
             except OSError:
                 pass
 
-        cutoff = time.time() - int(load_env().get("BACKUP_RETENTION_DAYS", "14")) * 86400
+        cutoff = time.time() - backup_retention_days() * 86400
         for path in BACKUP_DIR.glob("hy2-aio-backup-*.tar.gz"):
             if path.stat().st_mtime < cutoff:
                 path.unlink()
                 BACKUP_VALIDATED.pop(path, None)
         return backup
+
+
+def backup_retention_days() -> int:
+    raw = str(load_env().get("BACKUP_RETENTION_DAYS", "14") or "14").strip()
+    try:
+        days = int(raw)
+    except (TypeError, ValueError):
+        days = 14
+    return max(1, min(days, 3650))
 
 
 def apply_web_permissions() -> None:
@@ -741,6 +785,24 @@ def restart_hysteria() -> None:
 
 
 USERNAME_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,32}")
+
+
+def forget_user_side_state(username: str) -> None:
+    modes = read_json(MODE_FILE, {})
+    if isinstance(modes, dict) and isinstance(modes.get("users"), dict):
+        if username in modes["users"]:
+            modes["users"].pop(username, None)
+            atomic_json(MODE_FILE, modes)
+            try:
+                os.chmod(MODE_FILE, 0o640)
+            except OSError:
+                pass
+    if STATE_FILE.exists():
+        state = read_json(STATE_FILE, {})
+        users_state = state.get("users")
+        if isinstance(users_state, dict) and username in users_state:
+            users_state.pop(username, None)
+            atomic_json(STATE_FILE, state)
 
 
 def mutate_users(mutator) -> dict[str, Any]:
@@ -821,7 +883,9 @@ def remove_user(username: str) -> dict[str, Any]:
             raise ValueError("不能删除最后一个用户")
         del users[username]
 
-    return mutate_users(mutator)
+    data = mutate_users(mutator)
+    forget_user_side_state(username)
+    return data
 
 
 def rotate_user(username: str) -> dict[str, Any]:
@@ -892,6 +956,14 @@ def rate_limit_allow(bucket: str, ip: str, limit: int, window: float) -> bool:
         if len(hits) >= limit:
             return False
         hits.append(now)
+        if len(RATE_BUCKETS) > 256:
+            stale = [
+                old_key
+                for old_key, stamps in RATE_BUCKETS.items()
+                if not stamps or stamps[-1] < cutoff
+            ]
+            for old_key in stale:
+                RATE_BUCKETS.pop(old_key, None)
         return True
 
 
