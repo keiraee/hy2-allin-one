@@ -437,6 +437,16 @@ content = f"""{site_addr} {{
             }}
         }}
 
+        # 兼容旧分拆版订阅：https://域名/{{TOKEN}}（无 /s/ 前缀）
+        @legacy_sub path_regexp ^/[A-Fa-f0-9]{{32,64}}$
+        handle @legacy_sub {{
+            rewrite * /s{{http.request.uri.path}}
+            reverse_proxy {backend_host}:{backend_port} {{
+                header_up X-Forwarded-For {{remote_host}}
+                header_up X-Real-IP {{remote_host}}
+            }}
+        }}
+
         handle {{
             respond "Not Found" 404
         }}

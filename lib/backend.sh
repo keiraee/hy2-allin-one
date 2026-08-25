@@ -1267,7 +1267,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"ok": True, "time": iso_now()})
             return
         if path.startswith("/s/"):
-            self.send_subscription(path[3:].strip("/") if path.startswith("/s/") else path.strip("/"))
+            self.send_subscription(path[3:].strip("/"))
+            return
+        # 兼容旧分拆版：GET /{token}（无 /s/ 前缀）
+        bare = path.strip("/")
+        if bare and "/" not in bare and all(c in "0123456789abcdefABCDEF" for c in bare) and 32 <= len(bare) <= 64:
+            self.send_subscription(bare)
             return
         self.send_error(404)
 
