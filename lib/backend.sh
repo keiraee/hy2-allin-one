@@ -439,9 +439,10 @@ def subscription_yaml(env: dict[str, str], username: str, password: str) -> byte
             f"    obfs-password: {q(env['OBFS_PASSWORD'])}\n"
         )
 
+    node = q("HY2-" + username)
     content = f"""mixed-port: 7890
 allow-lan: false
-mode: global
+mode: rule
 log-level: info
 ipv6: false
 
@@ -465,14 +466,8 @@ dns:
     - https://1.1.1.1/dns-query
     - https://8.8.8.8/dns-query
 
-proxy-groups:
-  - name: "GLOBAL"
-    type: select
-    proxies:
-      - {q("HY2-" + username)}
-
 proxies:
-  - name: {q("HY2-" + username)}
+  - name: {node}
     type: hysteria2
     server: {q(env["PUBLIC_IP"])}
     port: {env.get('HY2_PORT', '443')}
@@ -481,6 +476,39 @@ proxies:
     skip-cert-verify: {"true" if client_insecure(env) else "false"}
     udp: true
     keepalive: 5s
+
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies:
+      - {node}
+      - DIRECT
+
+rule-providers:
+  china-domain:
+    type: http
+    behavior: domain
+    format: yaml
+    path: ./ruleset/china-domain.yaml
+    interval: 86400
+    url: https://testingcf.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Clash/China/China_Domain.yaml
+  china-ip:
+    type: http
+    behavior: ipcidr
+    format: mrs
+    path: ./ruleset/china-ip.mrs
+    interval: 86400
+    url: https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geoip/cn.mrs
+
+rules:
+  - DOMAIN-SUFFIX,lan,DIRECT
+  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
+  - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+  - RULE-SET,china-domain,DIRECT
+  - RULE-SET,china-ip,DIRECT
+  - MATCH,PROXY
 """
     return content.encode("utf-8")
 
