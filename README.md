@@ -1,4 +1,4 @@
-# HY2 AIO v1.3.25
+# HY2 AIO v1.3.26
 
 一键部署 Hysteria 2 + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -8,7 +8,7 @@
 ## 快速开始
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.25/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.26/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -26,7 +26,7 @@ hy2 restart
 若本机还没有 `hy2 upgrade`（很旧的安装），先执行一次：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.25/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.26/hy2.sh -o hy2.sh
 sudo bash hy2.sh repair
 ```
 
@@ -45,6 +45,7 @@ sudo hy2
 ```bash
 sudo hy2 status              # 查看状态
 sudo hy2 show                # 显示账号
+sudo hy2 panel               # 查看面板账号和密码
 sudo hy2 sync                # 同步数据
 sudo hy2 mode                # 速率模式菜单
 sudo hy2 mode show           # 显示当前模式
@@ -91,7 +92,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref | `v1.3.25` |
+| `HY2_REPO_REF` | 模块 Git ref | `v1.3.26` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
 | `CADDY_VERSION` | Caddy 回退安装版本 | `v2.11.4` |
@@ -128,6 +129,11 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v1.3.26
+- 安装/升级结束显示 Welcome HY2 作者横幅与开源地址
+- 首次安装直接打印面板账号和密码，不再只提示去看 txt
+- 新增 `hy2 panel` / 菜单 23 查看面板账号和密码
 
 ### v1.3.25
 - Clash 订阅默认规则分流：国内域名/IP 直连，其余走 HY2（blackmatrix7 China + MetaCubeX CN IP）

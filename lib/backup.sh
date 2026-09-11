@@ -290,6 +290,8 @@ PY
   log "已写入 QUIC 保活与混淆开关到配置；Hysteria 未自动重启"
   log "使配置生效：hy2 restart   （或 hy2 obfs on|off）"
   echo "运行速率模式菜单：hy2 mode"
+  echo "查看面板账号：hy2 panel"
+  print_welcome_banner
 }
 
 backup_cmd() {

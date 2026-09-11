@@ -84,6 +84,7 @@ HY2 AIO v${AIO_VERSION}
 命令模式：
   hy2 status              # 查看状态
   hy2 show                # 显示账号
+  hy2 panel               # 查看面板账号和密码
   hy2 sync                # 同步数据
   hy2 mode                # 速率模式菜单
   hy2 mode show           # 显示当前模式
@@ -118,6 +119,7 @@ case "$command" in
   upgrade)    die "内部错误：upgrade 应在加载模块前处理" ;;
   status)     status_cmd ;;
   show)       show_cmd ;;
+  panel)      panel_cmd ;;
   sync)       sync_cmd ;;
   mode)       mode_cmd "$@" ;;
   backup)     backup_cmd ;;

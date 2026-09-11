@@ -3,7 +3,7 @@
 
 set -Eeuo pipefail
 
-SCRIPT_VERSION="1.3.25"
+SCRIPT_VERSION="1.3.26"
 AIO_VERSION="$SCRIPT_VERSION"
 CONFIG_DIR="/etc/hy2-aio"
 HYSTERIA_DIR="/etc/hysteria"
@@ -44,6 +44,32 @@ SELF_INSTALL_SBIN="/usr/local/sbin/hy2"
 log() { printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "$*"; }
 warn() { printf '\033[1;33m[WARN]\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
+
+print_welcome_banner() {
+  printf '\033[1;36m'
+  cat <<'EOF'
+
+ __          ________ _      _____ ____  __  __ ______
+ \ \        / /  ____| |    / ____/ __ \|  \/  |  ____|
+  \ \  /\  / /| |__  | |   | |   | |  | | \  / | |__
+   \ \/  \/ / |  __| | |   | |   | |  | | |\/| |  __|
+    \  /\  /  | |____| |___| |___| |__| | |  | | |____
+     \/  \/   |______|______\_____\____/|_|  |_|______|
+
+ _    _ __     __ ___
+| |  | |\ \   / /|__ \
+| |__| | \ \_/ /    ) |
+|  __  |  \   /    / /
+| |  | |   | |    / /_
+|_|  |_|   |_|   |____|
+
+EOF
+  printf '\033[0m'
+  echo "Welcome HY2"
+  echo "作者 @keiraee"
+  echo "开源地址：https://github.com/keiraee/hy2-allin-one.git"
+  echo
+}
 
 need_root() {
   if [ "$(id -u)" -ne 0 ]; then

@@ -36,6 +36,16 @@ show_cmd() {
   cat "$ACCESS_FILE"
 }
 
+panel_cmd() {
+  need_root panel
+  read_env
+  local port_suffix=""
+  [ "${PANEL_PORT:-443}" != "443" ] && port_suffix=":${PANEL_PORT}"
+  echo "面板地址：https://${DOMAIN}${port_suffix}/${PANEL_PATH}/"
+  echo "面板账号：${PANEL_USER}"
+  echo "面板密码：${PANEL_PASS}"
+}
+
 sync_cmd() {
   need_root sync
   read_env
@@ -318,6 +328,7 @@ EOF
   echo " 10) 轮换用户密钥"
   echo " 11) 设置备注"
   echo " 12) 禁用/启用用户"
+  echo " 23) 查看面板账号/密码"
   echo
   echo "── 功能 ──────────────────────────"
   echo " 13) 速率模式"
@@ -340,7 +351,7 @@ menu_interactive() {
   local choice username note obfs_choice
   while true; do
     show_menu
-    read -r -p "请选择 [1-22/99]: " choice
+    read -r -p "请选择 [1-23/99]: " choice
     case "$choice" in
       1)  menu_upgrade ;;
       2)  menu_call repair_cmd ;;
@@ -386,6 +397,7 @@ menu_interactive() {
       20) menu_call uninstall_cmd ;;
       21) menu_call hy2_on_cmd ;;
       22) menu_call hy2_off_cmd ;;
+      23) menu_call panel_cmd ;;
       99) exit 0 ;;
       *)
         echo "无效选择"

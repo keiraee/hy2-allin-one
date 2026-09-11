@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
 DEFAULT_REPO_SLUG="keiraee/hy2-allin-one"
 REPO_SLUG="${HY2_REPO:-$DEFAULT_REPO_SLUG}"
-REPO_REF="${HY2_REPO_REF:-v1.3.25}"
+REPO_REF="${HY2_REPO_REF:-v1.3.26}"
 
 apply_repo_url() {
   if [ -n "${HY2_REPO_URL:-}" ]; then
@@ -458,17 +458,20 @@ EOF
   [ "${PANEL_PORT:-443}" != "443" ] && port_suffix=":${PANEL_PORT}"
 
   echo
+  print_welcome_banner
   echo "============================================================"
   echo " 安装完成"
   echo "============================================================"
   echo "面板地址：https://${DOMAIN}${port_suffix}/${PANEL_PATH}/"
   echo "面板账号：${PANEL_USER}"
-  echo "面板密码：请查看 ${ACCESS_FILE}"
+  echo "面板密码：${PANEL_PASS}"
+  echo "以后查看面板账号：hy2 panel"
   echo "账号/订阅：hy2 show"
   echo "            或打开上面的面板复制订阅"
   echo
   echo "以后常用（需 root；有 sudo 可加 sudo）："
   echo "  hy2           # 菜单"
+  echo "  hy2 panel     # 查看面板账号和密码"
   echo "  hy2 show      # 看账号和订阅"
   echo "  hy2 obfs off  # 断线频繁时可关伪装"
   echo "  hy2 upgrade   # 升级 AIO 到最新版"
@@ -553,6 +556,7 @@ HY2 AIO v${AIO_VERSION}
 命令模式：
   hy2 status                   # 查看状态
   hy2 show                     # 显示账号
+  hy2 panel                    # 查看面板账号和密码
   hy2 sync                     # 同步数据
   hy2 mode                     # 速率模式菜单
   hy2 mode show                # 显示当前模式
@@ -601,7 +605,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_RATE_LIMIT_API  面板 API 每 IP 每分钟次数，默认 120
   HY2_REPO            GitHub 仓库 slug，默认 keiraee/hy2-allin-one
   HY2_REPO_URL        模块下载地址（覆盖 raw 默认；fork 请优先用 HY2_REPO）
-  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.25；upgrade 空值=latest
+  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.26；upgrade 空值=latest
   HY2_YES             设为 1 跳过卸载确认
   HY2_PURGE           设为 1 时卸载并删除配置/数据
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
@@ -656,6 +660,7 @@ main() {
     upgrade)    repair_cmd ;;
     status)     status_cmd ;;
     show)       show_cmd ;;
+    panel)      panel_cmd ;;
     sync)       sync_cmd ;;
     mode)       mode_cmd "$@" ;;
     backup)     backup_cmd ;;
