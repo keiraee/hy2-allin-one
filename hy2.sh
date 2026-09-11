@@ -39,11 +39,18 @@ normalize_aio_version() {
 }
 
 read_installed_aio_version() {
-  local env_file="${1:-/etc/hy2-aio/config.env}" value=""
+  local env_file="${1:-${HY2_ENV_FILE:-/etc/hy2-aio/config.env}}" value=""
   if [ -f "$env_file" ]; then
     value="$(awk -F= '/^AIO_VERSION=/{gsub(/\r/,""); print $2; exit}' "$env_file" || true)"
   fi
   normalize_aio_version "$value"
+}
+
+upgrade_already_current() {
+  local from to
+  from="$(read_installed_aio_version "${1:-}")"
+  to="$(normalize_aio_version "${2:-}")"
+  [ "$from" != "未知" ] && [ -n "$to" ] && [ "$from" = "$to" ]
 }
 
 log_upgrade_plan() {
@@ -613,6 +620,10 @@ main() {
     remote)
       if [ "$command" = "upgrade" ]; then
         resolve_upgrade_source
+        if upgrade_already_current "${HY2_ENV_FILE:-/etc/hy2-aio/config.env}" "$REPO_REF"; then
+          _bootstrap_log "已是 $(normalize_aio_version "$REPO_REF")，无需升级"
+          return 0
+        fi
       else
         apply_repo_url
         if [ "$command" = "repair" ]; then

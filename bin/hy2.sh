@@ -26,8 +26,9 @@ if [ "${1:-}" = "upgrade" ]; then
     bootstrap_url="https://raw.githubusercontent.com/${REPO_SLUG}/${ref}/hy2.sh"
   fi
   current="未知"
-  if [ -f /etc/hy2-aio/config.env ]; then
-    current="$(awk -F= '/^AIO_VERSION=/{gsub(/\r/,""); print $2; exit}' /etc/hy2-aio/config.env || true)"
+  env_file="${HY2_ENV_FILE:-/etc/hy2-aio/config.env}"
+  if [ -f "$env_file" ]; then
+    current="$(awk -F= '/^AIO_VERSION=/{gsub(/\r/,""); print $2; exit}' "$env_file" || true)"
     [ -n "$current" ] || current="未知"
   fi
   case "$current" in
@@ -40,6 +41,10 @@ if [ "${1:-}" = "upgrade" ]; then
     v*) ;;
     [0-9]*) target="v${target}" ;;
   esac
+  if [ "$current" != "未知" ] && [ "$current" = "$target" ]; then
+    printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "已是 ${current}，无需升级"
+    exit 0
+  fi
   printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "升级 ${current} → ${target}"
   printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "引导脚本：${bootstrap_url}"
   tmp="$(mktemp -d)"

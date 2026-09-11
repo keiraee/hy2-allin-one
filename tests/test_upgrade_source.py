@@ -193,6 +193,59 @@ bash bin/hy2.sh upgrade
             self.assertNotIn("keiraee/hy2-allin-one", trace_text)
             self.assertIn("升级 未知 → v9.9.9", result.stdout)
 
+    def test_cli_upgrade_skips_when_installed_version_matches_latest(self):
+        result = run_bash(
+            r"""
+set -Eeuo pipefail
+hy2_testdir="$(mktemp -d)"
+trap 'rm -rf "$hy2_testdir"' EXIT
+mkdir -p "$hy2_testdir/commands"
+printf '%s\n' 'AIO_VERSION=v9.9.9' > "$hy2_testdir/config.env"
+cat > "$hy2_testdir/commands/curl" <<'EOS'
+#!/bin/sh
+printf '%s\n' '{"tag_name":"v9.9.9"}'
+echo "$*" >> "$HY2_TESTDIR/trace.log"
+exit 0
+EOS
+chmod +x "$hy2_testdir/commands/curl"
+cat > "$hy2_testdir/commands/id" <<'EOS'
+#!/bin/sh
+printf '0\n'
+EOS
+chmod +x "$hy2_testdir/commands/id"
+export PATH="$hy2_testdir/commands:$PATH"
+export HY2_TESTDIR="$hy2_testdir"
+export HY2_REPO=alice/hy2-fork
+export HY2_ENV_FILE="$hy2_testdir/config.env"
+unset HY2_REPO_REF
+unset HY2_REPO_URL
+env PATH="$hy2_testdir/commands:/usr/bin:/bin" /bin/bash "$PWD/bin/hy2.sh" upgrade
+test ! -f "$hy2_testdir/seen.env"
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        self.assertIn("已是 v9.9.9，无需升级", result.stdout)
+
+    def test_upgrade_already_current_compares_normalized_versions(self):
+        result = run_bash(
+            r"""
+set -Eeuo pipefail
+root="$(mktemp -d)"
+trap 'rm -rf "$root"' EXIT
+printf '%s\n' 'AIO_VERSION=1.3.24' > "$root/same.env"
+printf '%s\n' 'AIO_VERSION=v1.3.23' > "$root/other.env"
+source ./hy2.sh
+upgrade_already_current "$root/same.env" v1.3.24 && echo same-yes || echo same-no
+upgrade_already_current "$root/other.env" v1.3.24 && echo other-yes || echo other-no
+upgrade_already_current "$root/same.env" main && echo main-yes || echo main-no
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        self.assertEqual(
+            ["same-yes", "other-no", "main-no"],
+            result.stdout.strip().splitlines(),
+        )
+
     def test_upgrade_banner_uses_installed_version_to_target(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "tests") as tmp:
             env_file = Path(tmp) / "config.env"
