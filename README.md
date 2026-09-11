@@ -1,4 +1,4 @@
-# HY2 AIO v1.3.24
+# HY2 AIO v1.3.25
 
 一键部署 Hysteria 2 + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -8,7 +8,7 @@
 ## 快速开始
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.24/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.25/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -26,7 +26,7 @@ hy2 restart
 若本机还没有 `hy2 upgrade`（很旧的安装），先执行一次：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.24/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.25/hy2.sh -o hy2.sh
 sudo bash hy2.sh repair
 ```
 
@@ -91,7 +91,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref | `v1.3.24` |
+| `HY2_REPO_REF` | 模块 Git ref | `v1.3.25` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
 | `CADDY_VERSION` | Caddy 回退安装版本 | `v2.11.4` |
@@ -119,7 +119,7 @@ hy2-allin-one/
 
 ## 说明
 
-- **Clash 订阅**默认 `keepalive: 5s`；服务端写入 QUIC `keepAlivePeriod: 5s`、`maxIdleTimeout: 120s`。
+- **Clash 订阅**默认 `mode: rule`（国内直连、其余走 HY2）及 `keepalive: 5s`；服务端写入 QUIC `keepAlivePeriod: 5s`、`maxIdleTimeout: 120s`。
 - **混淆默认开启**；不稳时可 `sudo hy2 obfs off` 后让客户端更新订阅（关闭的是伪装，不是加密）。
 - **安装向导**默认代理 UDP `8443`（云上比 443 更稳）；仍可改成 `443`。
 - **整机流量**：面板顶部为网卡计数，尽量对齐云厂商套餐；Clash 订阅进度与此同源。
@@ -128,6 +128,11 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v1.3.25
+- Clash 订阅默认规则分流：国内域名/IP 直连，其余走 HY2（blackmatrix7 China + MetaCubeX CN IP）
+- `hy2 upgrade` 本机版本已是 latest 时跳过，不再重复拉取模块
+- 兼容旧 Clash 订阅 URL（无 `/s/` 前缀）
 
 ### v1.3.24
 - 面板与 CLI 增加 Hysteria 开/关（`hy2 on` / `hy2 off`）；全员禁用自动关服，不再写隐藏占位账号
