@@ -1,3 +1,5 @@
+import re
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -19,6 +21,26 @@ class UpdateHintTests(unittest.TestCase):
         self.assertIn("--max-time 3", cli)
         self.assertIn("可升级", cli)
         self.assertIn("hy2 upgrade", cli)
+
+    def test_empty_update_hint_does_not_trip_set_e(self):
+        cli = (ROOT / "lib" / "cli.sh").read_text(encoding="utf-8")
+        match = re.search(r"print_update_hint\(\) \{.*?\n\}", cli, re.S)
+        self.assertIsNotNone(match)
+        script = f"""
+set -Eeuo pipefail
+UPDATE_HINT=""
+{match.group(0)}
+print_update_hint
+echo SURVIVED
+"""
+        result = subprocess.run(
+            ["bash", "-c", script],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("SURVIVED", result.stdout)
 
     def test_status_and_other_commands_do_not_probe(self):
         cli = (ROOT / "lib" / "cli.sh").read_text(encoding="utf-8")

@@ -293,7 +293,9 @@ normalize_hint_version() {
 }
 
 print_update_hint() {
-  [ -n "${UPDATE_HINT:-}" ] && echo "${UPDATE_HINT}"
+  if [ -n "${UPDATE_HINT:-}" ]; then
+    echo "${UPDATE_HINT}"
+  fi
 }
 
 refresh_update_hint() {
