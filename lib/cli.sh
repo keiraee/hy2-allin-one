@@ -280,6 +280,69 @@ menu_install_help() {
   echo "  bash hy2.sh install"
 }
 
+UPDATE_HINT=""
+UPDATE_CHECK_FILE="${STATE_DIR}/update-check.json"
+UPDATE_CHECK_TTL=3600
+
+normalize_hint_version() {
+  local v="${1:-}"
+  v="${v#"${v%%[![:space:]]*}"}"
+  v="${v%"${v##*[![:space:]]}"}"
+  v="${v#v}"
+  printf '%s' "$v"
+}
+
+print_update_hint() {
+  [ -n "${UPDATE_HINT:-}" ] && echo "${UPDATE_HINT}"
+}
+
+refresh_update_hint() {
+  UPDATE_HINT=""
+  local slug current latest now payload
+  slug="${HY2_REPO:-${REPO_SLUG:-keiraee/hy2-allin-one}}"
+  current="$(normalize_hint_version "${AIO_VERSION:-${SCRIPT_VERSION:-}}")"
+  [ -n "$current" ] || return 0
+  now="$(date +%s)"
+
+  if [ -f "$UPDATE_CHECK_FILE" ]; then
+    if latest="$(python3 - "$UPDATE_CHECK_FILE" "$now" "$UPDATE_CHECK_TTL" <<'PY' 2>/dev/null
+import json, sys
+path, now, ttl = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+data = json.load(open(path, encoding="utf-8"))
+checked = int(data.get("checked_at") or 0)
+if now - checked >= ttl:
+    raise SystemExit(1)
+print(str(data.get("latest") or "").strip())
+PY
+)"; then
+      latest="$(normalize_hint_version "$latest")"
+      if [ -n "$latest" ] && [ "$latest" != "$current" ]; then
+        UPDATE_HINT="当前 v${current} · 可升级 v${latest}（hy2 upgrade）"
+      fi
+      return 0
+    fi
+  fi
+
+  payload="$(curl -fsSL --connect-timeout 2 --max-time 3 \
+    -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+    "https://api.github.com/repos/${slug}/releases/latest" 2>/dev/null)" || return 0
+  latest="$(printf '%s' "$payload" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name") or "")' 2>/dev/null)" || return 0
+  latest="$(normalize_hint_version "$latest")"
+  [ -n "$latest" ] || return 0
+
+  python3 - "$UPDATE_CHECK_FILE" "$now" "$latest" <<'PY' 2>/dev/null || true
+import json, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(json.dumps({"checked_at": int(sys.argv[2]), "latest": sys.argv[3]}, ensure_ascii=False) + "\n", encoding="utf-8")
+PY
+
+  if [ "$latest" != "$current" ]; then
+    UPDATE_HINT="当前 v${current} · 可升级 v${latest}（hy2 upgrade）"
+  fi
+}
+
 menu_upgrade() {
   local hy2_bin="${SELF_INSTALL:-/usr/local/bin/hy2}" bootstrap=""
   if [ -x "$hy2_bin" ]; then
@@ -313,6 +376,7 @@ show_menu() {
 HY2 AIO v${AIO_VERSION:-?}  管理菜单
 
 EOF
+  print_update_hint
   echo "── 维护 ──────────────────────────"
   echo "  1) 升级 HY2 AIO（拉最新版，推荐）"
   echo "  2) 修复配置（repair）"
@@ -349,6 +413,7 @@ EOF
 
 menu_interactive() {
   local choice username note obfs_choice
+  refresh_update_hint
   while true; do
     show_menu
     read -r -p "请选择 [1-23/99]: " choice
