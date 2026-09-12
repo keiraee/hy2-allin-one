@@ -198,7 +198,7 @@ class BackupTests(unittest.TestCase):
         self.assertIn('chmod 0640 "$HYSTERIA_KEY"', core)
         self.assertIn('chown hysteria:hysteria "$HYSTERIA_CERT" "$HYSTERIA_KEY"', cert)
         self.assertIn('chmod 0640 "$HYSTERIA_KEY"', cert)
-        self.assertIn("SupplementaryGroups=hysteria caddy", systemd)
+        self.assertIn("SupplementaryGroups=hysteria caddy systemd-journal", systemd)
         self.assertIn("ReadOnlyPaths=/usr/local/lib/hy2-aio -/etc/caddy", systemd)
 
 

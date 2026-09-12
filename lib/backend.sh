@@ -1162,6 +1162,49 @@ def rate_limit_allow(bucket: str, ip: str, limit: int, window: float) -> bool:
         return True
 
 
+LOG_EXPORT_UNITS = (
+    "hysteria-server.service",
+    "hy2-aio.service",
+    "caddy.service",
+)
+LOG_EXPORT_MAX_LINES = 10000
+LOG_EXPORT_RANGES = {
+    "1h": "1 hour ago",
+    "24h": "24 hours ago",
+    "3d": "3 days ago",
+}
+
+
+def journalctl_export_args(range_key: str = "24h") -> list[str]:
+    key = str(range_key or "24h").strip() or "24h"
+    since = LOG_EXPORT_RANGES.get(key)
+    if since is None:
+        raise ValueError("导出范围无效")
+    args = ["journalctl"]
+    for unit in LOG_EXPORT_UNITS:
+        args.extend(["-u", unit])
+    args.extend(["--no-pager", "--since", since, "-n", str(LOG_EXPORT_MAX_LINES)])
+    return args
+
+
+def export_service_logs(range_key: str = "24h") -> tuple[bytes, str]:
+    args = journalctl_export_args(range_key)
+    try:
+        result = subprocess.run(args, capture_output=True, timeout=15, check=False)
+    except FileNotFoundError as error:
+        raise RuntimeError("本机没有 journalctl") from error
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError("导出日志超时") from error
+    if result.returncode != 0:
+        detail = (result.stderr or b"").decode("utf-8", errors="replace").strip()
+        raise RuntimeError(detail or "导出日志失败")
+    stamp = datetime.now().strftime("%Y%m%d-%H%M")
+    body = result.stdout or b""
+    if isinstance(body, str):
+        body = body.encode("utf-8")
+    return body, f"hy2-logs-{stamp}.txt"
+
+
 def rate_limit_from_env(env: dict[str, str], key: str, default: int) -> int:
     try:
         return max(0, int(env.get(key, str(default)) or default))
@@ -1238,6 +1281,16 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def send_text_download(self, body: bytes, filename: str) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -1408,6 +1461,19 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/sync":
                 data = collect()
                 self.send_json(200, {"ok": True, "generated_at": data["generated_at"]})
+                return
+            if path == "/logs/export":
+                payload = self.read_body()
+                range_key = str(payload.get("range", "24h") or "24h").strip() or "24h"
+                try:
+                    body, filename = export_service_logs(range_key)
+                except ValueError as error:
+                    self.send_json(400, {"ok": False, "error": str(error)})
+                    return
+                except RuntimeError as error:
+                    self.send_json(500, {"ok": False, "error": str(error)})
+                    return
+                self.send_text_download(body, filename)
                 return
             if path == "/backup":
                 data = collect(run_backup=False)

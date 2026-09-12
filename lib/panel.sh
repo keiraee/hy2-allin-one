@@ -214,6 +214,13 @@ tr.disabled td{opacity:.55}
         <button id="drawerSync" class="btn" type="button">立即同步</button>
         <a class="btn" href="users.csv">下载用户 CSV</a>
         <a class="btn" href="history.csv">下载历史记录</a>
+        <select id="logRange" class="input">
+          <option value="1h">最近 1 小时</option>
+          <option value="24h" selected>最近 24 小时</option>
+          <option value="3d">最近 3 天</option>
+        </select>
+        <button id="exportLogs" class="btn" type="button">导出日志</button>
+        <p class="hint">与菜单 18 相同：Hysteria / 面板 / Caddy。超过 10000 行时只留最新部分。</p>
       </div>
     </div>
     <div class="drawer-sec">
@@ -387,6 +394,28 @@ async function addUser(){
   }catch(error){toast("添加失败："+error.message)}
   btn.disabled=false;
 }
+async function exportLogs(){
+  const range=$("logRange")?$("logRange").value||"24h":"24h";
+  const btn=$("exportLogs");
+  if(btn)btn.disabled=true;
+  try{
+    const response=await fetch("api/logs/export",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({range}),cache:"no-store"});
+    const type=response.headers.get("Content-Type")||"";
+    if(!response.ok||type.includes("application/json")){
+      const result=await response.json().catch(()=>({}));
+      throw new Error(result.error||("HTTP "+response.status));
+    }
+    const blob=await response.blob();
+    const match=/filename="?([^"]+)"?/.exec(response.headers.get("Content-Disposition")||"");
+    const name=match?match[1]:"hy2-logs.txt";
+    const url=URL.createObjectURL(blob);
+    const link=document.createElement("a");
+    link.href=url;link.download=name;document.body.appendChild(link);link.click();link.remove();
+    URL.revokeObjectURL(url);
+    toast("已导出日志");
+  }catch(error){toast("导出失败："+error.message)}
+  if(btn)btn.disabled=false;
+}
 async function syncNow(){
   const buttons=[$("syncBtn"),$("drawerSync")];
   buttons.forEach(b=>{b.disabled=true});
@@ -513,6 +542,7 @@ async function load(){
 $("hy2Toggle").onclick=toggleHy2;
 $("syncBtn").onclick=syncNow;
 $("drawerSync").onclick=()=>{setDrawer(false);syncNow()};
+$("exportLogs").onclick=exportLogs;
 $("menuBtn").onclick=()=>setDrawer(true);
 $("drawerClose").onclick=()=>setDrawer(false);
 $("scrim").onclick=()=>setDrawer(false);

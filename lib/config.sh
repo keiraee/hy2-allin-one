@@ -155,7 +155,7 @@ Wants=network-online.target hysteria-server.service
 Type=simple
 User=hy2-aio
 Group=hy2-aio
-SupplementaryGroups=hysteria caddy
+SupplementaryGroups=hysteria caddy systemd-journal
 ExecStart=/usr/bin/python3 /usr/local/lib/hy2-aio/server.py
 Restart=always
 RestartSec=3
@@ -240,11 +240,13 @@ ensure_hy2_aio_user() {
   getent group hy2-aio >/dev/null 2>&1 || groupadd --system hy2-aio
   getent group hysteria >/dev/null 2>&1 || groupadd --system hysteria
   getent group caddy >/dev/null 2>&1 || groupadd --system caddy
+  extra_groups="hysteria,caddy"
+  getent group systemd-journal >/dev/null 2>&1 && extra_groups="${extra_groups},systemd-journal"
   if ! id hy2-aio >/dev/null 2>&1; then
-    useradd --system --gid hy2-aio --groups hysteria,caddy \
+    useradd --system --gid hy2-aio --groups "$extra_groups" \
       --home-dir "$STATE_DIR" --shell /usr/sbin/nologin hy2-aio
   else
-    usermod -a -G hysteria,caddy hy2-aio 2>/dev/null || true
+    usermod -a -G "$extra_groups" hy2-aio 2>/dev/null || true
   fi
   install -d -o hy2-aio -g hy2-aio -m 0750 "$STATE_DIR" "$STATE_DIR/backups"
   install -d -o hy2-aio -g caddy -m 2750 "$WEB_DIR" "$WEB_DIR/downloads"
