@@ -348,6 +348,13 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
       </div>
     </div>
     <div class="drawer-sec">
+      <h3>💾 备份</h3>
+      <div class="stack">
+        <button id="backupBtn" class="btn" type="button">📦 立即备份</button>
+        <p class="hint">手动创建一份完整备份快照，包含配置、证书和用户数据。</p>
+      </div>
+    </div>
+    <div class="drawer-sec">
       <h3>ℹ️ 说明</h3>
       <p class="hint">整机流量对齐云厂商套餐；用户行为 HY2 分摊参考。速率模式只写入 Clash 订阅。</p>
     </div>
@@ -1450,6 +1457,14 @@ $("hy2Toggle").onclick=toggleHy2;
 $("syncBtn").onclick=syncNow;
 $("drawerSync").onclick=()=>{setDrawer(false);syncNow()};
 $("exportLogs").onclick=exportLogs;
+$("backupBtn").onclick=async function(){
+  const btn=$("backupBtn");btn.disabled=true;
+  try{
+    const result=await apiPost("api/backup",{});
+    toast("备份完成"+(result.backup?"："+result.backup:""));
+  }catch(error){toast("备份失败："+error.message)}
+  btn.disabled=false;
+};
 $("menuBtn").onclick=()=>setDrawer(true);
 $("drawerClose").onclick=()=>setDrawer(false);
 $("scrim").onclick=()=>setDrawer(false);
