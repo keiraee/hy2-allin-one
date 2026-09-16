@@ -431,6 +431,24 @@ class ClientIpAndSortTests(unittest.TestCase):
             ),
             ("alice", "198.51.100.11:1000"),
         )
+        self.assertEqual(
+            parse(
+                'Sep 15 11:11:27 host hysteria[5105]: 2026-09-15T11:11:27Z        INFO        client connected        {"addr": "219.144.6.152:40540", "id": "user2", "tx": 0}'
+            ),
+            ("user2", "219.144.6.152:40540"),
+        )
+        self.assertEqual(
+            parse(
+                'Sep 15 11:08:47 host hysteria[5105]: 2026-09-15T11:08:47Z        WARN        TCP error        {"addr": "111.21.214.117:60252", "id": "user1", "reqAddr": "edge.microsoft.com:443", "error": "read tcp4 185.255.95.88:56606->150.171.30.11:443: read: connection reset by peer"}'
+            ),
+            ("user1", "111.21.214.117:60252"),
+        )
+        self.assertEqual(
+            parse(
+                'INFO        client disconnected        {"addr": "219.144.6.152:40548", "id": "user2", "error": "timeout"}'
+            ),
+            ("user2", "219.144.6.152:40548"),
+        )
         self.assertIsNone(parse("client disconnected id=alice"))
 
     def test_stream_client_addr_reads_addr_fields(self):

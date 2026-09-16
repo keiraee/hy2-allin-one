@@ -1031,7 +1031,12 @@ def stream_client_addr(stream: dict[str, Any]) -> str:
 
 def parse_hysteria_connect_line(line: str) -> Optional[tuple[str, str]]:
     text = str(line or "").strip()
-    if "client connected" not in text.lower():
+    lowered = text.lower()
+    if not (
+        "client connected" in lowered
+        or "client disconnected" in lowered
+        or "tcp error" in lowered
+    ):
         return None
     user = ""
     addr = ""
@@ -1159,8 +1164,10 @@ def hysteria_connect_log_lines() -> list[str]:
                 "journalctl",
                 "-u",
                 "hysteria-server.service",
+                "--since",
+                "15 min ago",
                 "-n",
-                "200",
+                "800",
                 "-o",
                 "cat",
                 "--no-pager",
