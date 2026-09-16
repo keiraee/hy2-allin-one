@@ -993,6 +993,9 @@ TRAFFIC_HISTORY_DAYS = 7
 DEST_MAX_PER_USER = 80
 CLIENT_IP_MAX = 8
 CLIENT_ADDR_KEYS = ("addr", "client_addr", "remote_addr", "src_addr")
+LOG_ISO_RE = re.compile(
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?"
+)
 
 
 def split_host_port(addr: str) -> tuple[str, str]:
@@ -1124,6 +1127,37 @@ def is_plausible_host(host: str) -> bool:
     return "." in text or text.lower() == "localhost"
 
 
+def stamp_from_log_line(line: str, fallback: str = "") -> str:
+    match = LOG_ISO_RE.search(str(line or ""))
+    if match:
+        parsed = parse_history_time(match.group(0))
+        if parsed is not None:
+            return parsed.isoformat(timespec="seconds")
+    parsed = parse_history_time(fallback)
+    if parsed is not None:
+        return parsed.isoformat(timespec="seconds")
+    return str(fallback or "").strip()
+
+
+def apply_seen_time(item: dict[str, Any], stamp: str) -> None:
+    stamp = str(stamp or "").strip()
+    if not stamp:
+        return
+    parsed = parse_history_time(stamp)
+    if parsed is not None:
+        stamp = parsed.isoformat(timespec="seconds")
+    if not str(item.get("first_seen") or "").strip():
+        item["first_seen"] = str(item.get("last_seen") or "").strip() or stamp
+    current = parse_history_time(str(item.get("last_seen") or ""))
+    incoming = parse_history_time(stamp)
+    if incoming is None:
+        if not str(item.get("last_seen") or "").strip():
+            item["last_seen"] = stamp
+        return
+    if current is None or incoming >= current:
+        item["last_seen"] = incoming.isoformat(timespec="seconds")
+
+
 def remember_log_destinations(
     state: dict[str, Any], log_lines: list[str], timestamp: str
 ) -> None:
@@ -1166,6 +1200,7 @@ def remember_log_destinations(
                 "upload": 0,
                 "download": 0,
                 "hits": 0,
+                "first_seen": "",
                 "last_seen": "",
             }
             bucket[host] = item
@@ -1173,7 +1208,7 @@ def remember_log_destinations(
             item["ip"] = host
         if port:
             item["port"] = port
-        item["last_seen"] = timestamp
+        apply_seen_time(item, stamp_from_log_line(text, timestamp))
         key = (user, host)
         if key not in created:
             item["hits"] = int(item.get("hits", 0) or 0) + 1
@@ -1344,6 +1379,7 @@ def remember_user_streams(
                 "upload": 0,
                 "download": 0,
                 "hits": 0,
+                "first_seen": "",
                 "last_seen": "",
             }
             bucket[host] = item
@@ -1355,7 +1391,10 @@ def remember_user_streams(
         item["download"] = int(item.get("download", 0) or 0) + drx
         if first:
             item["hits"] = int(item.get("hits", 0) or 0) + 1
-        item["last_seen"] = timestamp
+        apply_seen_time(
+            item,
+            str(stream.get("last_active_at") or stream.get("started_at") or timestamp),
+        )
     for stale in [key for key in list(seen) if key not in current]:
         seen.pop(stale, None)
     cutoff = datetime.now(timezone.utc) - timedelta(days=TRAFFIC_HISTORY_DAYS)
@@ -1446,6 +1485,7 @@ def sites_for_user(username: str) -> list[dict[str, Any]]:
                 "download": download,
                 "total": upload + download,
                 "hits": int(item.get("hits", 0) or 0),
+                "first_seen": str(item.get("first_seen") or item.get("last_seen") or ""),
                 "last_seen": str(item.get("last_seen") or ""),
             }
         )

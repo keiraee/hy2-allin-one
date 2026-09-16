@@ -268,6 +268,8 @@ class UserTrafficAnalysisTests(unittest.TestCase):
         self.assertEqual(site["upload"], 150)
         self.assertEqual(site["download"], 900)
         self.assertEqual(site["hits"], 1)
+        self.assertEqual(site["first_seen"], t0)
+        self.assertEqual(site["last_seen"], t1)
 
     def test_sites_and_live_are_scoped_to_the_requested_user(self):
         self.namespace.update(
@@ -392,6 +394,17 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("site-bar-row", panel)
         self.assertIn("day-cols", panel)
         self.assertIn("buildTrafficSummary", panel)
+        self.assertIn("min(1280px,96vw)", panel)
+        self.assertIn("trafficMonthExtra", panel)
+        self.assertIn("function svgNode", panel)
+        self.assertIn("stack-bar", panel)
+        self.assertIn('data-sort="port"', panel)
+        self.assertIn("首次访问", panel)
+        self.assertIn("最近访问", panel)
+        self.assertIn("function formatClock", panel)
+        self.assertIn("function visitCell", panel)
+        self.assertIn('data-sort="first_seen"', panel)
+        self.assertIn('data-sort="last_active"', panel)
 
 
 class ClientIpAndSortTests(unittest.TestCase):
@@ -494,18 +507,25 @@ class ClientIpAndSortTests(unittest.TestCase):
         state: dict = {}
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         lines = [
-            'WARN        TCP error        {"addr": "111.21.214.117:61252", "id": "alice", "reqAddr": "edge.microsoft.com:443", "error": "x"}',
-            'WARN        TCP error        {"addr": "111.21.214.117:61252", "id": "alice", "reqAddr": "edge.microsoft.com:443", "error": "y"}',
+            'Sep 15 11:08:47 host hysteria[5105]: 2026-09-15T11:08:47Z        WARN        TCP error        {"addr": "111.21.214.117:61252", "id": "alice", "reqAddr": "edge.microsoft.com:443", "error": "x"}',
+            'Sep 15 11:08:47 host hysteria[5105]: 2026-09-15T11:08:47Z        WARN        TCP error        {"addr": "111.21.214.117:61252", "id": "alice", "reqAddr": "edge.microsoft.com:443", "error": "y"}',
             'WARN        TCP error        {"addr": "111.21.214.117:61252", "id": "alice", "reqAddr": "aweme.snssdk.com%28null%29:443", "error": "z"}',
-            'WARN        TCP error        {"addr": "219.144.6.152:40540", "id": "bob", "reqAddr": "bag.itunes.apple.com:443", "error": "t"}',
+            '2026-09-15T11:09:10Z        WARN        TCP error        {"addr": "219.144.6.152:40540", "id": "bob", "reqAddr": "bag.itunes.apple.com:443", "error": "t"}',
         ]
         self.namespace["remember_log_destinations"](state, lines, now)
         alice = state["destinations"]["alice"]
         self.assertEqual(alice["edge.microsoft.com"]["hits"], 1)
         self.assertEqual(alice["edge.microsoft.com"]["port"], "443")
+        self.assertTrue(alice["edge.microsoft.com"]["first_seen"].startswith("2026-09-15T11:08:47"))
+        self.assertTrue(alice["edge.microsoft.com"]["last_seen"].startswith("2026-09-15T11:08:47"))
         self.assertNotIn("aweme.snssdk.com%28null%29", alice)
         self.assertIn("bag.itunes.apple.com", state["destinations"]["bob"])
-        self.namespace["remember_log_destinations"](state, lines, now)
+        later = [
+            '2026-09-15T12:00:00Z        WARN        TCP error        {"addr": "111.21.214.117:61252", "id": "alice", "reqAddr": "edge.microsoft.com:443", "error": "x"}',
+        ]
+        self.namespace["remember_log_destinations"](state, later, now)
+        self.assertTrue(state["destinations"]["alice"]["edge.microsoft.com"]["first_seen"].startswith("2026-09-15T11:08:47"))
+        self.assertTrue(state["destinations"]["alice"]["edge.microsoft.com"]["last_seen"].startswith("2026-09-15T12:00:00"))
         self.assertEqual(state["destinations"]["alice"]["edge.microsoft.com"]["hits"], 2)
 
     def test_log_only_sites_rank_by_hits_when_bytes_are_zero(self):
@@ -522,6 +542,7 @@ class ClientIpAndSortTests(unittest.TestCase):
                                 "upload": 0,
                                 "download": 0,
                                 "hits": 1,
+                                "first_seen": now,
                                 "last_seen": now,
                             },
                             "hot.example": {
@@ -530,6 +551,7 @@ class ClientIpAndSortTests(unittest.TestCase):
                                 "upload": 0,
                                 "download": 0,
                                 "hits": 9,
+                                "first_seen": now,
                                 "last_seen": now,
                             },
                         }
@@ -540,6 +562,8 @@ class ClientIpAndSortTests(unittest.TestCase):
         )
         payload = self.namespace["user_traffic_analysis"]("alice")
         self.assertEqual([row["host"] for row in payload["sites"]], ["hot.example", "quiet.example"])
+        self.assertEqual(payload["sites"][0]["first_seen"], now)
+        self.assertEqual(payload["sites"][0]["last_seen"], now)
 
     def test_live_rows_reuse_user_client_ip_when_stream_has_none(self):
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")

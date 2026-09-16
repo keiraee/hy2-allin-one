@@ -110,44 +110,49 @@ tr.disabled td{opacity:.55}
 .modal h3{margin:0 0 6px;font-size:16px}
 .modal .hint{margin-bottom:12px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
-.modal.traffic-modal{width:min(920px,100%);padding:0;max-height:min(92vh,900px);display:flex;flex-direction:column;overflow:hidden}
-.traffic-modal .drawer-h{padding:14px 16px}
-.traffic-body{padding:16px 18px;overflow:auto;flex:1}
-.traffic-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
-.traffic-kpis .metric{padding:10px 12px}
-.traffic-kpis .value{font-size:16px;margin-top:4px}
+.modal.traffic-modal{width:min(1280px,96vw);padding:0;max-height:min(96vh,1100px);display:flex;flex-direction:column;overflow:hidden}
+.traffic-modal .drawer-h{padding:16px 22px}
+.traffic-body{padding:18px 22px 22px;overflow:auto;flex:1}
+.traffic-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.traffic-kpis .metric{padding:12px 14px}
+.traffic-kpis .value{font-size:22px;margin-top:6px}
 .traffic-kpis .hot{color:var(--bad)}
 .traffic-peak{display:none;margin:0 0 14px;padding:10px 12px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:13px;line-height:1.45}
 .traffic-peak.show{display:block}
-.traffic-summary{margin:0 0 12px;padding:10px 12px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;font-size:13px;line-height:1.55}
+.traffic-summary{margin:0 0 12px;padding:12px 14px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;font-size:14px;line-height:1.6}
 .heat-cell.now{box-shadow:inset 0 0 0 1px #334155}
-.day-cols{display:flex;align-items:stretch;gap:6px;height:118px}
+.day-cols{display:flex;align-items:stretch;gap:10px;height:196px}
 .day-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:0}
 .day-col .bar{display:block;width:100%;border-radius:4px 4px 0 0;min-height:4px}
-.day-col .amt{font-size:10px;color:var(--text);margin-top:4px;font-variant-numeric:tabular-nums;white-space:nowrap}
-.day-col .lbl{font-size:10px;color:var(--muted);white-space:nowrap}
-.trend-axis{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:4px}
-.site-bars{display:flex;flex-direction:column;gap:6px;margin:0 0 10px}
-.site-bar-row{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,2fr) auto;gap:8px;align-items:center;font-size:12px}
-.site-bar-row .track{height:8px;background:#eef2f7;border-radius:99px;overflow:hidden}
+.day-col .stack-bar{display:flex;flex-direction:column;justify-content:flex-end;width:100%;min-height:4px;border-radius:6px 6px 0 0;overflow:hidden}
+.day-col .stack-bar i{display:block;width:100%;min-height:0}
+.day-col .stack-bar .up{background:#0369a1}
+.day-col .stack-bar .down{background:#047857}
+.day-col .amt{font-size:11px;color:var(--text);margin:0 0 6px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.day-col .lbl{font-size:11px;color:var(--muted);white-space:nowrap;margin-top:4px}
+.trend-axis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px}
+.trend-note{font-size:12px;color:var(--muted);margin:6px 0 0}
+.site-bars{display:flex;flex-direction:column;gap:8px;margin:0 0 12px}
+.site-bar-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,2.2fr) auto;gap:10px;align-items:center;font-size:13px}
+.site-bar-row .track{height:12px;background:#eef2f7;border-radius:99px;overflow:hidden}
 .site-bar-row .fill{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#38bdf8,#f97316)}
 .traffic-block{margin-bottom:16px}
 .traffic-block:last-child{margin-bottom:0}
 .traffic-block-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px}
 .traffic-block-h h3{margin:0;font-size:13px;font-weight:700}
 .heat-wrap{overflow:auto}
-.heat{display:grid;grid-template-columns:58px repeat(24,minmax(16px,1fr));gap:3px;align-items:center;min-width:640px}
+.heat{display:grid;grid-template-columns:72px repeat(24,minmax(22px,1fr));gap:4px;align-items:center;min-width:860px}
 .heat .h,.heat .d{font-size:11px;color:var(--muted)}
 .heat .h{text-align:center}
-.heat-cell{display:block;height:14px;border-radius:3px}
+.heat-cell{display:block;height:22px;border-radius:4px}
 .heat-cell.peak{outline:2px solid var(--accent);outline-offset:1px}
-.heat-legend{display:flex;align-items:center;gap:4px;margin-top:8px;font-size:11px;color:var(--muted)}
-.heat-legend b{width:14px;height:10px;border-radius:2px;display:block}
-.traffic-split{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:12px}
-.trend-svg{width:100%;height:88px;display:block}
+.heat-legend{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:var(--muted)}
+.heat-legend b{width:18px;height:12px;border-radius:2px;display:block}
+.traffic-split{display:grid;grid-template-columns:1fr;gap:18px}
+.trend-svg{width:100%;height:220px;display:block}
 .day-bars{display:flex;align-items:flex-end;gap:6px;height:88px}
 .day-bars span{flex:1;border-radius:4px 4px 0 0;min-height:4px}
-.updown{display:flex;height:28px;border-radius:8px;overflow:hidden;font-size:12px;font-weight:650;color:#fff}
+.updown{display:flex;height:36px;border-radius:8px;overflow:hidden;font-size:13px;font-weight:650;color:#fff}
 .updown i{display:flex;align-items:center;justify-content:center;font-style:normal;min-width:0}
 .updown .up{background:#0369a1}
 .updown .down{background:#047857}
@@ -164,6 +169,8 @@ tr.disabled td{opacity:.55}
 .dest-table tr:last-child td{border-bottom:0}
 .dest-host{font-weight:650;word-break:break-all}
 .dest-ip{color:#0369a1;font-variant-numeric:tabular-nums}
+.visit-cell{font-variant-numeric:tabular-nums;white-space:nowrap}
+.visit-cell .hint{margin:2px 0 0;font-size:11px}
 th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
 th.sortable:hover{color:var(--text)}
 th.sortable.active{color:var(--text)}
@@ -313,10 +320,10 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
     </div>
     <div class="traffic-body">
       <div class="traffic-kpis">
-        <div class="metric"><div class="label">本月合计</div><div id="trafficMonth" class="value">--</div></div>
-        <div class="metric"><div class="label">高峰时段</div><div id="trafficPeakVal" class="value hot">--</div></div>
-        <div class="metric"><div class="label">最忙一天</div><div id="trafficBusyDay" class="value">--</div></div>
-        <div class="metric"><div class="label">占整机</div><div id="trafficShare" class="value">--</div></div>
+        <div class="metric"><div class="label">本月合计</div><div id="trafficMonth" class="value">--</div><div id="trafficMonthExtra" class="extra">--</div></div>
+        <div class="metric"><div class="label">高峰时段</div><div id="trafficPeakVal" class="value hot">--</div><div id="trafficPeakExtra" class="extra">--</div></div>
+        <div class="metric"><div class="label">最忙一天</div><div id="trafficBusyDay" class="value">--</div><div id="trafficBusyExtra" class="extra">--</div></div>
+        <div class="metric"><div class="label">占整机</div><div id="trafficShare" class="value">--</div><div id="trafficShareExtra" class="extra">--</div></div>
       </div>
       <p id="trafficSummary" class="traffic-summary">正在整理这个用户的用量…</p>
       <div id="trafficEgress" class="traffic-egress">
@@ -327,7 +334,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
       <div class="traffic-block">
         <div class="traffic-block-h">
           <h3>当前连接</h3>
-          <span class="hint">点表头排序 · 客户端 / 网站 / 目标 IP</span>
+          <span class="hint">点表头排序 · 含访问时间</span>
         </div>
         <div class="dest-wrap"><table id="trafficLiveTable" class="dest-table"><thead><tr>
           <th class="sortable" data-sort="host">网站</th>
@@ -336,22 +343,28 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
           <th class="sortable" data-sort="port">端口</th>
           <th class="sortable" data-sort="upload">上行</th>
           <th class="sortable" data-sort="download">下行</th>
+          <th class="sortable" data-sort="total">合计</th>
+          <th class="sortable" data-sort="last_active">访问时间</th>
         </tr></thead><tbody id="trafficLive"></tbody></table></div>
       </div>
       <div class="traffic-block">
         <div class="traffic-block-h">
           <h3>访问站点</h3>
-          <span class="hint">近 7 日 · 短连接也会计入</span>
+          <span class="hint">近 7 日 · 含首次 / 最近访问时间</span>
         </div>
         <div id="trafficSiteBars" class="site-bars"></div>
         <div class="dest-wrap"><table id="trafficSiteTable" class="dest-table"><thead><tr>
           <th class="sortable" data-sort="host">网站</th>
           <th class="sortable" data-sort="ip">IP</th>
+          <th class="sortable" data-sort="port">端口</th>
+          <th class="sortable" data-sort="upload">上行</th>
+          <th class="sortable" data-sort="download">下行</th>
           <th class="sortable" data-sort="total">合计</th>
           <th class="sortable" data-sort="hits">次数</th>
-          <th class="sortable" data-sort="last_seen">最近</th>
+          <th class="sortable" data-sort="first_seen">首次访问</th>
+          <th class="sortable" data-sort="last_seen">最近访问</th>
         </tr></thead><tbody id="trafficSites"></tbody></table></div>
-        <p class="hint" style="margin-top:8px">短连接会记进站点列表。Clash TUN 走 IP 时，仍需服务端嗅探才能显示域名。</p>
+        <p class="hint" style="margin-top:8px">访问时间来自连接日志和采样。短连接会记进站点列表。Clash TUN 走 IP 时，仍需服务端嗅探才能显示域名。</p>
       </div>
       <p id="trafficEmpty" class="traffic-empty hint">还没有 5 分钟增量曲线，热力会先空着；本月用量和站点仍可看。</p>
       <div id="trafficCharts" class="traffic-charts">
@@ -362,19 +375,20 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
           </div>
           <div class="heat-wrap"><div id="trafficHeat" class="heat" role="img" aria-label="近7日每小时流量热力"></div></div>
           <div id="trafficHeatLegend" class="heat-legend"></div>
+          <p id="trafficHeatHint" class="hint" style="margin-top:8px">格子越大越好认：颜色越红这一小时越多，悬停可看具体用量。</p>
         </div>
         <div class="traffic-split">
           <div class="traffic-block">
             <div class="traffic-block-h">
               <h3>增量趋势</h3>
-              <span class="hint">上行蓝 · 下行绿 · 红点是峰值</span>
+              <span class="hint">上行蓝 · 下行绿 · 红点是峰值 · 纵轴是 5 分钟增量</span>
             </div>
             <div id="trafficTrend"></div>
           </div>
           <div class="traffic-block">
             <div class="traffic-block-h">
               <h3>按日用量</h3>
-              <span class="hint">柱下是星期</span>
+              <span class="hint">蓝=上行 · 绿=下行 · 柱上是当天合计</span>
             </div>
             <div id="trafficDays" class="day-cols" role="img" aria-label="近7日用量"></div>
           </div>
@@ -489,7 +503,7 @@ function sortValue(row,key){
   if(key==="port")return Number(row.port)||0;
   if(key==="upload"||key==="download"||key==="hits")return Number(row[key])||0;
   if(key==="total"||key==="bytes")return Number(row.total!=null?row.total:(Number(row.upload)||0)+(Number(row.download)||0));
-  if(key==="last_seen")return Date.parse(row.last_seen)||0;
+  if(key==="last_seen"||key==="first_seen"||key==="last_active")return Date.parse(row[key])||0;
   return String(row[key]||"");
 }
 function sortedRows(list,sort){
@@ -521,6 +535,19 @@ function bindSortHeaders(root,sort,apply){
       apply();
     };
   });
+}
+function formatClock(raw){
+  if(!raw||raw==="从未")return "--";
+  const d=new Date(raw);
+  if(Number.isNaN(d.getTime()))return String(raw);
+  return pad2(d.getMonth()+1)+"-"+pad2(d.getDate())+" "+pad2(d.getHours())+":"+pad2(d.getMinutes())+":"+pad2(d.getSeconds());
+}
+function visitCell(raw){
+  if(!raw)return el("td",{className:"hint",text:"--"});
+  return el("td",{className:"visit-cell",title:formatActive(raw)},
+    el("div",{text:formatClock(raw)}),
+    el("div",{className:"hint",text:relTime(raw)})
+  );
 }
 function relTime(raw){
   if(!raw||raw==="从未")return "从未";
@@ -567,9 +594,13 @@ async function openTraffic(username){
   $("trafficUser").textContent=username+" · 近 7 日";
   $("trafficSummary").textContent="正在整理 "+username+" 的用量…";
   $("trafficMonth").textContent="读取中…";
+  $("trafficMonthExtra").textContent="--";
   $("trafficPeakVal").textContent="--";
+  $("trafficPeakExtra").textContent="--";
   $("trafficBusyDay").textContent="--";
+  $("trafficBusyExtra").textContent="--";
   $("trafficShare").textContent="--";
+  $("trafficShareExtra").textContent="--";
   $("trafficEgressLine").textContent="出口 IP：--";
   $("trafficClient").textContent="客户端 IP：--";
   clearNode($("trafficLive"));
@@ -586,10 +617,20 @@ async function openTraffic(username){
     toast("分析失败："+error.message);
   }
 }
+function svgNode(name,attrs,text){
+  const node=document.createElementNS("http://www.w3.org/2000/svg",name);
+  Object.entries(attrs||{}).forEach(([key,value])=>{
+    if(value!=null&&value!=="")node.setAttribute(key,String(value));
+  });
+  if(text!=null&&text!=="")node.append(document.createTextNode(String(text)));
+  return node;
+}
 function renderTraffic(data){
   const month=data.month||{};
   $("trafficMonth").textContent=bytes(month.total);
+  $("trafficMonthExtra").textContent="上行 "+bytes(month.upload)+" · 下行 "+bytes(month.download)+(Number(month.lifetime_total)>Number(month.total)?(" · 累计 "+bytes(month.lifetime_total)):"");
   $("trafficShare").textContent=(Number(month.share_percent)||0).toFixed(1)+"%";
+  $("trafficShareExtra").textContent=Number(month.share_percent)?"相对本月整机用量":"整机本月还没有用量";
   $("trafficSplitHint").textContent="本月 上行 "+bytes(month.upload)+" · 下行 "+bytes(month.download);
   renderDestinations(data);
   const total=Math.max(0,Number(month.total)||0);
@@ -598,8 +639,8 @@ function renderTraffic(data){
   const split=$("trafficUpDown");clearNode(split);
   if(total){
     split.append(
-      el("i",{className:"up",style:{width:upPct+"%"},text:"↑ "+upPct+"%"}),
-      el("i",{className:"down",style:{width:Math.max(downPct,0)+"%"},text:"↓ "+downPct+"%"})
+      el("i",{className:"up",style:{width:upPct+"%"},text:"↑ "+bytes(month.upload)+"  "+upPct+"%"}),
+      el("i",{className:"down",style:{width:Math.max(downPct,0)+"%"},text:"↓ "+bytes(month.download)+"  "+downPct+"%"})
     );
   }else{
     split.append(el("i",{className:"down",style:{width:"100%"},text:"暂无本月流量"}));
@@ -630,12 +671,14 @@ function renderTraffic(data){
       const value=heat[key][hour];
       if(value>maxHeat){maxHeat=value;peakCell={key,hour,value,date:new Date(day.getFullYear(),day.getMonth(),day.getDate(),hour)}}
     });
-    if(!busy||daily[key].total>busy.total)busy={key,total:daily[key].total,date:day};
+    if(!busy||daily[key].total>busy.total)busy={key,total:daily[key].total,date:day,up:daily[key].up,down:daily[key].down};
   });
   if(!(peakCell&&peakCell.value))peakCell=null;
   if(!(busy&&busy.total))busy=null;
   $("trafficPeakVal").textContent=peakCell?("周"+weekdayName(peakCell.date)+" "+pad2(peakCell.hour)+":00"):"--";
+  $("trafficPeakExtra").textContent=peakCell?("这一小时 "+bytes(peakCell.value)):"还没有高峰";
   $("trafficBusyDay").textContent=busy?(pad2(busy.date.getMonth()+1)+"月"+busy.date.getDate()+"日 周"+weekdayName(busy.date)):"--";
+  $("trafficBusyExtra").textContent=busy?("当天 "+bytes(busy.total)+" · ↑ "+bytes(busy.up)+" · ↓ "+bytes(busy.down)):"还没有按日增量";
   $("trafficSummary").textContent=buildTrafficSummary(data,peakCell,busy);
   const peakNode=$("trafficPeak");
   if(peakCell){
@@ -645,7 +688,7 @@ function renderTraffic(data){
   }else peakNode.classList.remove("show");
   const heatRoot=$("trafficHeat");clearNode(heatRoot);
   heatRoot.append(el("span"));
-  hours.forEach(hour=>heatRoot.append(el("span",{className:"h",text:hour%6===0||hour===23?String(hour):""})));
+  hours.forEach(hour=>heatRoot.append(el("span",{className:"h",text:hour%2===0?String(hour):""})));
   days.forEach(day=>{
     const key=dayKey(day);
     heatRoot.append(el("span",{className:"d",text:day.getDate()+"·周"+weekdayName(day)}));
@@ -663,16 +706,32 @@ function renderTraffic(data){
   const legend=$("trafficHeatLegend");clearNode(legend);
   legend.append(el("span",{text:"低"}));
   HEAT.forEach(color=>legend.append(el("b",{style:{background:color}})));
-  legend.append(el("span",{text:"高 · 描边=此刻"}));
+  legend.append(el("span",{text:maxHeat?"高（最红约 "+bytes(maxHeat)+"/小时） · 描边=此刻":"高 · 描边=此刻"}));
+  const heatHint=$("trafficHeatHint");
+  if(heatHint){
+    heatHint.textContent=peakCell
+      ?("最红一格是周"+weekdayName(peakCell.date)+" "+pad2(peakCell.hour)+":00，约 "+bytes(peakCell.value)+"。把鼠标放在其他格子上也能看该小时用量。")
+      :"格子越大越好认：颜色越红这一小时越多。同步几次后会出现高峰。";
+  }
   const maxDay=Math.max(1,...days.map(day=>daily[dayKey(day)].total));
   const dayRoot=$("trafficDays");clearNode(dayRoot);
   days.forEach(day=>{
     const row=daily[dayKey(day)];
     const isBusy=busy&&busy.key===dayKey(day);
-    dayRoot.append(el("div",{className:"day-col",title:pad2(day.getMonth()+1)+"/"+pad2(day.getDate())+" 周"+weekdayName(day)+" · "+bytes(row.total)},
+    const upH=Math.round((row.up||0)/maxDay*140);
+    const downH=Math.round((row.down||0)/maxDay*140);
+    dayRoot.append(el("div",{
+      className:"day-col",
+      title:pad2(day.getMonth()+1)+"/"+pad2(day.getDate())+" 周"+weekdayName(day)+" · "+bytes(row.total)+"（↑ "+bytes(row.up)+" · ↓ "+bytes(row.down)+"）",
+      style:isBusy?{outline:"2px solid var(--accent)",outlineOffset:"2px",borderRadius:"8px",padding:"4px 2px"}:null
+    },
       el("span",{className:"amt",text:row.total?bytes(row.total):""}),
-      el("span",{className:"bar",style:{height:Math.max(4,Math.round(row.total/maxDay*88))+"px",background:heatColor(row.total,maxDay,row.total===0),outline:isBusy?"2px solid var(--accent)":""}}),
-      el("span",{className:"lbl",text:"周"+weekdayName(day)})
+      el("span",{className:"stack-bar"},
+        el("i",{className:"up",style:{height:Math.max(row.up?4:0,upH)+"px"}}),
+        el("i",{className:"down",style:{height:Math.max(row.down?4:0,downH)+"px"}})
+      ),
+      el("span",{className:"lbl",text:"周"+weekdayName(day)}),
+      el("span",{className:"lbl",text:pad2(day.getMonth()+1)+"/"+pad2(day.getDate())})
     ));
   });
   const trend=$("trafficTrend");clearNode(trend);
@@ -682,29 +741,44 @@ function renderTraffic(data){
   }
   const ups=series.map(item=>Number(item.up)||0);
   const downs=series.map(item=>Number(item.down)||0);
+  const totals=series.map((_,i)=>ups[i]+downs[i]);
   const maxLine=Math.max(1,...ups,...downs);
-  const w=320,h=76,left=8,top=8;
-  const x=i=>series.length<=1?left:left+(w-16)*i/Math.max(series.length-1,1);
-  const y=v=>top+(h-v/maxLine*h);
+  const W=720,H=200,padL=58,padR=18,padT=22,padB=32;
+  const innerW=W-padL-padR, innerH=H-padT-padB;
+  const x=i=>series.length<=1?padL:padL+innerW*i/Math.max(series.length-1,1);
+  const y=v=>padT+innerH-(v/maxLine*innerH);
   const line=values=>values.map((v,i)=>x(i)+","+y(v)).join(" ");
-  const area=ups.map((v,i)=>x(i)+","+y(v)).join(" ")+" "+x(ups.length-1)+","+(top+h)+" "+x(0)+","+(top+h);
-  const peakIdx=series.reduce((best,item,i)=>((Number(item.up)||0)+(Number(item.down)||0)>((Number(series[best].up)||0)+(Number(series[best].down)||0))?i:best),0);
-  const peakY=y(Math.max(ups[peakIdx],downs[peakIdx]));
-  const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
-  svg.setAttribute("viewBox","0 0 336 88");
-  svg.setAttribute("class","trend-svg");
-  svg.setAttribute("role","img");
-  svg.setAttribute("aria-label","近7日上行与下行增量");
-  svg.innerHTML='<path d="M'+area+'" fill="#0369a122"></path>'+
-    '<polyline fill="none" stroke="#0369a1" stroke-width="2" points="'+line(ups)+'"></polyline>'+
-    '<polyline fill="none" stroke="#047857" stroke-width="2" points="'+line(downs)+'"></polyline>'+
-    '<circle cx="'+x(peakIdx)+'" cy="'+peakY+'" r="3.5" fill="#b91c1c"></circle>';
+  const area=values=>values.map((v,i)=>x(i)+","+y(v)).join(" ")+" "+x(values.length-1)+","+y(0)+" "+x(0)+","+y(0);
+  const peakIdx=totals.reduce((best,value,i)=>value>totals[best]?i:best,0);
+  const svg=svgNode("svg",{
+    viewBox:"0 0 "+W+" "+H,
+    class:"trend-svg",
+    role:"img",
+    "aria-label":"近7日上行与下行增量"
+  });
+  [0,0.25,0.5,0.75,1].forEach(ratio=>{
+    const yy=y(maxLine*ratio);
+    svg.append(svgNode("line",{x1:padL,x2:W-padR,y1:yy,y2:yy,stroke:"#e5e7eb","stroke-width":1}));
+    svg.append(svgNode("text",{x:padL-8,y:yy+4,"text-anchor":"end","font-size":11,fill:"#6b7280"},bytes(maxLine*ratio)));
+  });
+  svg.append(svgNode("path",{d:"M"+area(ups),fill:"#0369a122"}));
+  svg.append(svgNode("polyline",{fill:"none",stroke:"#0369a1","stroke-width":2.5,points:line(ups)}));
+  svg.append(svgNode("polyline",{fill:"none",stroke:"#047857","stroke-width":2.5,points:line(downs)}));
+  const peakX=x(peakIdx), peakY=y(Math.max(ups[peakIdx],downs[peakIdx]));
+  svg.append(svgNode("circle",{cx:peakX,cy:peakY,r:5,fill:"#b91c1c"}));
+  const peakLabel=bytes(totals[peakIdx]);
+  const labelY=peakY<36?peakY+18:peakY-10;
+  svg.append(svgNode("text",{x:Math.min(Math.max(peakX,padL+40),W-padR-40),y:labelY,"text-anchor":"middle","font-size":12,"font-weight":700,fill:"#b91c1c"},"峰值 "+peakLabel));
+  const tickCount=Math.min(5,series.length);
+  const tickAt=i=>tickCount<=1?0:Math.round(i*(series.length-1)/(tickCount-1));
+  for(let i=0;i<tickCount;i++){
+    const idx=tickAt(i);
+    const stamp=new Date(series[idx].t);
+    if(Number.isNaN(stamp.getTime()))continue;
+    svg.append(svgNode("text",{x:x(idx),y:H-10,"text-anchor":"middle","font-size":11,fill:"#6b7280"},hourLabel(stamp)));
+  }
   trend.append(svg);
-  const first=new Date(series[0].t), last=new Date(series[series.length-1].t);
-  trend.append(el("div",{className:"trend-axis"},
-    el("span",{text:Number.isNaN(first.getTime())?"":hourLabel(first)}),
-    el("span",{text:Number.isNaN(last.getTime())?"":hourLabel(last)})
-  ));
+  trend.append(el("p",{className:"trend-note",text:"红点峰值约 "+bytes(totals[peakIdx])+"（↑ "+bytes(ups[peakIdx])+" · ↓ "+bytes(downs[peakIdx])+"）。纵轴最大 "+bytes(maxLine)+"。"}));
 }
 function buildTrafficSummary(data,peakCell,busy){
   const name=String(data.username||"该用户");
@@ -736,16 +810,18 @@ function renderSiteBars(sites){
   const root=$("trafficSiteBars");
   if(!root)return;
   clearNode(root);
-  const rows=(sites||[]).slice(0,5);
+  const rows=(sites||[]).slice(0,8);
   if(!rows.length){root.style.display="none";return}
   root.style.display="";
   const max=Math.max(1,...rows.map(row=>Number(row.total)||Number(row.hits)||0));
-  rows.forEach(row=>{
+  rows.forEach((row,index)=>{
     const weight=Number(row.total)||Number(row.hits)||0;
     const pct=Math.round(weight/max*100);
-    const right=row.total?bytes(row.total):(Number(row.hits)||0)+" 次";
+    const right=Number(row.total)
+      ?bytes(row.total)+" · ↑ "+bytes(row.upload)+" · ↓ "+bytes(row.download)
+      :(Number(row.hits)||0)+" 次";
     root.append(el("div",{className:"site-bar-row"},
-      el("span",{className:"dest-host",text:row.host||"--"}),
+      el("span",{className:"dest-host",text:(index+1)+". "+(row.host||"--")}),
       el("span",{className:"track"},el("i",{className:"fill",style:{width:pct+"%"}})),
       el("span",{className:"hint",text:right})
     ));
@@ -756,17 +832,20 @@ function renderLiveRows(){
   const live=sortedRows(liveList,liveSort);
   markSort($("trafficLiveTable"),liveSort);
   if(!live.length){
-    liveRoot.append(el("tr",{},el("td",{colSpan:6,className:"hint",text:"当前没有活动连接"})));
+    liveRoot.append(el("tr",{},el("td",{colSpan:8,className:"hint",text:"当前没有活动连接"})));
     return;
   }
   live.forEach(row=>{
+    const up=Number(row.upload)||0, down=Number(row.download)||0;
     liveRoot.append(el("tr",{},
       el("td",{className:"dest-host",text:row.host||"--"}),
       el("td",{className:"dest-ip",text:row.client||"--"}),
       el("td",{className:"dest-ip",text:row.ip||"--"}),
       el("td",{text:row.port||"--"}),
-      el("td",{className:"traffic-up",text:"↑ "+bytes(row.upload)}),
-      el("td",{className:"traffic-down",text:"↓ "+bytes(row.download)})
+      el("td",{className:"traffic-up",text:"↑ "+bytes(up)}),
+      el("td",{className:"traffic-down",text:"↓ "+bytes(down)}),
+      el("td",{text:bytes(up+down)}),
+      visitCell(row.last_active)
     ));
   });
 }
@@ -775,16 +854,20 @@ function renderSiteRows(){
   const sites=sortedRows(siteList,siteSort);
   markSort($("trafficSiteTable"),siteSort);
   if(!sites.length){
-    siteRoot.append(el("tr",{},el("td",{colSpan:5,className:"hint",text:"还没有采样到访问站点"})));
+    siteRoot.append(el("tr",{},el("td",{colSpan:9,className:"hint",text:"还没有采样到访问站点"})));
     return;
   }
   sites.forEach(row=>{
     siteRoot.append(el("tr",{},
       el("td",{className:"dest-host",text:row.host||"--"}),
       el("td",{className:"dest-ip",text:row.ip||"--"}),
+      el("td",{text:row.port||"--"}),
+      el("td",{className:"traffic-up",text:"↑ "+bytes(row.upload)}),
+      el("td",{className:"traffic-down",text:"↓ "+bytes(row.download)}),
       el("td",{text:Number(row.total)?bytes(row.total):(Number(row.hits)||0)+" 次"}),
       el("td",{text:String(row.hits||0)+" 次"}),
-      el("td",{title:formatActive(row.last_seen),text:relTime(row.last_seen)})
+      visitCell(row.first_seen||row.last_seen),
+      visitCell(row.last_seen)
     ));
   });
 }
