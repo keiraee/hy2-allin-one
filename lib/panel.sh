@@ -223,7 +223,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
 }
 .traffic-up{color:#0369a1}.traffic-down{color:#047857}
 @media(max-width:720px){
-  .table-wrap th:nth-child(5),.table-wrap td:nth-child(5){display:none}
+  .table-wrap th:nth-child(6),.table-wrap td:nth-child(6){display:none}
   .traffic-kpis{grid-template-columns:repeat(2,1fr)}
   .traffic-board,.traffic-tables,.traffic-insights{grid-template-columns:1fr}
   .traffic-split{grid-template-columns:1fr}
@@ -233,7 +233,9 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
 }
 @media(max-width:560px){
   .metrics{grid-template-columns:1fr}.main{padding:14px}
-  .table-wrap th:nth-child(3),.table-wrap td:nth-child(3),.table-wrap th:nth-child(4),.table-wrap td:nth-child(4){display:none}
+  .table-wrap th:nth-child(3),.table-wrap td:nth-child(3),
+  .table-wrap th:nth-child(4),.table-wrap td:nth-child(4),
+  .table-wrap th:nth-child(5),.table-wrap td:nth-child(5){display:none}
   .topbar{padding:12px 14px}
   .dest-table th:nth-child(3),.dest-table td:nth-child(3),
   .dest-table th:nth-child(6),.dest-table td:nth-child(6),
@@ -298,6 +300,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
             <tr>
               <th class="sortable" data-sort="username">用户</th>
               <th class="sortable" data-sort="online">状态</th>
+              <th>速率模式</th>
               <th class="sortable" data-sort="upload">上行</th>
               <th class="sortable" data-sort="download">下行</th>
               <th class="sortable" data-sort="total">合计</th>
@@ -1350,7 +1353,7 @@ function renderUsers(users){
   markSort(document.querySelector(".table-wrap table"),userSort);
   $("userSummary").textContent="👥 "+list.length+" 个账号 · 点表头排序";
   if(!list.length){
-    root.append(el("tr",{},el("td",{colSpan:6,className:"hint",text:"📭 暂无用户。打开右上角菜单添加。"})));
+    root.append(el("tr",{},el("td",{colSpan:7,className:"hint",text:"📭 暂无用户。打开右上角菜单添加。"})));
     return;
   }
   list.forEach(user=>{
@@ -1392,9 +1395,12 @@ function renderUsers(users){
       el("span",{className:"user-name",text:user.username}),
       note?el("span",{className:"user-note",text:"("+note+")"}):null
     );
+    const modeText=user.mode||"BBR";
+    const modeIcon=modeText.indexOf("Brutal")!==-1?"⚡":"🌊";
     root.append(el("tr",{className:user.disabled?"disabled":""},
       el("td",{},nameCell),
       el("td",{},statusCell),
+      el("td",{text:modeIcon+" "+modeText}),
       el("td",{className:"traffic-up",text:"↑ "+bytes(user.upload)}),
       el("td",{className:"traffic-down",text:"↓ "+bytes(user.download)}),
       el("td",{text:bytes(user.total)}),
