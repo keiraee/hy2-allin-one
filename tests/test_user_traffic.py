@@ -446,6 +446,17 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("groupSitesByRoot", panel)
         self.assertIn("formatDuration", panel)
 
+    def test_empty_hour_and_week_charts_keep_placeholder_without_series(self):
+        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        self.assertIn("function chartEmpty", panel)
+        self.assertIn('hourRoot.classList.add("empty")', panel)
+        self.assertIn('root.classList.add("empty")', panel)
+        hours = panel[panel.index("const hourRoot=$(\"trafficHours\")"):panel.index("function renderDayNight")]
+        self.assertIn("if(!hasSeries)", hours)
+        week = panel[panel.index("function renderWeekSplit"):panel.index("function renderClientCards")]
+        self.assertIn("if(!hasSeries)", week)
+        self.assertLess(week.index("if(!hasSeries)"), week.index("week-card"))
+
 
 class ClientIpAndSortTests(unittest.TestCase):
     def setUp(self):

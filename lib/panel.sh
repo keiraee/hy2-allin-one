@@ -691,6 +691,12 @@ function relTime(raw){
   return formatActive(raw);
 }
 function weekdayName(date){return "日一二三四五六".charAt(date.getDay())}
+function chartEmpty(text){
+  return el("div",{className:"chart-empty"},
+    el("span",{className:"chart-empty-icon",text:"📊"}),
+    el("span",{text:text||"暂无数据"})
+  );
+}
 function formatClientIps(list){
   if(!list||!list.length)return "暂无（用户连上后从连接日志采集）";
   return list.map(item=>{
@@ -912,16 +918,21 @@ function renderTraffic(data){
   const hourRoot=$("trafficHours");
   if(hourRoot){
     clearNode(hourRoot);
-    hourRoot.classList.remove("empty");
-    hours.forEach(hour=>{
-      hourRoot.append(el("div",{
-        className:"hour-col"+(hour===busyHour&&hourTotals[hour]?" peak":""),
-        title:pad2(hour)+":00 · "+bytes(hourTotals[hour])
-      },
-        el("span",{className:"bar",style:{height:Math.max(2,Math.round(hourTotals[hour]/maxHour*160))+"px"}}),
-        el("span",{className:"lbl",text:hour%3===0?String(hour):""})
-      ));
-    });
+    if(!hasSeries){
+      hourRoot.classList.add("empty");
+      hourRoot.append(chartEmpty("暂无数据，请先同步历史流量"));
+    }else{
+      hourRoot.classList.remove("empty");
+      hours.forEach(hour=>{
+        hourRoot.append(el("div",{
+          className:"hour-col"+(hour===busyHour&&hourTotals[hour]?" peak":""),
+          title:pad2(hour)+":00 · "+bytes(hourTotals[hour])
+        },
+          el("span",{className:"bar",style:{height:Math.max(2,Math.round(hourTotals[hour]/maxHour*160))+"px"}}),
+          el("span",{className:"lbl",text:hour%3===0?String(hour):""})
+        ));
+      });
+    }
   }
   const hoursHint=$("trafficHoursHint");
   if(hoursHint){
@@ -1067,6 +1078,12 @@ function renderWeekSplit(series,hasSeries){
   const hint=$("trafficWeekHint");
   if(!root)return;
   clearNode(root);
+  if(!hasSeries){
+    root.classList.add("empty");
+    root.append(chartEmpty("暂无数据"));
+    if(hint)hint.textContent="📭 还没有增量，工作日和周末会先空着。";
+    return;
+  }
   root.classList.remove("empty");
   let weekday=0,weekend=0;
   (series||[]).forEach(item=>{
@@ -1087,8 +1104,7 @@ function renderWeekSplit(series,hasSeries){
     ));
   });
   if(hint){
-    if(!hasSeries)hint.textContent="📭 还没有增量，工作日和周末会先空着。";
-    else if(!weekday&&!weekend)hint.textContent="📉 这几天几乎没有增量。";
+    if(!weekday&&!weekend)hint.textContent="📉 这几天几乎没有增量。";
     else if(weekday>weekend)hint.textContent=weekend?"📊 工作日用量大约是周末的 "+(weekday/weekend).toFixed(1)+" 倍。":"📊 近 7 日用量都在工作日。";
     else if(weekend>weekday)hint.textContent=weekday?"📊 周末大约是工作日的 "+(weekend/weekday).toFixed(1)+" 倍。":"📊 近 7 日用量都在周末。";
     else hint.textContent="📊 近 7 日工作日和周末差不多。";
