@@ -178,7 +178,13 @@ tr.disabled td{opacity:.55}
 .client-card{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
 .client-card .ip{font-weight:700;font-variant-numeric:tabular-nums}
 .client-card.on .ip{color:var(--ok)}
-.client-card .meta{font-size:12px;color:var(--muted);margin-top:4px}
+.week-split{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.week-card{padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.week-card .label{font-size:12px;color:var(--muted)}
+.week-card .value{font-size:20px;font-weight:700;margin:6px 0}
+.week-card .track{height:10px;background:#eef2f7;border-radius:99px;overflow:hidden}
+.week-card .fill{display:block;height:100%;border-radius:99px;background:#0369a1}
+.week-card.we .fill{background:#7c3aed}
 .port-tag{display:inline-block;font-size:11px;color:#334155;background:#eef2f7;border-radius:999px;padding:1px 7px;margin-left:4px;font-weight:600}
 .dest-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px}
 .dest-table{width:100%;border-collapse:collapse;font-size:13px}
@@ -433,6 +439,14 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
         </div>
         <div class="traffic-block">
           <div class="traffic-block-h">
+            <h3>工作日 / 周末</h3>
+            <span class="hint">近 7 日增量对比</span>
+          </div>
+          <div id="trafficWeek" class="week-split"></div>
+          <p id="trafficWeekHint" class="hint" style="margin-top:8px"></p>
+        </div>
+        <div class="traffic-block">
+          <div class="traffic-block-h">
             <h3>上下行结构</h3>
             <span id="trafficSplitHint" class="hint"></span>
           </div>
@@ -638,6 +652,27 @@ function formatPct(n){
   if(!value)return "0%";
   return (value>=10?value.toFixed(0):value.toFixed(1))+"%";
 }
+function formatDuration(seconds){
+  seconds=Math.max(0,Math.floor(Number(seconds)||0));
+  if(!seconds)return "";
+  if(seconds<60)return seconds+" 秒";
+  if(seconds<3600)return Math.max(1,Math.round(seconds/60))+" 分钟";
+  const hours=Math.floor(seconds/3600), minutes=Math.round(seconds%3600/60);
+  return hours+" 小时"+(minutes?" "+minutes+" 分钟":"");
+}
+function groupSitesByRoot(sites){
+  const map={};
+  (sites||[]).forEach(row=>{
+    const key=row.root||row.host||"--";
+    if(!map[key])map[key]={host:key,root:key,total:0,hits:0,upload:0,download:0,share:0};
+    map[key].total+=Number(row.total)||0;
+    map[key].hits+=Number(row.hits)||0;
+    map[key].upload+=Number(row.upload)||0;
+    map[key].download+=Number(row.download)||0;
+  });
+  const grouped=Object.values(map).sort((a,b)=>(b.total-a.total)||(b.hits-a.hits));
+  return grouped.map(row=>Object.assign(row,{share:siteSharePct(row,grouped)}));
+}
 function dayKey(date){return date.getFullYear()+"-"+pad2(date.getMonth()+1)+"-"+pad2(date.getDate())}
 function lastDays(n){
   const days=[], now=new Date();
@@ -834,6 +869,7 @@ function renderTraffic(data){
       el("span",{className:"lbl",text:pad2(day.getMonth()+1)+"/"+pad2(day.getDate())})
     ));
   });
+  renderWeekSplit(series,hasSeries);
   const trend=$("trafficTrend");clearNode(trend);
   if(!hasSeries){
     trend.append(el("p",{className:"hint",text:"还没有 5 分钟增量，连上并点同步几次后会出现曲线。"}));
@@ -911,9 +947,40 @@ function renderDestinations(data){
     :"客户端：暂无记录";
   renderClientCards(data.client_ips||[], liveList);
   renderSiteBars(siteList);
-  renderSiteMix(siteList);
+  renderSiteMix(groupSitesByRoot(siteList));
   renderLiveRows();
   renderSiteRows();
+}
+function renderWeekSplit(series,hasSeries){
+  const root=$("trafficWeek");
+  const hint=$("trafficWeekHint");
+  if(!root)return;
+  clearNode(root);
+  let weekday=0,weekend=0;
+  (series||[]).forEach(item=>{
+    const d=new Date(item.t);
+    if(Number.isNaN(d.getTime()))return;
+    const value=(Number(item.up)||0)+(Number(item.down)||0);
+    const day=d.getDay();
+    if(day===0||day===6)weekend+=value; else weekday+=value;
+  });
+  const max=Math.max(1,weekday,weekend);
+  const cards=[{key:"wd",title:"工作日",value:weekday,cls:""},{key:"we",title:"周末",value:weekend,cls:" we"}];
+  cards.forEach(card=>{
+    root.append(el("div",{className:"week-card"+card.cls},
+      el("div",{className:"label",text:card.title}),
+      el("div",{className:"value",text:bytes(card.value)}),
+      el("div",{className:"track"},el("i",{className:"fill",style:{width:Math.round(card.value/max*100)+"%"}})),
+      el("div",{className:"hint",text:formatPct(card.value/(weekday+weekend||1)*100)})
+    ));
+  });
+  if(hint){
+    if(!hasSeries)hint.textContent="还没有增量，工作日和周末会先空着。";
+    else if(!weekday&&!weekend)hint.textContent="这几天几乎没有增量。";
+    else if(weekday>weekend)hint.textContent=weekend?"工作日用量大约是周末的 "+(weekday/weekend).toFixed(1)+" 倍。":"近 7 日用量都在工作日。";
+    else if(weekend>weekday)hint.textContent=weekday?"周末大约是工作日的 "+(weekend/weekday).toFixed(1)+" 倍。":"近 7 日用量都在周末。";
+    else hint.textContent="近 7 日工作日和周末差不多。";
+  }
 }
 function renderClientCards(list,live){
   const root=$("trafficClients");
@@ -926,9 +993,10 @@ function renderClientCards(list,live){
   const liveIps=new Set((live||[]).map(row=>row.client).filter(Boolean));
   list.forEach(item=>{
     const online=liveIps.has(item.ip);
+    const duration=formatDuration(item.session_seconds);
     root.append(el("div",{className:"client-card"+(online?" on":"")},
       el("div",{className:"ip",text:item.ip+(item.port?":"+item.port:"")}),
-      el("div",{className:"meta",text:(online?"此刻在线":"最近出现")+" · "+(item.last_seen?relTime(item.last_seen):"--")})
+      el("div",{className:"meta",text:(online?"此刻在线":"最近出现")+" · "+(item.last_seen?relTime(item.last_seen):"--")+(duration?" · 最近连接 "+duration:"")})
     ));
   });
 }
@@ -947,7 +1015,7 @@ function renderSiteBars(sites){
       ?bytes(row.total)+" · "+formatPct(row.share)+" · ↑ "+bytes(row.upload)+" · ↓ "+bytes(row.download)
       :formatPct(row.share)+" · "+(Number(row.hits)||0)+" 次";
     root.append(el("div",{className:"site-bar-row"},
-      el("span",{className:"dest-host",text:(index+1)+". "+(row.host||"--")}),
+      el("span",{className:"dest-host",text:(index+1)+". "+(row.host||"--")+(row.root&&row.root!==row.host?" · "+row.root:"")}),
       el("span",{className:"track"},el("i",{className:"fill",style:{width:pct+"%"}})),
       el("span",{className:"hint",text:right})
     ));
@@ -1036,7 +1104,10 @@ function renderSiteRows(){
   }
   sites.forEach(row=>{
     siteRoot.append(el("tr",{},
-      el("td",{className:"dest-host",text:row.host||"--"}),
+      el("td",{className:"dest-host"},
+        el("div",{text:row.host||"--"}),
+        row.root&&row.root!==row.host?el("div",{className:"hint",text:row.root}):null
+      ),
       el("td",{className:"dest-ip",text:row.ip||"--"}),
       el("td",{},el("span",{text:row.port||"--"}),portName(row.port)?el("span",{className:"port-tag",text:portName(row.port)}):null),
       el("td",{className:"traffic-up",text:"↑ "+bytes(row.upload)}),

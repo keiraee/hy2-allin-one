@@ -272,6 +272,26 @@ class UserTrafficAnalysisTests(unittest.TestCase):
         self.assertEqual(site["first_seen"], t0)
         self.assertEqual(site["last_seen"], t1)
 
+    def test_root_host_uses_registrable_domain(self):
+        root = self.namespace["root_host"]
+        self.assertEqual(root("bag.itunes.apple.com"), "apple.com")
+        self.assertEqual(root("edge.microsoft.com"), "microsoft.com")
+        self.assertEqual(root("192.0.2.8"), "192.0.2.8")
+        self.assertEqual(root("foo.co.uk"), "foo.co.uk")
+
+    def test_session_stats_pair_connect_and_disconnect(self):
+        stats = self.namespace["session_stats_from_logs"](
+            [
+                '2026-09-16T10:00:00Z INFO client connected {"addr":"198.51.100.40:1234","id":"alice"}',
+                '2026-09-16T10:05:00Z INFO client disconnected {"addr":"198.51.100.40:1234","id":"alice"}',
+                '2026-09-16T10:00:00Z INFO client connected {"addr":"203.0.113.9:1","id":"bob"}',
+            ],
+            "alice",
+        )
+        self.assertEqual(stats["finished"], 1)
+        self.assertEqual(stats["last_seconds"], 300)
+        self.assertEqual(stats["by_ip"]["198.51.100.40"], 300)
+
     def test_sites_and_live_are_scoped_to_the_requested_user(self):
         self.namespace.update(
             {
@@ -416,6 +436,11 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("站点构成", panel)
         self.assertIn("trafficMix", panel)
         self.assertIn("function renderSiteMix", panel)
+        self.assertIn("工作日 / 周末", panel)
+        self.assertIn("def root_host", (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8"))
+        self.assertIn("session_stats_from_logs", (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8"))
+        self.assertIn("groupSitesByRoot", panel)
+        self.assertIn("formatDuration", panel)
 
 
 class ClientIpAndSortTests(unittest.TestCase):

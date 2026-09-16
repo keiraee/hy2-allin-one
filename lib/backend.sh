@@ -1024,6 +1024,44 @@ def is_ip_host(host: str) -> bool:
         return False
 
 
+MULTI_TLDS = {
+    "co.uk",
+    "org.uk",
+    "ac.uk",
+    "gov.uk",
+    "com.au",
+    "net.au",
+    "org.au",
+    "com.cn",
+    "net.cn",
+    "org.cn",
+    "gov.cn",
+    "edu.cn",
+    "com.hk",
+    "com.tw",
+    "com.sg",
+    "co.jp",
+    "ne.jp",
+    "or.jp",
+    "ac.jp",
+}
+
+
+def root_host(host: str) -> str:
+    text = str(host or "").strip().lower().strip(".")
+    if not text:
+        return ""
+    if is_ip_host(text):
+        return text
+    parts = [item for item in text.split(".") if item]
+    if len(parts) <= 2:
+        return text
+    tail2 = ".".join(parts[-2:])
+    if tail2 in MULTI_TLDS and len(parts) >= 3:
+        return ".".join(parts[-3:])
+    return tail2
+
+
 def stream_client_addr(stream: dict[str, Any]) -> str:
     if not isinstance(stream, dict):
         return ""
@@ -1065,6 +1103,56 @@ def parse_hysteria_connect_line(line: str) -> Optional[tuple[str, str]]:
     if user and addr:
         return user, addr
     return None
+
+
+def session_stats_from_logs(log_lines: list[str], username: str) -> dict[str, Any]:
+    opens: dict[str, datetime] = {}
+    durations: list[int] = []
+    last_by_ip: dict[str, int] = {}
+    for line in log_lines or []:
+        text = str(line or "")
+        lowered = text.lower()
+        if "tcp error" in lowered and "client connected" not in lowered:
+            continue
+        parsed = parse_hysteria_connect_line(text)
+        if not parsed or parsed[0] != username:
+            continue
+        stamp = parse_history_time(stamp_from_log_line(text, ""))
+        if stamp is None:
+            continue
+        addr = parsed[1]
+        host, _port = split_host_port(addr)
+        if "client disconnected" in lowered:
+            start = opens.pop(addr, None)
+            if start is None and host:
+                start = next(
+                    (opens.pop(key) for key in list(opens) if key.startswith(host + ":") or key == host),
+                    None,
+                )
+            if start is not None:
+                seconds = max(0, int((stamp - start).total_seconds()))
+                durations.append(seconds)
+                if host:
+                    last_by_ip[host] = seconds
+        elif "client connected" in lowered:
+            opens[addr] = stamp
+    now = datetime.now(timezone.utc)
+    open_seconds = 0
+    for addr, start in opens.items():
+        host, _port = split_host_port(addr)
+        seconds = max(0, int((now - start).total_seconds()))
+        open_seconds += 1
+        if host and host not in last_by_ip:
+            last_by_ip[host] = seconds
+    finished = len(durations)
+    avg = int(sum(durations) / finished) if finished else 0
+    return {
+        "count": finished + open_seconds,
+        "finished": finished,
+        "avg_seconds": avg,
+        "last_seconds": durations[-1] if durations else 0,
+        "by_ip": last_by_ip,
+    }
 
 
 def record_client_ip(
@@ -1479,6 +1567,7 @@ def sites_for_user(username: str) -> list[dict[str, Any]]:
         rows.append(
             {
                 "host": str(host),
+                "root": root_host(str(host)),
                 "ip": str(item.get("ip") or ""),
                 "port": str(item.get("port") or ""),
                 "upload": upload,
@@ -1619,6 +1708,13 @@ def user_traffic_analysis(username: str) -> dict[str, Any]:
             if not row.get("client"):
                 row["client"] = fallback["ip"]
                 row["client_port"] = fallback.get("port") or ""
+    sessions = session_stats_from_logs(hysteria_connect_log_lines(), username)
+    by_ip = sessions.pop("by_ip", {}) if isinstance(sessions, dict) else {}
+    if isinstance(by_ip, dict):
+        for item in client_ips:
+            seconds = by_ip.get(item["ip"])
+            if seconds:
+                item["session_seconds"] = int(seconds)
     peak: Optional[dict[str, Any]] = None
     for item in series:
         delta_total = int(item["up"]) + int(item["down"])
@@ -1647,6 +1743,7 @@ def user_traffic_analysis(username: str) -> dict[str, Any]:
         "sites": sites_for_user(username),
         "online": int(snapshot.get("online", 0) or 0),
         "last_active": str(snapshot.get("last_active") or ""),
+        "sessions": sessions,
     }
 
 
