@@ -63,9 +63,6 @@ tr.disabled td{opacity:.55}
 .user-note{color:var(--muted);font-size:13px}
 .status-cell{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
 .status-dot{display:inline-flex;align-items:center;gap:6px}
-.status-dot::before{content:"";width:7px;height:7px;border-radius:50%;background:#d1d5db}
-.status-dot.on::before{background:var(--ok)}.status-dot.off::before{background:#9ca3af}
-.status-dot.ban::before{background:var(--bad)}
 .status-active{font-size:12px;color:var(--muted)}
 .ops{position:relative;text-align:right}
 .menu-btn{width:34px;height:34px;border-radius:8px;border:1px solid transparent;background:transparent;
