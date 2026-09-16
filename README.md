@@ -3,7 +3,7 @@
 一键部署 Hysteria 2 + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
 **稳定版**见 [Releases](https://github.com/keiraee/hy2-allin-one/releases)（含版本说明与变更记录）。  
-跟踪最新开发版：`HY2_REPO_REF=main`。
+想先试用仓库 `main` 上还没发版的功能，见下方 [试用 main 开发版](#试用-main-开发版)。
 
 ## 快速开始
 
@@ -17,36 +17,55 @@ sudo bash hy2.sh install
 
 ## 已安装 · 升级
 
+跟 GitHub 最新正式版（Release）：
+
 ```bash
 # 需 root：已是 root 直接执行；有 sudo 再加 sudo
 hy2 upgrade
 hy2 restart
 ```
 
-跟踪 **main 开发版**（不发 Release 也能更新）：
+`upgrade` / `repair` 会打回滚快照、更新模块与配置、写入 Hysteria 配置（含 QUIC 保活）；**默认不重启 Hysteria**。使配置生效请 `sudo hy2 restart`，或用 `sudo hy2 obfs on|off`（会重启 Hysteria）。
+
+## 试用 main 开发版
+
+`main` 是仓库最新提交，**不是 Release**，可能比当前正式版多功能，也可能还不稳定。第一次必须带 `HY2_REPO_REF=main`，本机会写入 `HY2_TRACK_REF=main`；之后普通 `hy2 upgrade` 会继续跟 `main`，不会被后续正式版 tag 带跑。
+
+已安装，强制切到 / 更新 `main`：
 
 ```bash
-# 第一次必须带 HY2_REPO_REF=main，本机会写入 HY2_TRACK_REF=main
 sudo HY2_REPO_REF=main hy2 upgrade
 sudo hy2 restart
-# 之后直接 hy2 upgrade 继续跟 main，不会被后续正式版 tag 带跑
 ```
 
-切回 GitHub 正式版轨道：
+本机还没有 `hy2`，或旧版 `hy2 upgrade` 一直提示已是最新、实际没拉到 `main`：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/main/hy2.sh -o hy2.sh
+sudo HY2_REPO_REF=main bash hy2.sh upgrade
+sudo hy2 restart
+```
+
+全新安装也直接用 `main`：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/main/hy2.sh -o hy2.sh
+sudo HY2_REPO_REF=main bash hy2.sh install
+```
+
+记住轨道之后，日常更新：
+
+```bash
+sudo hy2 upgrade
+sudo hy2 restart
+```
+
+切回 GitHub 正式版：
 
 ```bash
 sudo HY2_REPO_REF=latest hy2 upgrade
 sudo hy2 restart
 ```
-
-若本机还没有 `hy2 upgrade`（很旧的安装），先执行一次：
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/main/hy2.sh -o hy2.sh
-sudo HY2_REPO_REF=main bash hy2.sh upgrade
-```
-
-`upgrade` / `repair` 会打回滚快照、更新模块与配置、写入 Hysteria 配置（含 QUIC 保活）；**默认不重启 Hysteria**。使配置生效请 `sudo hy2 restart`，或用 `sudo hy2 obfs on|off`（会重启 Hysteria）。
 
 ## 使用方法
 
