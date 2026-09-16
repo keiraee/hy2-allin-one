@@ -382,6 +382,148 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("出口 IP", panel)
         self.assertIn("当前连接", panel)
         self.assertIn("访问站点", panel)
+        self.assertIn("客户端 IP", panel)
+        self.assertIn('data-sort="total"', panel)
+        self.assertIn('class="sortable"', panel)
+        self.assertIn("bindSortHeaders", panel)
+
+
+class ClientIpAndSortTests(unittest.TestCase):
+    def setUp(self):
+        self.namespace = load_backend_namespace()
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.users_file = self.root / "users.json"
+        self.data_file = self.root / "data.json"
+        self.state_file = self.root / "state.json"
+        self.users_file.write_text(
+            json.dumps({"alice": {"password": "x", "token": "t", "disabled": False}}) + "\n",
+            encoding="utf-8",
+        )
+        self.data_file.write_text(
+            json.dumps({"server": {"traffic": {"used": 1}, "ip": "203.0.113.9"}, "users": []})
+            + "\n",
+            encoding="utf-8",
+        )
+        self.namespace.update(
+            {
+                "USERS_FILE": self.users_file,
+                "DATA_FILE": self.data_file,
+                "STATE_FILE": self.state_file,
+                "HISTORY_CSV": self.root / "history.csv",
+            }
+        )
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_parse_hysteria_connect_json_and_console(self):
+        parse = self.namespace["parse_hysteria_connect_line"]
+        self.assertEqual(
+            parse(
+                '{"level":"info","msg":"client connected","addr":"198.51.100.10:44321","id":"alice"}'
+            ),
+            ("alice", "198.51.100.10:44321"),
+        )
+        self.assertEqual(
+            parse(
+                'INFO\tclient connected\t{"addr": "198.51.100.11:1000", "id": "alice", "tx": 1}'
+            ),
+            ("alice", "198.51.100.11:1000"),
+        )
+        self.assertIsNone(parse("client disconnected id=alice"))
+
+    def test_stream_client_addr_reads_addr_fields(self):
+        addr = self.namespace["stream_client_addr"]
+        self.assertEqual(
+            addr({"addr": "198.51.100.20:5555", "req_addr": "192.0.2.1:443"}),
+            "198.51.100.20:5555",
+        )
+        self.assertEqual(addr({"client_addr": "198.51.100.21"}), "198.51.100.21")
+        self.assertEqual(addr({"req_addr": "192.0.2.1:443"}), "")
+
+    def test_remember_client_ips_from_streams_and_logs(self):
+        state: dict = {}
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        self.namespace["remember_client_ips"](
+            state,
+            [
+                {
+                    "auth": "alice",
+                    "addr": "198.51.100.30:6000",
+                    "req_addr": "192.0.2.1:443",
+                }
+            ],
+            [
+                '{"msg":"client connected","addr":"198.51.100.31:7000","id":"alice"}',
+                'INFO client connected {"addr": "203.0.113.9:1", "id": "bob"}',
+            ],
+            now,
+        )
+        alice = state["client_ips"]["alice"]
+        self.assertIn("198.51.100.30", alice)
+        self.assertIn("198.51.100.31", alice)
+        self.assertIn("203.0.113.9", state["client_ips"]["bob"])
+        self.assertEqual(alice["198.51.100.30"]["port"], "6000")
+
+    def test_traffic_analysis_exposes_client_ips_and_live_client(self):
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        self.state_file.write_text(
+            json.dumps(
+                {
+                    "client_ips": {
+                        "alice": {
+                            "198.51.100.40": {
+                                "port": "1234",
+                                "last_seen": now,
+                            }
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.namespace.update(
+            {
+                "hy2_is_off": lambda: False,
+                "load_env": lambda: {"API_SECRET": "secret", "PUBLIC_IP": "203.0.113.9"},
+                "hysteria_api": lambda path, secret, **kwargs: {
+                    "streams": [
+                        {
+                            "auth": "alice",
+                            "addr": "198.51.100.40:1234",
+                            "req_addr": "192.0.2.1:443",
+                            "hooked_req_addr": "a.example:443",
+                            "tx": 10,
+                            "rx": 20,
+                            "state": "estab",
+                        }
+                    ]
+                },
+            }
+        )
+        payload = self.namespace["user_traffic_analysis"]("alice")
+        self.assertEqual(payload["client_ips"][0]["ip"], "198.51.100.40")
+        self.assertEqual(payload["live"][0]["client"], "198.51.100.40")
+        self.assertEqual(payload["live"][0]["client_port"], "1234")
+
+    def test_forget_user_clears_client_ips(self):
+        self.state_file.write_text(
+            json.dumps(
+                {
+                    "users": {"alice": {}, "bob": {}},
+                    "client_ips": {
+                        "alice": {"1.1.1.1": {"port": "1", "last_seen": "x"}},
+                        "bob": {"2.2.2.2": {"port": "2", "last_seen": "x"}},
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.namespace["forget_user_side_state"]("bob")
+        state = json.loads(self.state_file.read_text(encoding="utf-8"))
+        self.assertNotIn("bob", state["client_ips"])
+        self.assertIn("alice", state["client_ips"])
 
 
 if __name__ == "__main__":

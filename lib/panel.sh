@@ -144,6 +144,7 @@ tr.disabled td{opacity:.55}
 .traffic-charts.hide{display:none}
 .traffic-egress{margin:0 0 14px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#f8fafc;font-size:13px;line-height:1.45}
 .traffic-egress strong{font-size:15px}
+.traffic-egress div+div{margin-top:4px}
 .dest-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px}
 .dest-table{width:100%;border-collapse:collapse;font-size:13px}
 .dest-table th,.dest-table td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
@@ -151,16 +152,20 @@ tr.disabled td{opacity:.55}
 .dest-table tr:last-child td{border-bottom:0}
 .dest-host{font-weight:650;word-break:break-all}
 .dest-ip{color:#0369a1;font-variant-numeric:tabular-nums}
+th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+th.sortable:hover{color:var(--text)}
+th.sortable.active{color:var(--text)}
+th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
 @media(max-width:900px){.metrics{grid-template-columns:repeat(2,1fr)}}
 .traffic-up{color:#0369a1}.traffic-down{color:#047857}
 @media(max-width:720px){
-  th:nth-child(5),td:nth-child(5){display:none}
+  .table-wrap th:nth-child(5),.table-wrap td:nth-child(5){display:none}
   .traffic-kpis{grid-template-columns:repeat(2,1fr)}
   .traffic-split{grid-template-columns:1fr}
 }
 @media(max-width:560px){
   .metrics{grid-template-columns:1fr}.main{padding:14px}
-  th:nth-child(3),td:nth-child(3),th:nth-child(4),td:nth-child(4){display:none}
+  .table-wrap th:nth-child(3),.table-wrap td:nth-child(3),.table-wrap th:nth-child(4),.table-wrap td:nth-child(4){display:none}
   .topbar{padding:12px 14px}
 }
 </style>
@@ -220,11 +225,11 @@ tr.disabled td{opacity:.55}
         <table>
           <thead>
             <tr>
-              <th>用户</th>
-              <th>状态</th>
-              <th>上行</th>
-              <th>下行</th>
-              <th>合计</th>
+              <th class="sortable" data-sort="username">用户</th>
+              <th class="sortable" data-sort="online">状态</th>
+              <th class="sortable" data-sort="upload">上行</th>
+              <th class="sortable" data-sort="download">下行</th>
+              <th class="sortable" data-sort="total">合计</th>
               <th style="text-align:right;width:52px">操作</th>
             </tr>
           </thead>
@@ -301,21 +306,37 @@ tr.disabled td{opacity:.55}
         <div class="metric"><div class="label">最忙一天</div><div id="trafficBusyDay" class="value">--</div></div>
         <div class="metric"><div class="label">占整机</div><div id="trafficShare" class="value">--</div></div>
       </div>
-      <p id="trafficEgress" class="traffic-egress">出口 IP：--</p>
+      <div id="trafficEgress" class="traffic-egress">
+        <div id="trafficEgressLine">出口 IP：--</div>
+        <div id="trafficClient">客户端 IP：--</div>
+      </div>
       <p id="trafficPeak" class="traffic-peak"></p>
       <div class="traffic-block">
         <div class="traffic-block-h">
           <h3>当前连接</h3>
-          <span class="hint">实时快照 · 网站 / 目标 IP</span>
+          <span class="hint">点表头排序 · 客户端 / 网站 / 目标 IP</span>
         </div>
-        <div class="dest-wrap"><table class="dest-table"><thead><tr><th>网站</th><th>IP</th><th>端口</th><th>上行</th><th>下行</th></tr></thead><tbody id="trafficLive"></tbody></table></div>
+        <div class="dest-wrap"><table id="trafficLiveTable" class="dest-table"><thead><tr>
+          <th class="sortable" data-sort="host">网站</th>
+          <th class="sortable" data-sort="client">客户端</th>
+          <th class="sortable" data-sort="ip">目标 IP</th>
+          <th class="sortable" data-sort="port">端口</th>
+          <th class="sortable" data-sort="upload">上行</th>
+          <th class="sortable" data-sort="download">下行</th>
+        </tr></thead><tbody id="trafficLive"></tbody></table></div>
       </div>
       <div class="traffic-block">
         <div class="traffic-block-h">
           <h3>访问站点</h3>
-          <span class="hint">近 7 日采样累计</span>
+          <span class="hint">近 7 日采样 · 点表头排序</span>
         </div>
-        <div class="dest-wrap"><table class="dest-table"><thead><tr><th>网站</th><th>IP</th><th>合计</th><th>次数</th><th>最近</th></tr></thead><tbody id="trafficSites"></tbody></table></div>
+        <div class="dest-wrap"><table id="trafficSiteTable" class="dest-table"><thead><tr>
+          <th class="sortable" data-sort="host">网站</th>
+          <th class="sortable" data-sort="ip">IP</th>
+          <th class="sortable" data-sort="total">合计</th>
+          <th class="sortable" data-sort="hits">次数</th>
+          <th class="sortable" data-sort="last_seen">最近</th>
+        </tr></thead><tbody id="trafficSites"></tbody></table></div>
         <p class="hint" style="margin-top:8px">Clash TUN 走 IP 时，需服务端嗅探才能显示域名。短连接可能被分钟采样漏记。</p>
       </div>
       <p id="trafficEmpty" class="traffic-empty hint">该用户还没有足够的历史采样，同步几次后再看。</p>
@@ -372,6 +393,10 @@ const formatActive=raw=>{
 const VALID_NAME=/^[A-Za-z0-9_-]{1,32}$/;
 const HEAT=["#dbeafe","#93c5fd","#38bdf8","#fbbf24","#f97316","#b91c1c"];
 let toastTimer=null, openMenu=null, noteUser="";
+let userList=[], liveList=[], siteList=[];
+let userSort={key:"username",dir:1};
+let liveSort={key:"bytes",dir:-1};
+let siteSort={key:"total",dir:-1};
 
 function toast(message){
   const node=$("toast");
@@ -444,6 +469,46 @@ function setTrafficModal(open){
   if(!open)return;
 }
 function pad2(n){return String(n).padStart(2,"0")}
+function sortValue(row,key){
+  if(key==="online")return row.disabled?-1:Number(row.online||0);
+  if(key==="username"||key==="host"||key==="ip"||key==="client")return String(row[key]||row.client_ip||"");
+  if(key==="port")return Number(row.port)||0;
+  if(key==="upload"||key==="download"||key==="hits")return Number(row[key])||0;
+  if(key==="total"||key==="bytes")return Number(row.total!=null?row.total:(Number(row.upload)||0)+(Number(row.download)||0));
+  if(key==="last_seen")return Date.parse(row.last_seen)||0;
+  return String(row[key]||"");
+}
+function sortedRows(list,sort){
+  return [...(list||[])].sort((a,b)=>{
+    const va=sortValue(a,sort.key), vb=sortValue(b,sort.key);
+    if(typeof va==="number"&&typeof vb==="number")return (va-vb)*sort.dir;
+    return String(va).localeCompare(String(vb),"en",{numeric:true})*sort.dir;
+  });
+}
+function markSort(table,sort){
+  if(!table)return;
+  table.querySelectorAll("th[data-sort]").forEach(th=>{
+    const on=th.getAttribute("data-sort")===sort.key;
+    th.classList.toggle("active",on);
+    th.setAttribute("data-dir",on?(sort.dir>0?"▲":"▼"):"");
+    th.setAttribute("aria-sort",on?(sort.dir>0?"ascending":"descending"):"none");
+  });
+}
+function bindSortHeaders(root,sort,apply){
+  if(!root)return;
+  root.querySelectorAll("th[data-sort]").forEach(th=>{
+    th.onclick=()=>{
+      const key=th.getAttribute("data-sort");
+      if(sort.key===key)sort.dir*=-1;
+      else{sort.key=key;sort.dir=(key==="username"||key==="host"||key==="client"||key==="ip")?1:-1;}
+      apply();
+    };
+  });
+}
+function formatClientIps(list){
+  if(!list||!list.length)return "暂无（用户连上后从连接日志采集）";
+  return list.map(item=>item.ip+(item.port?":"+item.port:"")).join("、");
+}
 function dayKey(date){return date.getFullYear()+"-"+pad2(date.getMonth()+1)+"-"+pad2(date.getDate())}
 function lastDays(n){
   const days=[], now=new Date();
@@ -471,7 +536,8 @@ async function openTraffic(username){
   $("trafficPeakVal").textContent="--";
   $("trafficBusyDay").textContent="--";
   $("trafficShare").textContent="--";
-  $("trafficEgress").textContent="出口 IP：--";
+  $("trafficEgressLine").textContent="出口 IP：--";
+  $("trafficClient").textContent="客户端 IP：--";
   clearNode($("trafficLive"));
   clearNode($("trafficSites"));
   $("trafficPeak").classList.remove("show");
@@ -597,37 +663,49 @@ function renderTraffic(data){
 }
 function renderDestinations(data){
   const ip=String(data.egress_ip||"").trim()||"--";
-  $("trafficEgress").textContent="出口 IP："+ip+"（外站看到的地址）";
+  $("trafficEgressLine").textContent="出口 IP："+ip+"（外站看到的地址）";
+  $("trafficClient").textContent="客户端 IP："+formatClientIps(data.client_ips);
+  liveList=Array.isArray(data.live)?data.live:[];
+  siteList=Array.isArray(data.sites)?data.sites:[];
+  renderLiveRows();
+  renderSiteRows();
+}
+function renderLiveRows(){
   const liveRoot=$("trafficLive");clearNode(liveRoot);
-  const live=Array.isArray(data.live)?data.live:[];
+  const live=sortedRows(liveList,liveSort);
+  markSort($("trafficLiveTable"),liveSort);
   if(!live.length){
-    liveRoot.append(el("tr",{},el("td",{colSpan:5,className:"hint",text:"当前没有活动连接"})));
-  }else{
-    live.forEach(row=>{
-      liveRoot.append(el("tr",{},
-        el("td",{className:"dest-host",text:row.host||"--"}),
-        el("td",{className:"dest-ip",text:row.ip||"--"}),
-        el("td",{text:row.port||"--"}),
-        el("td",{className:"traffic-up",text:"↑ "+bytes(row.upload)}),
-        el("td",{className:"traffic-down",text:"↓ "+bytes(row.download)})
-      ));
-    });
+    liveRoot.append(el("tr",{},el("td",{colSpan:6,className:"hint",text:"当前没有活动连接"})));
+    return;
   }
+  live.forEach(row=>{
+    liveRoot.append(el("tr",{},
+      el("td",{className:"dest-host",text:row.host||"--"}),
+      el("td",{className:"dest-ip",text:row.client||"--"}),
+      el("td",{className:"dest-ip",text:row.ip||"--"}),
+      el("td",{text:row.port||"--"}),
+      el("td",{className:"traffic-up",text:"↑ "+bytes(row.upload)}),
+      el("td",{className:"traffic-down",text:"↓ "+bytes(row.download)})
+    ));
+  });
+}
+function renderSiteRows(){
   const siteRoot=$("trafficSites");clearNode(siteRoot);
-  const sites=Array.isArray(data.sites)?data.sites:[];
+  const sites=sortedRows(siteList,siteSort);
+  markSort($("trafficSiteTable"),siteSort);
   if(!sites.length){
     siteRoot.append(el("tr",{},el("td",{colSpan:5,className:"hint",text:"还没有采样到访问站点"})));
-  }else{
-    sites.forEach(row=>{
-      siteRoot.append(el("tr",{},
-        el("td",{className:"dest-host",text:row.host||"--"}),
-        el("td",{className:"dest-ip",text:row.ip||"--"}),
-        el("td",{text:bytes(row.total)}),
-        el("td",{text:String(row.hits||0)}),
-        el("td",{text:formatActive(row.last_seen)})
-      ));
-    });
+    return;
   }
+  sites.forEach(row=>{
+    siteRoot.append(el("tr",{},
+      el("td",{className:"dest-host",text:row.host||"--"}),
+      el("td",{className:"dest-ip",text:row.ip||"--"}),
+      el("td",{text:bytes(row.total)}),
+      el("td",{text:String(row.hits||0)}),
+      el("td",{text:formatActive(row.last_seen)})
+    ));
+  });
 }
 
 async function copyText(text){
@@ -760,9 +838,11 @@ function menuItem(text,handler,bad){
   return el("button",{type:"button",className:bad?"bad":"",text,onclick:handler});
 }
 function renderUsers(users){
+  if(users)userList=users;
   const root=$("users");clearNode(root);
-  const list=users||[];
-  $("userSummary").textContent=list.length+" 个账号";
+  const list=sortedRows(userList,userSort);
+  markSort(document.querySelector(".table-wrap table"),userSort);
+  $("userSummary").textContent=list.length+" 个账号 · 点表头排序";
   if(!list.length){
     root.append(el("tr",{},el("td",{colSpan:6,className:"hint",text:"暂无用户。打开右上角菜单添加。"})));
     return;
@@ -771,10 +851,12 @@ function renderUsers(users){
     const note=String(user.note||"").trim();
     const statusClass=user.disabled?"ban":(user.online?"on":"off");
     const statusText=user.disabled?"已禁用":(user.online?"在线 "+user.online:"离线");
-    const statusCell=el("div",{className:"status-cell"},
+    const statusKids=[
       el("span",{className:"status-dot "+statusClass,text:statusText}),
       el("span",{className:"status-active",text:"最后 "+formatActive(user.last_active)})
-    );
+    ];
+    if(user.client_ip)statusKids.push(el("span",{className:"status-active",text:"客户端 "+user.client_ip}));
+    const statusCell=el("div",{className:"status-cell"},...statusKids);
     const menu=el("div",{className:"menu"});
     const btn=el("button",{className:"menu-btn",type:"button",title:"操作",text:"⋯",onclick:function(event){
       event.stopPropagation();
@@ -861,6 +943,9 @@ $("noteInput").addEventListener("keydown",event=>{if(event.key==="Enter")saveNot
 $("noteModal").addEventListener("click",event=>{if(event.target===$("noteModal"))setNoteModal(false)});
 $("trafficClose").onclick=()=>setTrafficModal(false);
 $("trafficModal").addEventListener("click",event=>{if(event.target===$("trafficModal"))setTrafficModal(false)});
+bindSortHeaders(document.querySelector(".table-wrap table"),userSort,()=>renderUsers());
+bindSortHeaders($("trafficLiveTable"),liveSort,renderLiveRows);
+bindSortHeaders($("trafficSiteTable"),siteSort,renderSiteRows);
 document.addEventListener("click",closeMenus);
 document.addEventListener("scroll",()=>{if(openMenu&&openMenu._btn)positionMenu(openMenu,openMenu._btn)},true);
 window.addEventListener("resize",()=>{if(openMenu&&openMenu._btn)positionMenu(openMenu,openMenu._btn)});

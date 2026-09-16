@@ -585,6 +585,7 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
         output_users: list[dict[str, Any]] = []
         timestamp = iso_now()
         remember_user_streams(state, stream_dump, timestamp)
+        remember_client_ips(state, stream_dump, hysteria_connect_log_lines(), timestamp)
 
         for username, info in sorted(users.items()):
             user_state = state_users.setdefault(
@@ -608,6 +609,7 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
                 user_state["last_active"] = timestamp
 
             client_mode = mode_for_user(username, modes)
+            recent_ips = client_ips_for_user(state, username)
             output_users.append(
                 {
                     "username": username,
@@ -619,6 +621,7 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
                     "total": user_state["month_tx"] + user_state["month_rx"],
                     "lifetime_total": user_state["lifetime_tx"] + user_state["lifetime_rx"],
                     "last_active": user_state["last_active"],
+                    "client_ip": recent_ips[0]["ip"] if recent_ips else "",
                     "mode": mode_label(client_mode),
                 }
             )
@@ -986,6 +989,8 @@ def hy2_turn_on() -> dict[str, Any]:
 USERNAME_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,32}")
 TRAFFIC_HISTORY_DAYS = 7
 DEST_MAX_PER_USER = 80
+CLIENT_IP_MAX = 8
+CLIENT_ADDR_KEYS = ("addr", "client_addr", "remote_addr", "src_addr")
 
 
 def split_host_port(addr: str) -> tuple[str, str]:
@@ -1012,6 +1017,162 @@ def is_ip_host(host: str) -> bool:
         return True
     except ValueError:
         return False
+
+
+def stream_client_addr(stream: dict[str, Any]) -> str:
+    if not isinstance(stream, dict):
+        return ""
+    for key in CLIENT_ADDR_KEYS:
+        raw = str(stream.get(key) or "").strip()
+        if raw:
+            return raw
+    return ""
+
+
+def parse_hysteria_connect_line(line: str) -> Optional[tuple[str, str]]:
+    text = str(line or "").strip()
+    if "client connected" not in text.lower():
+        return None
+    user = ""
+    addr = ""
+    start = text.find("{")
+    blob = text[start:] if start != -1 else ""
+    if blob:
+        try:
+            obj = json.loads(blob)
+        except Exception:
+            obj = None
+        if isinstance(obj, dict):
+            user = str(obj.get("id") or "").strip()
+            addr = str(obj.get("addr") or "").strip()
+        if not user or not addr:
+            addr_m = re.search(r'"addr"\s*:\s*"([^"]+)"', blob)
+            id_m = re.search(r'"id"\s*:\s*"([^"]+)"', blob)
+            if addr_m:
+                addr = addr or addr_m.group(1).strip()
+            if id_m:
+                user = user or id_m.group(1).strip()
+    if user and addr:
+        return user, addr
+    return None
+
+
+def record_client_ip(
+    state: dict[str, Any], username: str, addr: str, timestamp: str
+) -> None:
+    host, port = split_host_port(addr)
+    if not host or not USERNAME_PATTERN.fullmatch(username):
+        return
+    bucket = state.setdefault("client_ips", {})
+    if not isinstance(bucket, dict):
+        bucket = {}
+        state["client_ips"] = bucket
+    items = bucket.get(username)
+    if not isinstance(items, dict):
+        items = {}
+        bucket[username] = items
+    item = items.get(host)
+    if not isinstance(item, dict):
+        item = {"port": "", "last_seen": ""}
+        items[host] = item
+    if port:
+        item["port"] = port
+    item["last_seen"] = timestamp
+
+
+def prune_client_ips(state: dict[str, Any]) -> None:
+    bucket = state.get("client_ips")
+    if not isinstance(bucket, dict):
+        return
+    cutoff = datetime.now(timezone.utc) - timedelta(days=TRAFFIC_HISTORY_DAYS)
+    for user, items in list(bucket.items()):
+        if not isinstance(items, dict):
+            bucket.pop(user, None)
+            continue
+        for ip, info in list(items.items()):
+            if not isinstance(info, dict):
+                items.pop(ip, None)
+                continue
+            seen_at = parse_history_time(str(info.get("last_seen", "")))
+            if seen_at is None or seen_at < cutoff:
+                items.pop(ip, None)
+        ranked = sorted(
+            items.items(),
+            key=lambda kv: str((kv[1] or {}).get("last_seen") or ""),
+            reverse=True,
+        )
+        bucket[user] = {name: info for name, info in ranked[:CLIENT_IP_MAX]}
+        if not bucket[user]:
+            bucket.pop(user, None)
+
+
+def remember_client_ips(
+    state: dict[str, Any],
+    streams: list[Any],
+    log_lines: list[str],
+    timestamp: str,
+) -> None:
+    if not isinstance(state, dict):
+        return
+    if not isinstance(streams, list):
+        streams = []
+    for stream in streams:
+        if not isinstance(stream, dict):
+            continue
+        user = str(stream.get("auth") or "").strip()
+        addr = stream_client_addr(stream)
+        if user and addr:
+            record_client_ip(state, user, addr, timestamp)
+    for line in log_lines or []:
+        parsed = parse_hysteria_connect_line(str(line))
+        if not parsed:
+            continue
+        record_client_ip(state, parsed[0], parsed[1], timestamp)
+    prune_client_ips(state)
+
+
+def client_ips_for_user(state: Any, username: str) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    bucket: dict[str, Any] = {}
+    if isinstance(state, dict):
+        stored = state.get("client_ips")
+        if isinstance(stored, dict) and isinstance(stored.get(username), dict):
+            bucket = stored[username]
+    for ip, info in bucket.items():
+        if not isinstance(info, dict):
+            continue
+        rows.append(
+            {
+                "ip": str(ip),
+                "port": str(info.get("port") or ""),
+                "last_seen": str(info.get("last_seen") or ""),
+            }
+        )
+    rows.sort(key=lambda item: item["last_seen"], reverse=True)
+    return rows[:CLIENT_IP_MAX]
+
+
+def hysteria_connect_log_lines() -> list[str]:
+    try:
+        result = subprocess.run(
+            [
+                "journalctl",
+                "-u",
+                "hysteria-server.service",
+                "-n",
+                "200",
+                "-o",
+                "cat",
+                "--no-pager",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except Exception:
+        return []
+    return result.stdout.splitlines() if result.stdout else []
 
 
 def stream_target(stream: dict[str, Any]) -> dict[str, str]:
@@ -1142,6 +1303,8 @@ def live_streams_for_user(username: str) -> list[dict[str, Any]]:
         if str(stream.get("auth") or "").strip() != username:
             continue
         target = stream_target(stream)
+        client_raw = stream_client_addr(stream)
+        client_host, client_port = split_host_port(client_raw)
         try:
             upload = int(stream.get("tx") or 0)
             download = int(stream.get("rx") or 0)
@@ -1152,6 +1315,8 @@ def live_streams_for_user(username: str) -> list[dict[str, Any]]:
                 "host": target["host"] or target["ip"] or "unknown",
                 "ip": target["ip"],
                 "port": target["port"],
+                "client": client_host,
+                "client_port": client_port,
                 "upload": upload,
                 "download": download,
                 "state": str(stream.get("state") or ""),
@@ -1299,6 +1464,22 @@ def user_traffic_analysis(username: str) -> dict[str, Any]:
         except Exception:
             egress = ""
     series = series_from_history(load_user_history_rows(username))
+    live = live_streams_for_user(username)
+    stored_state = read_json(STATE_FILE, {})
+    client_ips = client_ips_for_user(stored_state, username)
+    seen_ips = {item["ip"] for item in client_ips}
+    for row in live:
+        ip = str(row.get("client") or "")
+        if ip and ip not in seen_ips:
+            client_ips.insert(
+                0,
+                {
+                    "ip": ip,
+                    "port": str(row.get("client_port") or ""),
+                    "last_seen": str(row.get("last_active") or ""),
+                },
+            )
+            seen_ips.add(ip)
     peak: Optional[dict[str, Any]] = None
     for item in series:
         delta_total = int(item["up"]) + int(item["down"])
@@ -1322,7 +1503,8 @@ def user_traffic_analysis(username: str) -> dict[str, Any]:
         "has_history": bool(series),
         "peak": peak,
         "egress_ip": egress,
-        "live": live_streams_for_user(username),
+        "client_ips": client_ips[:CLIENT_IP_MAX],
+        "live": live,
         "sites": sites_for_user(username),
     }
 
@@ -1345,6 +1527,9 @@ def forget_user_side_state(username: str) -> None:
         destinations = state.get("destinations")
         if isinstance(destinations, dict) and username in destinations:
             destinations.pop(username, None)
+        client_ips = state.get("client_ips")
+        if isinstance(client_ips, dict) and username in client_ips:
+            client_ips.pop(username, None)
         stream_bytes = state.get("stream_bytes")
         if isinstance(stream_bytes, dict):
             prefix = username + ":"
