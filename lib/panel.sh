@@ -227,7 +227,8 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
 }
 .traffic-up{color:#0369a1}.traffic-down{color:#047857}
 @media(max-width:720px){
-  .table-wrap th:nth-child(6),.table-wrap td:nth-child(6){display:none}
+  .table-wrap th:nth-child(3),.table-wrap td:nth-child(3),
+  .table-wrap th:nth-child(7),.table-wrap td:nth-child(7){display:none}
   .traffic-kpis{grid-template-columns:repeat(2,1fr)}
   .traffic-board,.traffic-tables,.traffic-insights{grid-template-columns:1fr}
   .traffic-split{grid-template-columns:1fr}
@@ -237,10 +238,8 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
 }
 @media(max-width:560px){
   .metrics{grid-template-columns:1fr}.main{padding:14px}
-  .table-wrap th:nth-child(3),.table-wrap td:nth-child(3),
   .table-wrap th:nth-child(4),.table-wrap td:nth-child(4),
-  .table-wrap th:nth-child(5),.table-wrap td:nth-child(5),
-  .table-wrap th:nth-child(7),.table-wrap td:nth-child(7){display:none}
+  .table-wrap th:nth-child(5),.table-wrap td:nth-child(5){display:none}
   .topbar{padding:12px 14px}
   .dest-table th:nth-child(3),.dest-table td:nth-child(3),
   .dest-table th:nth-child(6),.dest-table td:nth-child(6),

@@ -457,6 +457,19 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("if(!hasSeries)", week)
         self.assertLess(week.index("if(!hasSeries)"), week.index("week-card"))
 
+    def test_narrow_user_table_keeps_monthly_total(self):
+        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        idx720 = panel.index("@media(max-width:720px)")
+        idx560 = panel.index("@media(max-width:560px)")
+        block720 = panel[idx720:idx560].split(".dest-table")[0]
+        block560 = panel[idx560:panel.index("</style>")].split(".dest-table")[0]
+        self.assertIn("nth-child(3)", block720)
+        self.assertIn("nth-child(7)", block720)
+        self.assertNotIn("nth-child(6)", block720)
+        self.assertIn("nth-child(4)", block560)
+        self.assertIn("nth-child(5)", block560)
+        self.assertNotIn("nth-child(6)", block560)
+
 
 class ClientIpAndSortTests(unittest.TestCase):
     def setUp(self):
