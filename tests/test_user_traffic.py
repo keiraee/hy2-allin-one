@@ -386,6 +386,12 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn('data-sort="total"', panel)
         self.assertIn('class="sortable"', panel)
         self.assertIn("bindSortHeaders", panel)
+        self.assertIn('id="trafficSummary"', panel)
+        self.assertIn("function relTime", panel)
+        self.assertIn("weekdayName", panel)
+        self.assertIn("site-bar-row", panel)
+        self.assertIn("day-cols", panel)
+        self.assertIn("buildTrafficSummary", panel)
 
 
 class ClientIpAndSortTests(unittest.TestCase):
