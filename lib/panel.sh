@@ -482,15 +482,15 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
             <span class="hint">点表头排序 · 含访问时间</span>
           </div>
           <div class="dest-wrap"><table id="trafficLiveTable" class="dest-table"><thead><tr>
-            <th class="sortable" data-sort="host">网站</th>
-            <th class="sortable" data-sort="client">客户端</th>
-            <th class="sortable" data-sort="ip">目标 IP</th>
-            <th class="sortable" data-sort="port">端口</th>
-            <th class="sortable" data-sort="state">状态</th>
-            <th class="sortable" data-sort="upload">上行</th>
-            <th class="sortable" data-sort="download">下行</th>
-            <th class="sortable" data-sort="total">合计</th>
-            <th class="sortable" data-sort="last_active">访问时间</th>
+            <th class="sortable" data-sort="host" aria-sort="none">网站</th>
+            <th class="sortable" data-sort="client" aria-sort="none">客户端</th>
+            <th class="sortable" data-sort="ip" aria-sort="none">目标 IP</th>
+            <th class="sortable" data-sort="port" aria-sort="none">端口</th>
+            <th class="sortable" data-sort="state" aria-sort="none">状态</th>
+            <th class="sortable" data-sort="upload" aria-sort="none">上行</th>
+            <th class="sortable" data-sort="download" aria-sort="none">下行</th>
+            <th class="sortable" data-sort="total" aria-sort="none">合计</th>
+            <th class="sortable" data-sort="last_active" aria-sort="none">访问时间</th>
           </tr></thead><tbody id="trafficLive"></tbody></table></div>
         </div>
         <div class="traffic-tile traffic-block">
@@ -499,16 +499,16 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
             <span class="hint">近 7 日 · 含首次 / 最近访问时间</span>
           </div>
           <div class="dest-wrap"><table id="trafficSiteTable" class="dest-table"><thead><tr>
-            <th class="sortable" data-sort="host">网站</th>
-            <th class="sortable" data-sort="ip">IP</th>
-            <th class="sortable" data-sort="port">端口</th>
-            <th class="sortable" data-sort="upload">上行</th>
-            <th class="sortable" data-sort="download">下行</th>
-            <th class="sortable" data-sort="total">合计</th>
-            <th class="sortable" data-sort="hits">次数</th>
-            <th class="sortable" data-sort="share">占比</th>
-            <th class="sortable" data-sort="first_seen">首次访问</th>
-            <th class="sortable" data-sort="last_seen">最近访问</th>
+            <th class="sortable" data-sort="host" aria-sort="none">网站</th>
+            <th class="sortable" data-sort="ip" aria-sort="none">IP</th>
+            <th class="sortable" data-sort="port" aria-sort="none">端口</th>
+            <th class="sortable" data-sort="upload" aria-sort="none">上行</th>
+            <th class="sortable" data-sort="download" aria-sort="none">下行</th>
+            <th class="sortable" data-sort="total" aria-sort="none">合计</th>
+            <th class="sortable" data-sort="hits" aria-sort="none">次数</th>
+            <th class="sortable" data-sort="share" aria-sort="none">占比</th>
+            <th class="sortable" data-sort="first_seen" aria-sort="none">首次访问</th>
+            <th class="sortable" data-sort="last_seen" aria-sort="none">最近访问</th>
           </tr></thead><tbody id="trafficSites"></tbody></table></div>
           <p class="hint" style="margin-top:8px">访问时间来自连接日志和采样。短连接会记进站点列表。Clash TUN 走 IP 时，仍需服务端嗅探才能显示域名。</p>
         </div>
