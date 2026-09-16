@@ -395,7 +395,7 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("流量分析", panel)
         self.assertIn("api/user/traffic", panel)
         self.assertIn('id="trafficModal"', panel)
-        self.assertIn("menuItem(\"流量分析\"", panel)
+        self.assertIn("openTraffic(user.username)", panel)
         self.assertIn("#dbeafe", panel)
         self.assertIn("#b91c1c", panel)
         self.assertIn("时段热力", panel)
