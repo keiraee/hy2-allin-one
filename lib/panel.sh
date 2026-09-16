@@ -227,11 +227,16 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
   .traffic-board,.traffic-tables,.traffic-insights{grid-template-columns:1fr}
   .traffic-split{grid-template-columns:1fr}
   .traffic-mix{grid-template-columns:1fr}
+  .dest-table th:nth-child(4),.dest-table td:nth-child(4),
+  .dest-table th:nth-child(5),.dest-table td:nth-child(5){display:none}
 }
 @media(max-width:560px){
   .metrics{grid-template-columns:1fr}.main{padding:14px}
   .table-wrap th:nth-child(3),.table-wrap td:nth-child(3),.table-wrap th:nth-child(4),.table-wrap td:nth-child(4){display:none}
   .topbar{padding:12px 14px}
+  .dest-table th:nth-child(3),.dest-table td:nth-child(3),
+  .dest-table th:nth-child(6),.dest-table td:nth-child(6),
+  .dest-table th:nth-child(7),.dest-table td:nth-child(7){display:none}
 }
 </style>
 </head>
