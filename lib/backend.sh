@@ -1645,6 +1645,8 @@ def user_traffic_analysis(username: str) -> dict[str, Any]:
         "client_ips": client_ips[:CLIENT_IP_MAX],
         "live": live,
         "sites": sites_for_user(username),
+        "online": int(snapshot.get("online", 0) or 0),
+        "last_active": str(snapshot.get("last_active") or ""),
     }
 
 

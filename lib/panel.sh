@@ -113,7 +113,7 @@ tr.disabled td{opacity:.55}
 .modal.traffic-modal{width:min(1280px,96vw);padding:0;max-height:min(96vh,1100px);display:flex;flex-direction:column;overflow:hidden}
 .traffic-modal .drawer-h{padding:16px 22px}
 .traffic-body{padding:18px 22px 22px;overflow:auto;flex:1}
-.traffic-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.traffic-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px}
 .traffic-kpis .metric{padding:12px 14px}
 .traffic-kpis .value{font-size:22px;margin-top:6px}
 .traffic-kpis .hot{color:var(--bad)}
@@ -162,6 +162,12 @@ tr.disabled td{opacity:.55}
 .traffic-egress{margin:0 0 14px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#f8fafc;font-size:13px;line-height:1.45}
 .traffic-egress strong{font-size:15px}
 .traffic-egress div+div{margin-top:4px}
+.client-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-top:8px}
+.client-card{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.client-card .ip{font-weight:700;font-variant-numeric:tabular-nums}
+.client-card.on .ip{color:var(--ok)}
+.client-card .meta{font-size:12px;color:var(--muted);margin-top:4px}
+.port-tag{display:inline-block;font-size:11px;color:#334155;background:#eef2f7;border-radius:999px;padding:1px 7px;margin-left:4px;font-weight:600}
 .dest-wrap{overflow:auto;border:1px solid var(--line);border-radius:10px}
 .dest-table{width:100%;border-collapse:collapse;font-size:13px}
 .dest-table th,.dest-table td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
@@ -324,11 +330,14 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
         <div class="metric"><div class="label">高峰时段</div><div id="trafficPeakVal" class="value hot">--</div><div id="trafficPeakExtra" class="extra">--</div></div>
         <div class="metric"><div class="label">最忙一天</div><div id="trafficBusyDay" class="value">--</div><div id="trafficBusyExtra" class="extra">--</div></div>
         <div class="metric"><div class="label">占整机</div><div id="trafficShare" class="value">--</div><div id="trafficShareExtra" class="extra">--</div></div>
+        <div class="metric"><div class="label">当前连接</div><div id="trafficLiveCount" class="value">--</div><div id="trafficLiveExtra" class="extra">--</div></div>
+        <div class="metric"><div class="label">近 7 日站点</div><div id="trafficSiteCount" class="value">--</div><div id="trafficSiteExtra" class="extra">--</div></div>
       </div>
       <p id="trafficSummary" class="traffic-summary">正在整理这个用户的用量…</p>
       <div id="trafficEgress" class="traffic-egress">
         <div id="trafficEgressLine">出口 IP：--</div>
-        <div id="trafficClient">客户端 IP：--</div>
+        <div id="trafficClient">客户端：--</div>
+        <div id="trafficClients" class="client-cards"></div>
       </div>
       <p id="trafficPeak" class="traffic-peak"></p>
       <div class="traffic-block">
@@ -341,6 +350,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
           <th class="sortable" data-sort="client">客户端</th>
           <th class="sortable" data-sort="ip">目标 IP</th>
           <th class="sortable" data-sort="port">端口</th>
+          <th class="sortable" data-sort="state">状态</th>
           <th class="sortable" data-sort="upload">上行</th>
           <th class="sortable" data-sort="download">下行</th>
           <th class="sortable" data-sort="total">合计</th>
@@ -361,6 +371,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
           <th class="sortable" data-sort="download">下行</th>
           <th class="sortable" data-sort="total">合计</th>
           <th class="sortable" data-sort="hits">次数</th>
+          <th class="sortable" data-sort="share">占比</th>
           <th class="sortable" data-sort="first_seen">首次访问</th>
           <th class="sortable" data-sort="last_seen">最近访问</th>
         </tr></thead><tbody id="trafficSites"></tbody></table></div>
@@ -503,6 +514,8 @@ function sortValue(row,key){
   if(key==="port")return Number(row.port)||0;
   if(key==="upload"||key==="download"||key==="hits")return Number(row[key])||0;
   if(key==="total"||key==="bytes")return Number(row.total!=null?row.total:(Number(row.upload)||0)+(Number(row.download)||0));
+  if(key==="share")return Number(row.share)||0;
+  if(key==="state")return streamState(row.state);
   if(key==="last_seen"||key==="first_seen"||key==="last_active")return Date.parse(row[key])||0;
   return String(row[key]||"");
 }
@@ -569,6 +582,34 @@ function formatClientIps(list){
     return item.last_seen?addr+"（"+relTime(item.last_seen)+"）":addr;
   }).join("、");
 }
+function portName(port){
+  const names={80:"HTTP",443:"HTTPS",53:"DNS",22:"SSH",853:"DoT",123:"NTP",25:"SMTP",465:"SMTPS",587:"SMTP",993:"IMAPS",995:"POP3S"};
+  return names[String(port||"").trim()]||"";
+}
+function portLabel(port){
+  const p=String(port||"").trim();
+  if(!p)return "--";
+  const name=portName(p);
+  return name?p+" "+name:p;
+}
+function streamState(raw){
+  const s=String(raw||"").toLowerCase();
+  if(!s||s==="estab"||s==="established"||s==="open"||s==="active")return "进行中";
+  if(s.indexOf("close")!==-1||s==="fin"||s==="end")return "已结束";
+  return String(raw);
+}
+function siteSharePct(row,list){
+  const bytesTotal=(list||[]).reduce((n,item)=>n+(Number(item.total)||0),0);
+  const hitsTotal=(list||[]).reduce((n,item)=>n+(Number(item.hits)||0),0);
+  if(bytesTotal)return (Number(row.total)||0)/bytesTotal*100;
+  if(hitsTotal)return (Number(row.hits)||0)/hitsTotal*100;
+  return 0;
+}
+function formatPct(n){
+  const value=Number(n)||0;
+  if(!value)return "0%";
+  return (value>=10?value.toFixed(0):value.toFixed(1))+"%";
+}
 function dayKey(date){return date.getFullYear()+"-"+pad2(date.getMonth()+1)+"-"+pad2(date.getDate())}
 function lastDays(n){
   const days=[], now=new Date();
@@ -601,8 +642,13 @@ async function openTraffic(username){
   $("trafficBusyExtra").textContent="--";
   $("trafficShare").textContent="--";
   $("trafficShareExtra").textContent="--";
+  $("trafficLiveCount").textContent="--";
+  $("trafficLiveExtra").textContent="--";
+  $("trafficSiteCount").textContent="--";
+  $("trafficSiteExtra").textContent="--";
   $("trafficEgressLine").textContent="出口 IP：--";
-  $("trafficClient").textContent="客户端 IP：--";
+  $("trafficClient").textContent="客户端：--";
+  if($("trafficClients"))clearNode($("trafficClients"));
   clearNode($("trafficLive"));
   clearNode($("trafficSites"));
   if($("trafficSiteBars"))clearNode($("trafficSiteBars"));
@@ -799,12 +845,37 @@ function buildTrafficSummary(data,peakCell,busy){
 function renderDestinations(data){
   const ip=String(data.egress_ip||"").trim()||"--";
   $("trafficEgressLine").textContent="出口 IP："+ip+"（外站看到的地址）";
-  $("trafficClient").textContent="客户端 IP："+formatClientIps(data.client_ips);
   liveList=Array.isArray(data.live)?data.live:[];
-  siteList=Array.isArray(data.sites)?data.sites:[];
+  siteList=(Array.isArray(data.sites)?data.sites:[]).map(row=>Object.assign({},row,{share:siteSharePct(row,data.sites||[])}));
+  const liveCount=liveList.length, siteCount=siteList.length;
+  $("trafficLiveCount").textContent=String(liveCount);
+  $("trafficLiveExtra").textContent=data.online?("在线设备 "+data.online):"当前活动流";
+  $("trafficSiteCount").textContent=String(siteCount);
+  $("trafficSiteExtra").textContent=data.last_active&&data.last_active!=="从未"?("最后活跃 "+relTime(data.last_active)):"近 7 日采样";
+  $("trafficClient").textContent=siteCount||liveCount||(data.client_ips||[]).length
+    ?("客户端 "+((data.client_ips||[]).length||0)+" 个地址")
+    :"客户端：暂无记录";
+  renderClientCards(data.client_ips||[], liveList);
   renderSiteBars(siteList);
   renderLiveRows();
   renderSiteRows();
+}
+function renderClientCards(list,live){
+  const root=$("trafficClients");
+  if(!root)return;
+  clearNode(root);
+  if(!list||!list.length){
+    root.append(el("div",{className:"hint",text:"还没有采集到客户端 IP。用户连上后会从连接日志写入。"}));
+    return;
+  }
+  const liveIps=new Set((live||[]).map(row=>row.client).filter(Boolean));
+  list.forEach(item=>{
+    const online=liveIps.has(item.ip);
+    root.append(el("div",{className:"client-card"+(online?" on":"")},
+      el("div",{className:"ip",text:item.ip+(item.port?":"+item.port:"")}),
+      el("div",{className:"meta",text:(online?"此刻在线":"最近出现")+" · "+(item.last_seen?relTime(item.last_seen):"--")})
+    ));
+  });
 }
 function renderSiteBars(sites){
   const root=$("trafficSiteBars");
@@ -818,8 +889,8 @@ function renderSiteBars(sites){
     const weight=Number(row.total)||Number(row.hits)||0;
     const pct=Math.round(weight/max*100);
     const right=Number(row.total)
-      ?bytes(row.total)+" · ↑ "+bytes(row.upload)+" · ↓ "+bytes(row.download)
-      :(Number(row.hits)||0)+" 次";
+      ?bytes(row.total)+" · "+formatPct(row.share)+" · ↑ "+bytes(row.upload)+" · ↓ "+bytes(row.download)
+      :formatPct(row.share)+" · "+(Number(row.hits)||0)+" 次";
     root.append(el("div",{className:"site-bar-row"},
       el("span",{className:"dest-host",text:(index+1)+". "+(row.host||"--")}),
       el("span",{className:"track"},el("i",{className:"fill",style:{width:pct+"%"}})),
@@ -832,7 +903,7 @@ function renderLiveRows(){
   const live=sortedRows(liveList,liveSort);
   markSort($("trafficLiveTable"),liveSort);
   if(!live.length){
-    liveRoot.append(el("tr",{},el("td",{colSpan:8,className:"hint",text:"当前没有活动连接"})));
+    liveRoot.append(el("tr",{},el("td",{colSpan:9,className:"hint",text:"当前没有活动连接"})));
     return;
   }
   live.forEach(row=>{
@@ -841,7 +912,8 @@ function renderLiveRows(){
       el("td",{className:"dest-host",text:row.host||"--"}),
       el("td",{className:"dest-ip",text:row.client||"--"}),
       el("td",{className:"dest-ip",text:row.ip||"--"}),
-      el("td",{text:row.port||"--"}),
+      el("td",{},el("span",{text:row.port||"--"}),portName(row.port)?el("span",{className:"port-tag",text:portName(row.port)}):null),
+      el("td",{text:streamState(row.state)}),
       el("td",{className:"traffic-up",text:"↑ "+bytes(up)}),
       el("td",{className:"traffic-down",text:"↓ "+bytes(down)}),
       el("td",{text:bytes(up+down)}),
@@ -854,18 +926,19 @@ function renderSiteRows(){
   const sites=sortedRows(siteList,siteSort);
   markSort($("trafficSiteTable"),siteSort);
   if(!sites.length){
-    siteRoot.append(el("tr",{},el("td",{colSpan:9,className:"hint",text:"还没有采样到访问站点"})));
+    siteRoot.append(el("tr",{},el("td",{colSpan:10,className:"hint",text:"还没有采样到访问站点"})));
     return;
   }
   sites.forEach(row=>{
     siteRoot.append(el("tr",{},
       el("td",{className:"dest-host",text:row.host||"--"}),
       el("td",{className:"dest-ip",text:row.ip||"--"}),
-      el("td",{text:row.port||"--"}),
+      el("td",{},el("span",{text:row.port||"--"}),portName(row.port)?el("span",{className:"port-tag",text:portName(row.port)}):null),
       el("td",{className:"traffic-up",text:"↑ "+bytes(row.upload)}),
       el("td",{className:"traffic-down",text:"↓ "+bytes(row.download)}),
       el("td",{text:Number(row.total)?bytes(row.total):(Number(row.hits)||0)+" 次"}),
       el("td",{text:String(row.hits||0)+" 次"}),
+      el("td",{text:formatPct(row.share)}),
       visitCell(row.first_seen||row.last_seen),
       visitCell(row.last_seen)
     ));

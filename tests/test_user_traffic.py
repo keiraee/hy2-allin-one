@@ -128,6 +128,7 @@ class UserTrafficAnalysisTests(unittest.TestCase):
         self.assertEqual(payload["series"], [])
         self.assertEqual(payload["live"], [])
         self.assertEqual(payload["sites"], [])
+        self.assertEqual(payload["online"], 0)
         self.assertFalse(payload["has_history"])
         self.assertIsNone(payload["peak"])
 
@@ -405,6 +406,12 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("function visitCell", panel)
         self.assertIn('data-sort="first_seen"', panel)
         self.assertIn('data-sort="last_active"', panel)
+        self.assertIn("client-cards", panel)
+        self.assertIn("function portLabel", panel)
+        self.assertIn("function streamState", panel)
+        self.assertIn("trafficLiveCount", panel)
+        self.assertIn('data-sort="share"', panel)
+        self.assertIn('data-sort="state"', panel)
 
 
 class ClientIpAndSortTests(unittest.TestCase):
