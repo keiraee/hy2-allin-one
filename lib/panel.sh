@@ -252,8 +252,8 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
       <div id="time" class="sub">正在读取数据…</div>
     </div>
     <div class="top-actions">
-      <button id="syncBtn" class="btn primary" type="button">同步</button>
-      <button id="menuBtn" class="btn" type="button" aria-haspopup="dialog">菜单</button>
+      <button id="syncBtn" class="btn primary" type="button">🔄 同步</button>
+      <button id="menuBtn" class="btn" type="button" aria-haspopup="dialog">☰ 菜单</button>
     </div>
   </header>
 
@@ -263,28 +263,28 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
       <span id="errorText"></span>
     </div>
     <div id="hy2OffBanner" class="notice" role="status">
-      HY2 已关闭。UDP 未监听，客户端无法连接。整机流量仍计入面板与 SSH。
+      ⚠️ HY2 已关闭。UDP 未监听，客户端无法连接。整机流量仍计入面板与 SSH。
     </div>
     <div id="notice" class="notice" role="note">
       <button id="noticeClose" class="notice-close" type="button" aria-label="关闭">×</button>
-      套餐用量以「本月整机流量」为准（网卡本地计数，对齐云厂商限制）；Clash 订阅进度与此同步。用户表为 HY2 代理分摊参考。云厂商控制台仍是最终账单。
+      ℹ️ 套餐用量以「本月整机流量」为准（网卡本地计数，对齐云厂商限制）；Clash 订阅进度与此同步。用户表为 HY2 代理分摊参考。云厂商控制台仍是最终账单。
     </div>
 
     <div class="metrics">
       <div class="metric">
-        <div class="label">本月整机（对齐云厂商）</div>
+        <div class="label">📊 本月整机（对齐云厂商）</div>
         <div id="traffic" class="value">--</div>
         <div id="remain" class="extra">--</div>
         <div class="bar"><i id="trafficBar" style="width:0"></i></div>
       </div>
-      <div class="metric"><div class="label">CPU / 负载</div><div id="cpu" class="value">--</div><div id="load" class="extra">--</div></div>
-      <div class="metric"><div class="label">内存 / Swap</div><div id="memory" class="value">--</div><div id="swap" class="extra">--</div></div>
-      <div class="metric"><div class="label">磁盘 / 运行</div><div id="disk" class="value">--</div><div id="uptime" class="extra">--</div></div>
+      <div class="metric"><div class="label">🖥️ CPU / 负载</div><div id="cpu" class="value">--</div><div id="load" class="extra">--</div></div>
+      <div class="metric"><div class="label">💾 内存 / Swap</div><div id="memory" class="value">--</div><div id="swap" class="extra">--</div></div>
+      <div class="metric"><div class="label">💿 磁盘 / 运行</div><div id="disk" class="value">--</div><div id="uptime" class="extra">--</div></div>
     </div>
 
     <section class="section">
       <div class="section-h">
-        <h2>服务</h2>
+        <h2>⚙️ 服务</h2>
         <button id="hy2Toggle" class="btn" type="button">关闭 HY2</button>
       </div>
       <div id="services" class="pills"></div>
@@ -292,7 +292,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
 
     <section class="section" style="margin-top:22px">
       <div class="section-h">
-        <h2>用户</h2>
+        <h2>👥 用户</h2>
         <span id="userSummary" class="hint"></span>
       </div>
       <div class="table-wrap">
@@ -311,42 +311,42 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
         </table>
       </div>
     </section>
-    <div class="footer">60 秒自动刷新 · 操作后即时更新</div>
+    <div class="footer">⏱️ 60 秒自动刷新 · 操作后即时更新</div>
   </main>
 </div>
 
 <div id="scrim" class="scrim"></div>
 <aside id="drawer" class="drawer" aria-hidden="true">
   <div class="drawer-h">
-    <h2>功能菜单</h2>
+    <h2>📋 功能菜单</h2>
     <button id="drawerClose" class="btn ghost" type="button" aria-label="关闭">×</button>
   </div>
   <div class="drawer-b">
     <div class="drawer-sec">
-      <h3>用户</h3>
+      <h3>👤 用户</h3>
       <div class="stack">
         <input id="newUser" class="input" type="text" maxlength="32" placeholder="新用户名（字母数字 _ -）" autocomplete="off">
-        <button id="addBtn" class="btn primary" type="button">添加用户</button>
+        <button id="addBtn" class="btn primary" type="button">➕ 添加用户</button>
         <p class="hint">添加后会重建配置；HY2 开启时会短暂重启 Hysteria。全员禁用会自动关闭 HY2。</p>
       </div>
     </div>
     <div class="drawer-sec">
-      <h3>数据</h3>
+      <h3>📥 数据</h3>
       <div class="stack">
-        <button id="drawerSync" class="btn" type="button">立即同步</button>
-        <a class="btn" href="users.csv">下载用户 CSV</a>
-        <a class="btn" href="history.csv">下载历史记录</a>
+        <button id="drawerSync" class="btn" type="button">🔄 立即同步</button>
+        <a class="btn" href="users.csv">📥 下载用户 CSV</a>
+        <a class="btn" href="history.csv">📥 下载历史记录</a>
         <select id="logRange" class="input">
           <option value="1h">最近 1 小时</option>
           <option value="24h" selected>最近 24 小时</option>
           <option value="3d">最近 3 天</option>
         </select>
-        <button id="exportLogs" class="btn" type="button">导出日志</button>
+        <button id="exportLogs" class="btn" type="button">📋 导出日志</button>
         <p class="hint">与菜单 18 相同：Hysteria / 面板 / Caddy。超过 10000 行时只留最新部分。</p>
       </div>
     </div>
     <div class="drawer-sec">
-      <h3>说明</h3>
+      <h3>ℹ️ 说明</h3>
       <p class="hint">整机流量对齐云厂商套餐；用户行为 HY2 分摊参考。速率模式只写入 Clash 订阅。</p>
     </div>
   </div>
@@ -368,30 +368,30 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
   <div class="modal traffic-modal">
     <div class="traffic-modal-h">
       <div>
-        <h2 id="trafficTitle">流量分析</h2>
+        <h2 id="trafficTitle">📊 流量分析</h2>
         <p id="trafficUser" class="hint" style="margin:4px 0 0"></p>
       </div>
       <button id="trafficClose" class="btn ghost" type="button" aria-label="关闭">×</button>
     </div>
     <div class="traffic-body">
       <div class="traffic-kpis">
-        <div class="metric"><div class="label">本月合计</div><div id="trafficMonth" class="value">--</div><div id="trafficMonthExtra" class="extra">--</div></div>
-        <div class="metric"><div class="label">高峰时段</div><div id="trafficPeakVal" class="value hot">--</div><div id="trafficPeakExtra" class="extra">--</div></div>
-        <div class="metric"><div class="label">最忙一天</div><div id="trafficBusyDay" class="value">--</div><div id="trafficBusyExtra" class="extra">--</div></div>
-        <div class="metric"><div class="label">占整机</div><div id="trafficShare" class="value">--</div><div id="trafficShareExtra" class="extra">--</div></div>
-        <div class="metric"><div class="label">当前连接</div><div id="trafficLiveCount" class="value">--</div><div id="trafficLiveExtra" class="extra">--</div></div>
-        <div class="metric"><div class="label">近 7 日站点</div><div id="trafficSiteCount" class="value">--</div><div id="trafficSiteExtra" class="extra">--</div></div>
-        <div class="metric"><div class="label">平均连接</div><div id="trafficSessionAvg" class="value">--</div><div id="trafficSessionExtra" class="extra">--</div></div>
-        <div class="metric"><div class="label">白天用量</div><div id="trafficDayShare" class="value">--</div><div id="trafficDayShareExtra" class="extra">07:00–23:00</div></div>
+        <div class="metric"><div class="label">📦 本月合计</div><div id="trafficMonth" class="value">--</div><div id="trafficMonthExtra" class="extra">--</div></div>
+        <div class="metric"><div class="label">🔥 高峰时段</div><div id="trafficPeakVal" class="value hot">--</div><div id="trafficPeakExtra" class="extra">--</div></div>
+        <div class="metric"><div class="label">📅 最忙一天</div><div id="trafficBusyDay" class="value">--</div><div id="trafficBusyExtra" class="extra">--</div></div>
+        <div class="metric"><div class="label">📈 占整机</div><div id="trafficShare" class="value">--</div><div id="trafficShareExtra" class="extra">--</div></div>
+        <div class="metric"><div class="label">🔗 当前连接</div><div id="trafficLiveCount" class="value">--</div><div id="trafficLiveExtra" class="extra">--</div></div>
+        <div class="metric"><div class="label">🌐 近 7 日站点</div><div id="trafficSiteCount" class="value">--</div><div id="trafficSiteExtra" class="extra">--</div></div>
+        <div class="metric"><div class="label">⏱️ 平均连接</div><div id="trafficSessionAvg" class="value">--</div><div id="trafficSessionExtra" class="extra">--</div></div>
+        <div class="metric"><div class="label">☀️ 白天用量</div><div id="trafficDayShare" class="value">--</div><div id="trafficDayShareExtra" class="extra">07:00–23:00</div></div>
       </div>
       <p id="trafficSummary" class="traffic-summary">正在整理这个用户的用量…</p>
       <p id="trafficPeak" class="traffic-peak"></p>
-      <p id="trafficEmpty" class="traffic-empty hint">还没有 5 分钟增量曲线，热力会先空着；本月用量和站点仍可看。</p>
+      <p id="trafficEmpty" class="traffic-empty hint">📭 还没有 5 分钟增量曲线，热力会先空着；本月用量和站点仍可看。</p>
       <div id="trafficCharts" class="traffic-charts">
         <div class="traffic-board">
           <div class="traffic-tile traffic-block">
             <div class="traffic-block-h">
-              <h3>时段热力</h3>
+              <h3>🗓️ 时段热力</h3>
               <span class="hint">越红越多 · 描边格是此刻</span>
             </div>
             <div class="heat-wrap"><div id="trafficHeat" class="heat" role="img" aria-label="近7日每小时流量热力"></div></div>
@@ -400,13 +400,13 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
           </div>
           <div class="traffic-tile traffic-block">
             <div class="traffic-block-h">
-              <h3>作息曲线</h3>
+              <h3>🕐 作息曲线</h3>
               <span class="hint">把 7 天压成一天，看通常几点在用</span>
             </div>
             <div id="trafficHours" class="hour-profile" role="img" aria-label="一天中各小时用量"></div>
             <p id="trafficHoursHint" class="hint" style="margin-top:8px"></p>
             <div class="traffic-block-h" style="margin-top:16px">
-              <h3>工作日 / 周末</h3>
+              <h3>📊 工作日 / 周末</h3>
               <span class="hint">近 7 日增量对比</span>
             </div>
             <div id="trafficWeek" class="week-split"></div>
@@ -416,19 +416,19 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
         <div class="traffic-board">
           <div class="traffic-tile traffic-block">
             <div class="traffic-block-h">
-              <h3>增量趋势</h3>
+              <h3>📈 增量趋势</h3>
               <span class="hint">上行蓝 · 下行绿 · 红点是峰值 · 纵轴是 5 分钟增量</span>
             </div>
             <div id="trafficTrend"></div>
           </div>
           <div class="traffic-tile traffic-block">
             <div class="traffic-block-h">
-              <h3>按日用量</h3>
+              <h3>📅 按日用量</h3>
               <span class="hint">蓝=上行 · 绿=下行 · 柱上是当天合计</span>
             </div>
             <div id="trafficDays" class="day-cols" role="img" aria-label="近7日用量"></div>
             <div class="traffic-block-h" style="margin-top:16px">
-              <h3>上下行结构</h3>
+              <h3>🔀 上下行结构</h3>
               <span id="trafficSplitHint" class="hint"></span>
             </div>
             <div id="trafficUpDown" class="updown" role="img" aria-label="上下行比例"></div>
@@ -436,18 +436,18 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
         </div>
         <div class="traffic-insights">
           <div class="traffic-tile traffic-stat">
-            <div class="label">白天 / 夜间</div>
+            <div class="label">🌙 白天 / 夜间</div>
             <div id="trafficDayNightVal" class="value">--</div>
             <div id="trafficDayNightHint" class="hint">白天按 07:00–23:00 计</div>
             <div class="track"><i id="trafficDayNightFill" class="fill" style="width:0"></i></div>
           </div>
           <div class="traffic-tile traffic-stat">
-            <div class="label">最近一次连接</div>
+            <div class="label">⏰ 最近一次连接</div>
             <div id="trafficLastSession" class="value">--</div>
             <div id="trafficLastSessionHint" class="hint">来自连接日志配对</div>
           </div>
           <div class="traffic-tile traffic-stat">
-            <div class="label">已结束会话</div>
+            <div class="label">📋 已结束会话</div>
             <div id="trafficSessionCount" class="value">--</div>
             <div id="trafficSessionCountHint" class="hint">含仍在线的连接</div>
           </div>
@@ -456,7 +456,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
       <div class="traffic-board">
         <div class="traffic-tile traffic-block">
           <div class="traffic-block-h">
-            <h3>出口与客户端</h3>
+            <h3>🌍 出口与客户端</h3>
             <span class="hint">外站看到的地址 · 用户侧 IP</span>
           </div>
           <div id="trafficEgress" class="traffic-egress">
@@ -467,7 +467,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
         </div>
         <div class="traffic-tile traffic-block">
           <div class="traffic-block-h">
-            <h3>站点构成</h3>
+            <h3>🏷️ 站点构成</h3>
             <span class="hint">近 7 日 Top 5 + 其他 · 按根域名合并</span>
           </div>
           <div id="trafficMix" class="traffic-mix"></div>
@@ -478,7 +478,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
       <div class="traffic-tables">
         <div class="traffic-tile traffic-block">
           <div class="traffic-block-h">
-            <h3>当前连接</h3>
+            <h3>🔗 当前连接</h3>
             <span class="hint">点表头排序 · 含访问时间</span>
           </div>
           <div class="dest-wrap"><table id="trafficLiveTable" class="dest-table"><thead><tr>
@@ -495,7 +495,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
         </div>
         <div class="traffic-tile traffic-block">
           <div class="traffic-block-h">
-            <h3>访问站点</h3>
+            <h3>🌐 访问站点</h3>
             <span class="hint">近 7 日 · 含首次 / 最近访问时间</span>
           </div>
           <div class="dest-wrap"><table id="trafficSiteTable" class="dest-table"><thead><tr>
@@ -860,7 +860,7 @@ function renderTraffic(data){
   const peakNode=$("trafficPeak");
   if(peakCell){
     const endHour=(peakCell.hour+1)%24;
-    peakNode.textContent="最近高峰在周"+weekdayName(peakCell.date)+" "+pad2(peakCell.hour)+":00–"+pad2(endHour)+":00，大约 "+bytes(peakCell.value)+"。热力图描红的那一格就是这里。";
+    peakNode.textContent="🔥 最近高峰在周"+weekdayName(peakCell.date)+" "+pad2(peakCell.hour)+":00–"+pad2(endHour)+":00，大约 "+bytes(peakCell.value)+"。热力图描红的那一格就是这里。";
     peakNode.classList.add("show");
   }else peakNode.classList.remove("show");
   const heatRoot=$("trafficHeat");clearNode(heatRoot);
@@ -887,8 +887,8 @@ function renderTraffic(data){
   const heatHint=$("trafficHeatHint");
   if(heatHint){
     heatHint.textContent=peakCell
-      ?("最红一格是周"+weekdayName(peakCell.date)+" "+pad2(peakCell.hour)+":00，约 "+bytes(peakCell.value)+"。把鼠标放在其他格子上也能看该小时用量。")
-      :"格子越大越好认：颜色越红这一小时越多。同步几次后会出现高峰。";
+      ?("🔥 最红一格是周"+weekdayName(peakCell.date)+" "+pad2(peakCell.hour)+":00，约 "+bytes(peakCell.value)+"。把鼠标放在其他格子上也能看该小时用量。")
+      :"📊 格子越大越好认：颜色越红这一小时越多。同步几次后会出现高峰。";
   }
   const hourTotals=Array(24).fill(0);
   days.forEach(day=>hours.forEach(hour=>{hourTotals[hour]+=heat[dayKey(day)][hour]}));
@@ -911,8 +911,8 @@ function renderTraffic(data){
   const hoursHint=$("trafficHoursHint");
   if(hoursHint){
     hoursHint.textContent=hasSeries
-      ?"这个号近 7 日多半在 "+pad2(busyHour)+":00 前后最忙（合计 "+bytes(hourTotals[busyHour])+"）。柱子是每天同一小时加总。"
-      :"还没有 5 分钟增量，作息曲线会先空着。";
+      ?"📈 这个号近 7 日多半在 "+pad2(busyHour)+":00 前后最忙（合计 "+bytes(hourTotals[busyHour])+"）。柱子是每天同一小时加总。"
+      :"📭 还没有 5 分钟增量，作息曲线会先空着。";
   }
   renderDayNight(hourTotals,hasSeries);
   const maxDay=Math.max(1,...days.map(day=>daily[dayKey(day)].total));
@@ -939,7 +939,7 @@ function renderTraffic(data){
   renderWeekSplit(series,hasSeries);
   const trend=$("trafficTrend");clearNode(trend);
   if(!hasSeries){
-    trend.append(el("p",{className:"hint",text:"还没有 5 分钟增量，连上并点同步几次后会出现曲线。"}));
+    trend.append(el("p",{className:"hint",text:"📭 还没有 5 分钟增量，连上并点同步几次后会出现曲线。"}));
     return;
   }
   const ups=series.map(item=>Number(item.up)||0);
@@ -981,7 +981,7 @@ function renderTraffic(data){
     svg.append(svgNode("text",{x:x(idx),y:H-10,"text-anchor":"middle","font-size":11,fill:"#6b7280"},hourLabel(stamp)));
   }
   trend.append(svg);
-  trend.append(el("p",{className:"trend-note",text:"红点峰值约 "+bytes(totals[peakIdx])+"（↑ "+bytes(ups[peakIdx])+" · ↓ "+bytes(downs[peakIdx])+"）。纵轴最大 "+bytes(maxLine)+"。"}));
+  trend.append(el("p",{className:"trend-note",text:"🔴 红点峰值约 "+bytes(totals[peakIdx])+"（↑ "+bytes(ups[peakIdx])+" · ↓ "+bytes(downs[peakIdx])+"）。纵轴最大 "+bytes(maxLine)+"。"}));
 }
 function buildTrafficSummary(data,peakCell,busy){
   const name=String(data.username||"该用户");
@@ -990,13 +990,13 @@ function buildTrafficSummary(data,peakCell,busy){
   const share=Number(month.share_percent)||0;
   const live=(data.live||[]).length;
   const sites=(data.sites||[]).length;
-  const parts=[name+" 本月已用 "+bytes(monthTotal)+(share?("，约占整机 "+share.toFixed(1)+"%"):"")];
-  if(peakCell)parts.push("最近高峰在周"+weekdayName(peakCell.date)+" "+pad2(peakCell.hour)+":00 左右");
-  else if(busy)parts.push("近 7 日最忙是 "+pad2(busy.date.getMonth()+1)+"月"+busy.date.getDate()+"日");
-  if(live)parts.push("此刻 "+live+" 条连接");
-  else if((data.client_ips||[]).length)parts.push("最近客户端 "+data.client_ips[0].ip);
-  else if(sites)parts.push("近 7 日见到 "+sites+" 个站点");
-  else parts.push("还没有连上记录，同步后再看");
+  const parts=["📊 "+name+" 本月已用 "+bytes(monthTotal)+(share?("，约占整机 "+share.toFixed(1)+"%"):"")];
+  if(peakCell)parts.push("🔥 最近高峰在周"+weekdayName(peakCell.date)+" "+pad2(peakCell.hour)+":00 左右");
+  else if(busy)parts.push("📅 近 7 日最忙是 "+pad2(busy.date.getMonth()+1)+"月"+busy.date.getDate()+"日");
+  if(live)parts.push("🔗 此刻 "+live+" 条连接");
+  else if((data.client_ips||[]).length)parts.push("💻 最近客户端 "+data.client_ips[0].ip);
+  else if(sites)parts.push("🌐 近 7 日见到 "+sites+" 个站点");
+  else parts.push("📭 还没有连上记录，同步后再看");
   return parts.join("。")+"。";
 }
 function renderSessionStats(sessions){
@@ -1005,11 +1005,11 @@ function renderSessionStats(sessions){
   const count=Number(sessions.count)||0;
   const finished=Number(sessions.finished)||0;
   if($("trafficSessionAvg"))$("trafficSessionAvg").textContent=avg?formatDuration(avg):"--";
-  if($("trafficSessionExtra"))$("trafficSessionExtra").textContent=finished?("已结束 "+finished+" 次"):"还没有配对到完整连接";
+  if($("trafficSessionExtra"))$("trafficSessionExtra").textContent=finished?("✅ 已结束 "+finished+" 次"):"📭 还没有配对到完整连接";
   if($("trafficLastSession"))$("trafficLastSession").textContent=last?formatDuration(last):(avg?formatDuration(avg):"--");
-  if($("trafficLastSessionHint"))$("trafficLastSessionHint").textContent=last?"最近一次从连上到断开":"日志里还没有完整的断开记录";
+  if($("trafficLastSessionHint"))$("trafficLastSessionHint").textContent=last?"⏱️ 最近一次从连上到断开":"📭 日志里还没有完整的断开记录";
   if($("trafficSessionCount"))$("trafficSessionCount").textContent=count?String(count):"0";
-  if($("trafficSessionCountHint"))$("trafficSessionCountHint").textContent=finished?("结束 "+finished+" · 仍在线 "+Math.max(0,count-finished)):"含仍在线的连接";
+  if($("trafficSessionCountHint"))$("trafficSessionCountHint").textContent=finished?("📊 结束 "+finished+" · 仍在线 "+Math.max(0,count-finished)):"📊 含仍在线的连接";
 }
 function renderDayNight(hourTotals,hasSeries){
   let dayBytes=0,nightBytes=0;
@@ -1019,11 +1019,11 @@ function renderDayNight(hourTotals,hasSeries){
   const total=dayBytes+nightBytes;
   const dayPct=total?Math.round(dayBytes/total*100):0;
   if($("trafficDayShare"))$("trafficDayShare").textContent=total?dayPct+"%":"--";
-  if($("trafficDayShareExtra"))$("trafficDayShareExtra").textContent=total?("白天 "+bytes(dayBytes)+" · 夜间 "+bytes(nightBytes)):"07:00–23:00";
-  if($("trafficDayNightVal"))$("trafficDayNightVal").textContent=total?("白天 "+dayPct+"%"):"--";
+  if($("trafficDayShareExtra"))$("trafficDayShareExtra").textContent=total?("☀️ 白天 "+bytes(dayBytes)+" · 🌙 夜间 "+bytes(nightBytes)):"07:00–23:00";
+  if($("trafficDayNightVal"))$("trafficDayNightVal").textContent=total?("☀️ 白天 "+dayPct+"%"):"--";
   if($("trafficDayNightHint")){
     $("trafficDayNightHint").textContent=hasSeries&&total
-      ?(dayPct>=55?"白天更忙 · 夜间 "+bytes(nightBytes):dayPct<=45?"夜间更忙 · 白天 "+bytes(dayBytes):"白天和夜间差不多")
+      ?(dayPct>=55?"☀️ 白天更忙 · 🌙 夜间 "+bytes(nightBytes):dayPct<=45?"🌙 夜间更忙 · ☀️ 白天 "+bytes(dayBytes):"☀️🌙 白天和夜间差不多")
       :"白天按 07:00–23:00 计";
   }
   if($("trafficDayNightFill"))$("trafficDayNightFill").style.width=(total?dayPct:0)+"%";
@@ -1071,11 +1071,11 @@ function renderWeekSplit(series,hasSeries){
     ));
   });
   if(hint){
-    if(!hasSeries)hint.textContent="还没有增量，工作日和周末会先空着。";
-    else if(!weekday&&!weekend)hint.textContent="这几天几乎没有增量。";
-    else if(weekday>weekend)hint.textContent=weekend?"工作日用量大约是周末的 "+(weekday/weekend).toFixed(1)+" 倍。":"近 7 日用量都在工作日。";
-    else if(weekend>weekday)hint.textContent=weekday?"周末大约是工作日的 "+(weekend/weekday).toFixed(1)+" 倍。":"近 7 日用量都在周末。";
-    else hint.textContent="近 7 日工作日和周末差不多。";
+    if(!hasSeries)hint.textContent="📭 还没有增量，工作日和周末会先空着。";
+    else if(!weekday&&!weekend)hint.textContent="📉 这几天几乎没有增量。";
+    else if(weekday>weekend)hint.textContent=weekend?"📊 工作日用量大约是周末的 "+(weekday/weekend).toFixed(1)+" 倍。":"📊 近 7 日用量都在工作日。";
+    else if(weekend>weekday)hint.textContent=weekday?"📊 周末大约是工作日的 "+(weekend/weekday).toFixed(1)+" 倍。":"📊 近 7 日用量都在周末。";
+    else hint.textContent="📊 近 7 日工作日和周末差不多。";
   }
 }
 function renderClientCards(list,live){
@@ -1083,7 +1083,7 @@ function renderClientCards(list,live){
   if(!root)return;
   clearNode(root);
   if(!list||!list.length){
-    root.append(el("div",{className:"hint",text:"还没有采集到客户端 IP。用户连上后会从连接日志写入。"}));
+    root.append(el("div",{className:"hint",text:"📭 还没有采集到客户端 IP。用户连上后会从连接日志写入。"}));
     return;
   }
   const liveIps=new Set((live||[]).map(row=>row.client).filter(Boolean));
@@ -1091,8 +1091,8 @@ function renderClientCards(list,live){
     const online=liveIps.has(item.ip);
     const duration=formatDuration(item.session_seconds);
     root.append(el("div",{className:"client-card"+(online?" on":"")},
-      el("div",{className:"ip",text:item.ip+(item.port?":"+item.port:"")}),
-      el("div",{className:"meta",text:(online?"此刻在线":"最近出现")+" · "+(item.last_seen?relTime(item.last_seen):"--")+(duration?" · 最近连接 "+duration:"")})
+      el("div",{className:"ip",text:(online?"🟢 ":"⚪ ")+item.ip+(item.port?":"+item.port:"")}),
+      el("div",{className:"meta",text:(online?"🟢 此刻在线":"⚪ 最近出现")+" · "+(item.last_seen?relTime(item.last_seen):"--")+(duration?" · ⏱️ 最近连接 "+duration:"")})
     ));
   });
 }
@@ -1165,14 +1165,14 @@ function renderSiteMix(sites){
     ));
   });
   root.append(svg,legend);
-  if(hint)hint.textContent=lead?("近 7 日里，"+lead.label+" 大约占 "+formatPct(lead.value/total*100)+"。其余站点合在「其他」里。"):"";
+  if(hint)hint.textContent=lead?("📊 近 7 日里，"+lead.label+" 大约占 "+formatPct(lead.value/total*100)+"。其余站点合在「其他」里。"):"";
 }
 function renderLiveRows(){
   const liveRoot=$("trafficLive");clearNode(liveRoot);
   const live=sortedRows(liveList,liveSort);
   markSort($("trafficLiveTable"),liveSort);
   if(!live.length){
-    liveRoot.append(el("tr",{},el("td",{colSpan:9,className:"hint",text:"当前没有活动连接"})));
+    liveRoot.append(el("tr",{},el("td",{colSpan:9,className:"hint",text:"📭 当前没有活动连接"})));
     return;
   }
   live.forEach(row=>{
@@ -1195,7 +1195,7 @@ function renderSiteRows(){
   const sites=sortedRows(siteList,siteSort);
   markSort($("trafficSiteTable"),siteSort);
   if(!sites.length){
-    siteRoot.append(el("tr",{},el("td",{colSpan:10,className:"hint",text:"还没有采样到访问站点"})));
+    siteRoot.append(el("tr",{},el("td",{colSpan:10,className:"hint",text:"📭 还没有采样到访问站点"})));
     return;
   }
   sites.forEach(row=>{
@@ -1312,23 +1312,23 @@ async function exportLogs(){
 async function syncNow(){
   const buttons=[$("syncBtn"),$("drawerSync")];
   buttons.forEach(b=>{b.disabled=true});
-  $("syncBtn").textContent="同步中…";
+  $("syncBtn").textContent="🔄 同步中…";
   try{
     await apiPost("api/sync",{});
     await load();
     toast("同步完成");
   }catch(error){toast("同步失败："+error.message)}
   buttons.forEach(b=>{b.disabled=false});
-  $("syncBtn").textContent="同步";
+  $("syncBtn").textContent="🔄 同步";
 }
 
 function renderServices(services){
   const root=$("services");clearNode(root);
   Object.entries(services||{}).forEach(([name,status])=>{
-    let cls="bad", label=status;
-    if(status==="active")cls="ok";
-    else if(status==="off"){cls="off";label="已关闭"}
-    root.append(el("span",{className:"pill "+cls,text:name+"："+label}));
+    let cls="bad", label=status, icon="🔴";
+    if(status==="active"){cls="ok";icon="🟢"}
+    else if(status==="off"){cls="off";label="已关闭";icon="⚪"}
+    root.append(el("span",{className:"pill "+cls,text:icon+" "+name+"："+label}));
   });
 }
 async function toggleHy2(){
@@ -1351,20 +1351,20 @@ function renderUsers(users){
   const root=$("users");clearNode(root);
   const list=sortedRows(userList,userSort);
   markSort(document.querySelector(".table-wrap table"),userSort);
-  $("userSummary").textContent=list.length+" 个账号 · 点表头排序";
+  $("userSummary").textContent="👥 "+list.length+" 个账号 · 点表头排序";
   if(!list.length){
-    root.append(el("tr",{},el("td",{colSpan:6,className:"hint",text:"暂无用户。打开右上角菜单添加。"})));
+    root.append(el("tr",{},el("td",{colSpan:6,className:"hint",text:"📭 暂无用户。打开右上角菜单添加。"})));
     return;
   }
   list.forEach(user=>{
     const note=String(user.note||"").trim();
     const statusClass=user.disabled?"ban":(user.online?"on":"off");
-    const statusText=user.disabled?"已禁用":(user.online?"在线 "+user.online:"离线");
+    const statusText=user.disabled?"🚫 已禁用":(user.online?"🟢 在线 "+user.online:"⚪ 离线");
     const statusKids=[
       el("span",{className:"status-dot "+statusClass,text:statusText}),
-      el("span",{className:"status-active",text:"最后 "+formatActive(user.last_active)})
+      el("span",{className:"status-active",text:"🕐 最后 "+formatActive(user.last_active)})
     ];
-    if(user.client_ip)statusKids.push(el("span",{className:"status-active",text:"客户端 "+user.client_ip}));
+    if(user.client_ip)statusKids.push(el("span",{className:"status-active",text:"💻 客户端 "+user.client_ip}));
     const statusCell=el("div",{className:"status-cell"},...statusKids);
     const menu=el("div",{className:"menu"});
     const btn=el("button",{className:"menu-btn",type:"button",title:"操作",text:"⋯",onclick:function(event){
@@ -1380,16 +1380,16 @@ function renderUsers(users){
       }
     }});
     menu.append(
-      menuItem("复制订阅",()=>copyCredential(user.username,"subscription")),
-      menuItem("复制直链",()=>copyCredential(user.username,"direct")),
-      menuItem("复制密码",()=>copyCredential(user.username,"password")),
+      menuItem("📋 复制订阅",()=>copyCredential(user.username,"subscription")),
+      menuItem("🔗 复制直链",()=>copyCredential(user.username,"direct")),
+      menuItem("🔑 复制密码",()=>copyCredential(user.username,"password")),
       el("div",{className:"sep"}),
-      menuItem("流量分析",()=>{closeMenus();openTraffic(user.username)}),
-      menuItem("改备注",()=>{closeMenus();setNoteModal(true,user.username,note)}),
-      menuItem("轮换密钥",()=>rotateUser(user.username)),
-      menuItem(user.disabled?"启用":"禁用",()=>toggleUser(user.username,!!user.disabled),!user.disabled),
+      menuItem("📊 流量分析",()=>{closeMenus();openTraffic(user.username)}),
+      menuItem("✏️ 改备注",()=>{closeMenus();setNoteModal(true,user.username,note)}),
+      menuItem("🔄 轮换密钥",()=>rotateUser(user.username)),
+      menuItem(user.disabled?"✅ 启用":"🚫 禁用",()=>toggleUser(user.username,!!user.disabled),!user.disabled),
       el("div",{className:"sep"}),
-      menuItem("删除",()=>removeUser(user.username),true)
+      menuItem("🗑️ 删除",()=>removeUser(user.username),true)
     );
     const nameCell=el("div",{className:"user-cell"},
       el("span",{className:"user-name",text:user.username}),
@@ -1423,7 +1423,7 @@ async function load(){
     $("hy2OffBanner").classList.toggle("show",!hy2On);
     const toggle=$("hy2Toggle");
     if(toggle){
-      toggle.textContent=hy2On?"关闭 HY2":"开启 HY2";
+      toggle.textContent=hy2On?"🔴 关闭 HY2":"🟢 开启 HY2";
       toggle.classList.toggle("bad",hy2On);
     }
     renderUsers(data.users);
