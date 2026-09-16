@@ -104,85 +104,98 @@ tr.disabled td{opacity:.55}
 .toast{position:fixed;right:16px;bottom:16px;background:var(--accent);color:#fff;padding:12px 16px;
   border-radius:10px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:80;max-width:320px;font-size:13px}
 .toast.show{opacity:1}
-.modal-scrim{display:none;position:fixed;inset:0;background:rgba(15,23,42,.4);z-index:70;align-items:center;justify-content:center;padding:16px}
+.modal-scrim{display:none;position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:70;align-items:center;justify-content:center;padding:8px}
 .modal-scrim.open{display:flex}
 .modal{background:var(--panel);border-radius:12px;border:1px solid var(--line);width:min(400px,100%);padding:18px;box-shadow:0 20px 50px rgba(15,23,42,.2)}
 .modal h3{margin:0 0 6px;font-size:16px}
 .modal .hint{margin-bottom:12px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
-.modal.traffic-modal{width:min(1280px,96vw);padding:0;max-height:min(96vh,1100px);display:flex;flex-direction:column;overflow:hidden}
-.traffic-modal .drawer-h{padding:16px 22px}
-.traffic-body{padding:18px 22px 22px;overflow:auto;flex:1}
-.traffic-kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:14px}
-.traffic-kpis .metric{padding:12px 14px}
-.traffic-kpis .value{font-size:22px;margin-top:6px}
+.modal.traffic-modal{width:98vw;height:96vh;max-width:none;max-height:96vh;padding:0;display:flex;flex-direction:column;overflow:hidden;border-radius:12px}
+.traffic-modal .drawer-h{padding:12px 20px}
+.traffic-body{padding:14px 18px 20px;overflow:auto;flex:1;background:#eef1f5}
+.traffic-kpis{display:grid;grid-template-columns:repeat(8,1fr);gap:10px;margin-bottom:12px}
+.traffic-kpis .metric{padding:14px 16px;background:#fff;border-radius:14px}
+.traffic-kpis .value{font-size:26px;margin-top:6px}
 .traffic-kpis .hot{color:var(--bad)}
 .traffic-peak{display:none;margin:0 0 14px;padding:10px 12px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:13px;line-height:1.45}
 .traffic-peak.show{display:block}
-.traffic-summary{margin:0 0 12px;padding:12px 14px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;font-size:14px;line-height:1.6}
-.hour-profile{display:flex;align-items:flex-end;gap:4px;height:140px}
+.traffic-summary{margin:0 0 12px;padding:12px 16px;border-radius:12px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;font-size:15px;line-height:1.6}
+.traffic-tile{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+.traffic-board{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);gap:12px;margin:0 0 12px}
+.traffic-tables{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:12px;margin-top:12px}
+.traffic-tables .dest-wrap{max-height:min(46vh,460px)}
+.traffic-insights{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:0 0 12px}
+.traffic-stat{padding:14px 16px}
+.traffic-stat .label{font-size:12px;color:var(--muted)}
+.traffic-stat .value{font-size:22px;font-weight:700;margin:6px 0 4px}
+.traffic-stat .track{height:12px;background:#eef2f7;border-radius:99px;overflow:hidden;margin-top:8px}
+.traffic-stat .fill{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#f59e0b,#0369a1)}
+.traffic-stat.night .fill{background:linear-gradient(90deg,#1e3a8a,#7c3aed)}
+.hour-profile{display:flex;align-items:flex-end;gap:5px;height:200px}
 .hour-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;min-width:0;height:100%}
-.hour-col .bar{display:block;width:100%;border-radius:3px 3px 0 0;min-height:2px;background:#38bdf8}
+.hour-col .bar{display:block;width:100%;border-radius:4px 4px 0 0;min-height:3px;background:#38bdf8}
 .hour-col.peak .bar{background:#b91c1c}
-.hour-col .lbl{font-size:10px;color:var(--muted);margin-top:4px}
+.hour-col .lbl{font-size:11px;color:var(--muted);margin-top:6px}
 .heat-cell.now{box-shadow:inset 0 0 0 1px #334155}
-.day-cols{display:flex;align-items:stretch;gap:10px;height:196px}
+.day-cols{display:flex;align-items:stretch;gap:12px;height:240px}
 .day-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:0}
 .day-col .bar{display:block;width:100%;border-radius:4px 4px 0 0;min-height:4px}
 .day-col .stack-bar{display:flex;flex-direction:column;justify-content:flex-end;width:100%;min-height:4px;border-radius:6px 6px 0 0;overflow:hidden}
 .day-col .stack-bar i{display:block;width:100%;min-height:0}
 .day-col .stack-bar .up{background:#0369a1}
 .day-col .stack-bar .down{background:#047857}
-.day-col .amt{font-size:11px;color:var(--text);margin:0 0 6px;font-variant-numeric:tabular-nums;white-space:nowrap}
-.day-col .lbl{font-size:11px;color:var(--muted);white-space:nowrap;margin-top:4px}
+.day-col .amt{font-size:12px;color:var(--text);margin:0 0 6px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.day-col .lbl{font-size:12px;color:var(--muted);white-space:nowrap;margin-top:4px}
 .trend-axis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px}
 .trend-note{font-size:12px;color:var(--muted);margin:6px 0 0}
-.site-bars{display:flex;flex-direction:column;gap:8px;margin:0 0 12px}
+.site-bars{display:flex;flex-direction:column;gap:10px;margin:0}
 .site-bar-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,2.2fr) auto;gap:10px;align-items:center;font-size:13px}
-.site-bar-row .track{height:12px;background:#eef2f7;border-radius:99px;overflow:hidden}
-.traffic-mix{display:grid;grid-template-columns:160px minmax(0,1fr);gap:16px;align-items:center;margin:0 0 12px}
+.site-bar-row .track{height:16px;background:#eef2f7;border-radius:99px;overflow:hidden}
+.site-bar-row .fill{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#38bdf8,#f97316)}
+.traffic-mix{display:grid;grid-template-columns:200px minmax(0,1fr);gap:18px;align-items:center;margin:0}
 .traffic-mix.hide{display:none}
-.mix-svg{width:160px;height:160px;display:block}
-.mix-legend{display:flex;flex-direction:column;gap:6px;font-size:12px}
+.mix-svg{width:200px;height:200px;display:block}
+.mix-legend{display:flex;flex-direction:column;gap:8px;font-size:13px}
 .mix-legend span{display:flex;align-items:center;gap:8px}
 .mix-legend i{width:10px;height:10px;border-radius:2px;display:block;flex-shrink:0}
 .mix-legend b{font-weight:650;word-break:break-all}
 .mix-legend em{font-style:normal;color:var(--muted);margin-left:auto;white-space:nowrap}
-.traffic-block{margin-bottom:16px}
-.traffic-block:last-child{margin-bottom:0}
-.traffic-block-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px}
-.traffic-block-h h3{margin:0;font-size:13px;font-weight:700}
+.traffic-block{margin-bottom:0}
+.traffic-block-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px}
+.traffic-block-h h3{margin:0;font-size:15px;font-weight:700}
 .heat-wrap{overflow:auto}
-.heat{display:grid;grid-template-columns:72px repeat(24,minmax(22px,1fr));gap:4px;align-items:center;min-width:860px}
-.heat .h,.heat .d{font-size:11px;color:var(--muted)}
+.heat{display:grid;grid-template-columns:78px repeat(24,minmax(28px,1fr));gap:5px;align-items:center;min-width:920px}
+.heat .h,.heat .d{font-size:12px;color:var(--muted)}
 .heat .h{text-align:center}
-.heat-cell{display:block;height:22px;border-radius:4px}
+.heat-cell{display:block;height:28px;border-radius:5px}
 .heat-cell.peak{outline:2px solid var(--accent);outline-offset:1px}
 .heat-legend{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;color:var(--muted)}
 .heat-legend b{width:18px;height:12px;border-radius:2px;display:block}
-.traffic-split{display:grid;grid-template-columns:1fr;gap:18px}
-.trend-svg{width:100%;height:220px;display:block}
+.traffic-split{display:contents}
+.trend-svg{width:100%;height:280px;display:block}
 .day-bars{display:flex;align-items:flex-end;gap:6px;height:88px}
 .day-bars span{flex:1;border-radius:4px 4px 0 0;min-height:4px}
-.updown{display:flex;height:36px;border-radius:8px;overflow:hidden;font-size:13px;font-weight:650;color:#fff}
+.updown{display:flex;height:44px;border-radius:10px;overflow:hidden;font-size:14px;font-weight:650;color:#fff;margin-top:14px}
 .updown i{display:flex;align-items:center;justify-content:center;font-style:normal;min-width:0}
 .updown .up{background:#0369a1}
 .updown .down{background:#047857}
-.traffic-empty{display:none;margin:0 0 12px;padding:12px;border-radius:10px;background:#fafbfc;border:1px solid var(--line)}
+.traffic-empty{display:none;margin:0 0 12px;padding:12px;border-radius:10px;background:#fff;border:1px solid var(--line)}
 .traffic-empty.show{display:block}
 .traffic-charts.hide{display:none}
-.traffic-egress{margin:0 0 14px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#f8fafc;font-size:13px;line-height:1.45}
-.traffic-egress strong{font-size:15px}
-.traffic-egress div+div{margin-top:4px}
-.client-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;margin-top:8px}
-.client-card{padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
-.client-card .ip{font-weight:700;font-variant-numeric:tabular-nums}
+.traffic-egress{margin:0;padding:0;border:0;background:transparent;font-size:14px;line-height:1.5}
+.traffic-egress strong{font-size:16px}
+.traffic-egress div+div{margin-top:6px}
+.client-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;margin-top:10px}
+.client-card{padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#f8fafc}
+.client-card .ip{font-weight:700;font-size:15px;font-variant-numeric:tabular-nums}
+.client-card.on{border-color:#a7f3d0;background:#ecfdf5}
 .client-card.on .ip{color:var(--ok)}
-.week-split{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.week-card{padding:12px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.client-card .meta{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.45}
+.week-split{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.week-card{padding:14px;border:1px solid var(--line);border-radius:10px;background:#f8fafc}
 .week-card .label{font-size:12px;color:var(--muted)}
-.week-card .value{font-size:20px;font-weight:700;margin:6px 0}
-.week-card .track{height:10px;background:#eef2f7;border-radius:99px;overflow:hidden}
+.week-card .value{font-size:22px;font-weight:700;margin:6px 0}
+.week-card .track{height:12px;background:#eef2f7;border-radius:99px;overflow:hidden}
 .week-card .fill{display:block;height:100%;border-radius:99px;background:#0369a1}
 .week-card.we .fill{background:#7c3aed}
 .port-tag{display:inline-block;font-size:11px;color:#334155;background:#eef2f7;border-radius:999px;padding:1px 7px;margin-left:4px;font-weight:600}
@@ -199,11 +212,19 @@ th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
 th.sortable:hover{color:var(--text)}
 th.sortable.active{color:var(--text)}
 th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
+@media(max-width:1400px){
+  .traffic-kpis{grid-template-columns:repeat(4,1fr)}
+}
+@media(max-width:1100px){
+  .traffic-board,.traffic-tables,.traffic-insights{grid-template-columns:1fr}
+  .traffic-kpis{grid-template-columns:repeat(4,1fr)}
+}
 @media(max-width:900px){.metrics{grid-template-columns:repeat(2,1fr)}}
 .traffic-up{color:#0369a1}.traffic-down{color:#047857}
 @media(max-width:720px){
   .table-wrap th:nth-child(5),.table-wrap td:nth-child(5){display:none}
   .traffic-kpis{grid-template-columns:repeat(2,1fr)}
+  .traffic-board,.traffic-tables,.traffic-insights{grid-template-columns:1fr}
   .traffic-split{grid-template-columns:1fr}
   .traffic-mix{grid-template-columns:1fr}
 }
@@ -351,106 +372,136 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
         <div class="metric"><div class="label">占整机</div><div id="trafficShare" class="value">--</div><div id="trafficShareExtra" class="extra">--</div></div>
         <div class="metric"><div class="label">当前连接</div><div id="trafficLiveCount" class="value">--</div><div id="trafficLiveExtra" class="extra">--</div></div>
         <div class="metric"><div class="label">近 7 日站点</div><div id="trafficSiteCount" class="value">--</div><div id="trafficSiteExtra" class="extra">--</div></div>
+        <div class="metric"><div class="label">平均连接</div><div id="trafficSessionAvg" class="value">--</div><div id="trafficSessionExtra" class="extra">--</div></div>
+        <div class="metric"><div class="label">白天用量</div><div id="trafficDayShare" class="value">--</div><div id="trafficDayShareExtra" class="extra">07:00–23:00</div></div>
       </div>
       <p id="trafficSummary" class="traffic-summary">正在整理这个用户的用量…</p>
-      <div id="trafficEgress" class="traffic-egress">
-        <div id="trafficEgressLine">出口 IP：--</div>
-        <div id="trafficClient">客户端：--</div>
-        <div id="trafficClients" class="client-cards"></div>
-      </div>
       <p id="trafficPeak" class="traffic-peak"></p>
-      <div class="traffic-block">
-        <div class="traffic-block-h">
-          <h3>当前连接</h3>
-          <span class="hint">点表头排序 · 含访问时间</span>
-        </div>
-        <div class="dest-wrap"><table id="trafficLiveTable" class="dest-table"><thead><tr>
-          <th class="sortable" data-sort="host">网站</th>
-          <th class="sortable" data-sort="client">客户端</th>
-          <th class="sortable" data-sort="ip">目标 IP</th>
-          <th class="sortable" data-sort="port">端口</th>
-          <th class="sortable" data-sort="state">状态</th>
-          <th class="sortable" data-sort="upload">上行</th>
-          <th class="sortable" data-sort="download">下行</th>
-          <th class="sortable" data-sort="total">合计</th>
-          <th class="sortable" data-sort="last_active">访问时间</th>
-        </tr></thead><tbody id="trafficLive"></tbody></table></div>
-      </div>
-      <div class="traffic-block">
-        <div class="traffic-block-h">
-          <h3>访问站点</h3>
-          <span class="hint">近 7 日 · 含首次 / 最近访问时间</span>
-        </div>
-        <div id="trafficSiteBars" class="site-bars"></div>
-        <div class="traffic-block-h" style="margin-top:4px">
-          <h3>站点构成</h3>
-          <span class="hint">近 7 日 Top 5 + 其他</span>
-        </div>
-        <div id="trafficMix" class="traffic-mix"></div>
-        <p id="trafficMixHint" class="hint" style="margin:0 0 12px"></p>
-        <div class="dest-wrap"><table id="trafficSiteTable" class="dest-table"><thead><tr>
-          <th class="sortable" data-sort="host">网站</th>
-          <th class="sortable" data-sort="ip">IP</th>
-          <th class="sortable" data-sort="port">端口</th>
-          <th class="sortable" data-sort="upload">上行</th>
-          <th class="sortable" data-sort="download">下行</th>
-          <th class="sortable" data-sort="total">合计</th>
-          <th class="sortable" data-sort="hits">次数</th>
-          <th class="sortable" data-sort="share">占比</th>
-          <th class="sortable" data-sort="first_seen">首次访问</th>
-          <th class="sortable" data-sort="last_seen">最近访问</th>
-        </tr></thead><tbody id="trafficSites"></tbody></table></div>
-        <p class="hint" style="margin-top:8px">访问时间来自连接日志和采样。短连接会记进站点列表。Clash TUN 走 IP 时，仍需服务端嗅探才能显示域名。</p>
-      </div>
       <p id="trafficEmpty" class="traffic-empty hint">还没有 5 分钟增量曲线，热力会先空着；本月用量和站点仍可看。</p>
       <div id="trafficCharts" class="traffic-charts">
-        <div class="traffic-block">
-          <div class="traffic-block-h">
-            <h3>时段热力</h3>
-            <span class="hint">越红越多 · 描边格是此刻</span>
+        <div class="traffic-board">
+          <div class="traffic-tile traffic-block">
+            <div class="traffic-block-h">
+              <h3>时段热力</h3>
+              <span class="hint">越红越多 · 描边格是此刻</span>
+            </div>
+            <div class="heat-wrap"><div id="trafficHeat" class="heat" role="img" aria-label="近7日每小时流量热力"></div></div>
+            <div id="trafficHeatLegend" class="heat-legend"></div>
+            <p id="trafficHeatHint" class="hint" style="margin-top:8px">格子越大越好认：颜色越红这一小时越多，悬停可看具体用量。</p>
           </div>
-          <div class="heat-wrap"><div id="trafficHeat" class="heat" role="img" aria-label="近7日每小时流量热力"></div></div>
-          <div id="trafficHeatLegend" class="heat-legend"></div>
-          <p id="trafficHeatHint" class="hint" style="margin-top:8px">格子越大越好认：颜色越红这一小时越多，悬停可看具体用量。</p>
-        </div>
-        <div class="traffic-block">
-          <div class="traffic-block-h">
-            <h3>作息曲线</h3>
-            <span class="hint">把 7 天压成一天，看通常几点在用</span>
+          <div class="traffic-tile traffic-block">
+            <div class="traffic-block-h">
+              <h3>作息曲线</h3>
+              <span class="hint">把 7 天压成一天，看通常几点在用</span>
+            </div>
+            <div id="trafficHours" class="hour-profile" role="img" aria-label="一天中各小时用量"></div>
+            <p id="trafficHoursHint" class="hint" style="margin-top:8px"></p>
+            <div class="traffic-block-h" style="margin-top:16px">
+              <h3>工作日 / 周末</h3>
+              <span class="hint">近 7 日增量对比</span>
+            </div>
+            <div id="trafficWeek" class="week-split"></div>
+            <p id="trafficWeekHint" class="hint" style="margin-top:8px"></p>
           </div>
-          <div id="trafficHours" class="hour-profile" role="img" aria-label="一天中各小时用量"></div>
-          <p id="trafficHoursHint" class="hint" style="margin-top:8px"></p>
         </div>
-        <div class="traffic-split">
-          <div class="traffic-block">
+        <div class="traffic-board">
+          <div class="traffic-tile traffic-block">
             <div class="traffic-block-h">
               <h3>增量趋势</h3>
               <span class="hint">上行蓝 · 下行绿 · 红点是峰值 · 纵轴是 5 分钟增量</span>
             </div>
             <div id="trafficTrend"></div>
           </div>
-          <div class="traffic-block">
+          <div class="traffic-tile traffic-block">
             <div class="traffic-block-h">
               <h3>按日用量</h3>
               <span class="hint">蓝=上行 · 绿=下行 · 柱上是当天合计</span>
             </div>
             <div id="trafficDays" class="day-cols" role="img" aria-label="近7日用量"></div>
+            <div class="traffic-block-h" style="margin-top:16px">
+              <h3>上下行结构</h3>
+              <span id="trafficSplitHint" class="hint"></span>
+            </div>
+            <div id="trafficUpDown" class="updown" role="img" aria-label="上下行比例"></div>
           </div>
         </div>
-        <div class="traffic-block">
-          <div class="traffic-block-h">
-            <h3>工作日 / 周末</h3>
-            <span class="hint">近 7 日增量对比</span>
+        <div class="traffic-insights">
+          <div class="traffic-tile traffic-stat">
+            <div class="label">白天 / 夜间</div>
+            <div id="trafficDayNightVal" class="value">--</div>
+            <div id="trafficDayNightHint" class="hint">白天按 07:00–23:00 计</div>
+            <div class="track"><i id="trafficDayNightFill" class="fill" style="width:0"></i></div>
           </div>
-          <div id="trafficWeek" class="week-split"></div>
-          <p id="trafficWeekHint" class="hint" style="margin-top:8px"></p>
+          <div class="traffic-tile traffic-stat">
+            <div class="label">最近一次连接</div>
+            <div id="trafficLastSession" class="value">--</div>
+            <div id="trafficLastSessionHint" class="hint">来自连接日志配对</div>
+          </div>
+          <div class="traffic-tile traffic-stat">
+            <div class="label">已结束会话</div>
+            <div id="trafficSessionCount" class="value">--</div>
+            <div id="trafficSessionCountHint" class="hint">含仍在线的连接</div>
+          </div>
         </div>
-        <div class="traffic-block">
+      </div>
+      <div class="traffic-board">
+        <div class="traffic-tile traffic-block">
           <div class="traffic-block-h">
-            <h3>上下行结构</h3>
-            <span id="trafficSplitHint" class="hint"></span>
+            <h3>出口与客户端</h3>
+            <span class="hint">外站看到的地址 · 用户侧 IP</span>
           </div>
-          <div id="trafficUpDown" class="updown" role="img" aria-label="上下行比例"></div>
+          <div id="trafficEgress" class="traffic-egress">
+            <div id="trafficEgressLine">出口 IP：--</div>
+            <div id="trafficClient">客户端：--</div>
+            <div id="trafficClients" class="client-cards"></div>
+          </div>
+        </div>
+        <div class="traffic-tile traffic-block">
+          <div class="traffic-block-h">
+            <h3>站点构成</h3>
+            <span class="hint">近 7 日 Top 5 + 其他 · 按根域名合并</span>
+          </div>
+          <div id="trafficMix" class="traffic-mix"></div>
+          <p id="trafficMixHint" class="hint" style="margin:8px 0 12px"></p>
+          <div id="trafficSiteBars" class="site-bars"></div>
+        </div>
+      </div>
+      <div class="traffic-tables">
+        <div class="traffic-tile traffic-block">
+          <div class="traffic-block-h">
+            <h3>当前连接</h3>
+            <span class="hint">点表头排序 · 含访问时间</span>
+          </div>
+          <div class="dest-wrap"><table id="trafficLiveTable" class="dest-table"><thead><tr>
+            <th class="sortable" data-sort="host">网站</th>
+            <th class="sortable" data-sort="client">客户端</th>
+            <th class="sortable" data-sort="ip">目标 IP</th>
+            <th class="sortable" data-sort="port">端口</th>
+            <th class="sortable" data-sort="state">状态</th>
+            <th class="sortable" data-sort="upload">上行</th>
+            <th class="sortable" data-sort="download">下行</th>
+            <th class="sortable" data-sort="total">合计</th>
+            <th class="sortable" data-sort="last_active">访问时间</th>
+          </tr></thead><tbody id="trafficLive"></tbody></table></div>
+        </div>
+        <div class="traffic-tile traffic-block">
+          <div class="traffic-block-h">
+            <h3>访问站点</h3>
+            <span class="hint">近 7 日 · 含首次 / 最近访问时间</span>
+          </div>
+          <div class="dest-wrap"><table id="trafficSiteTable" class="dest-table"><thead><tr>
+            <th class="sortable" data-sort="host">网站</th>
+            <th class="sortable" data-sort="ip">IP</th>
+            <th class="sortable" data-sort="port">端口</th>
+            <th class="sortable" data-sort="upload">上行</th>
+            <th class="sortable" data-sort="download">下行</th>
+            <th class="sortable" data-sort="total">合计</th>
+            <th class="sortable" data-sort="hits">次数</th>
+            <th class="sortable" data-sort="share">占比</th>
+            <th class="sortable" data-sort="first_seen">首次访问</th>
+            <th class="sortable" data-sort="last_seen">最近访问</th>
+          </tr></thead><tbody id="trafficSites"></tbody></table></div>
+          <p class="hint" style="margin-top:8px">访问时间来自连接日志和采样。短连接会记进站点列表。Clash TUN 走 IP 时，仍需服务端嗅探才能显示域名。</p>
         </div>
       </div>
     </div>
@@ -709,6 +760,11 @@ async function openTraffic(username){
   $("trafficLiveExtra").textContent="--";
   $("trafficSiteCount").textContent="--";
   $("trafficSiteExtra").textContent="--";
+  if($("trafficSessionAvg")){$("trafficSessionAvg").textContent="--";$("trafficSessionExtra").textContent="--"}
+  if($("trafficDayShare")){$("trafficDayShare").textContent="--";$("trafficDayShareExtra").textContent="07:00–23:00"}
+  if($("trafficDayNightVal"))$("trafficDayNightVal").textContent="--";
+  if($("trafficLastSession"))$("trafficLastSession").textContent="--";
+  if($("trafficSessionCount"))$("trafficSessionCount").textContent="--";
   $("trafficEgressLine").textContent="出口 IP：--";
   $("trafficClient").textContent="客户端：--";
   if($("trafficClients"))clearNode($("trafficClients"));
@@ -743,6 +799,7 @@ function renderTraffic(data){
   $("trafficShare").textContent=(Number(month.share_percent)||0).toFixed(1)+"%";
   $("trafficShareExtra").textContent=Number(month.share_percent)?"相对本月整机用量":"整机本月还没有用量";
   $("trafficSplitHint").textContent="本月 上行 "+bytes(month.upload)+" · 下行 "+bytes(month.download);
+  renderSessionStats(data.sessions||{});
   renderDestinations(data);
   const total=Math.max(0,Number(month.total)||0);
   const upPct=total?Math.round(Number(month.upload||0)/total*100):0;
@@ -837,7 +894,7 @@ function renderTraffic(data){
         className:"hour-col"+(hour===busyHour&&hourTotals[hour]?" peak":""),
         title:pad2(hour)+":00 · "+bytes(hourTotals[hour])
       },
-        el("span",{className:"bar",style:{height:Math.max(2,Math.round(hourTotals[hour]/maxHour*110))+"px"}}),
+        el("span",{className:"bar",style:{height:Math.max(2,Math.round(hourTotals[hour]/maxHour*160))+"px"}}),
         el("span",{className:"lbl",text:hour%3===0?String(hour):""})
       ));
     });
@@ -848,13 +905,14 @@ function renderTraffic(data){
       ?"这个号近 7 日多半在 "+pad2(busyHour)+":00 前后最忙（合计 "+bytes(hourTotals[busyHour])+"）。柱子是每天同一小时加总。"
       :"还没有 5 分钟增量，作息曲线会先空着。";
   }
+  renderDayNight(hourTotals,hasSeries);
   const maxDay=Math.max(1,...days.map(day=>daily[dayKey(day)].total));
   const dayRoot=$("trafficDays");clearNode(dayRoot);
   days.forEach(day=>{
     const row=daily[dayKey(day)];
     const isBusy=busy&&busy.key===dayKey(day);
-    const upH=Math.round((row.up||0)/maxDay*140);
-    const downH=Math.round((row.down||0)/maxDay*140);
+    const upH=Math.round((row.up||0)/maxDay*180);
+    const downH=Math.round((row.down||0)/maxDay*180);
     dayRoot.append(el("div",{
       className:"day-col",
       title:pad2(day.getMonth()+1)+"/"+pad2(day.getDate())+" 周"+weekdayName(day)+" · "+bytes(row.total)+"（↑ "+bytes(row.up)+" · ↓ "+bytes(row.down)+"）",
@@ -879,7 +937,7 @@ function renderTraffic(data){
   const downs=series.map(item=>Number(item.down)||0);
   const totals=series.map((_,i)=>ups[i]+downs[i]);
   const maxLine=Math.max(1,...ups,...downs);
-  const W=720,H=200,padL=58,padR=18,padT=22,padB=32;
+  const W=1100,H=280,padL=64,padR=20,padT=24,padB=36;
   const innerW=W-padL-padR, innerH=H-padT-padB;
   const x=i=>series.length<=1?padL:padL+innerW*i/Math.max(series.length-1,1);
   const y=v=>padT+innerH-(v/maxLine*innerH);
@@ -931,6 +989,35 @@ function buildTrafficSummary(data,peakCell,busy){
   else if(sites)parts.push("近 7 日见到 "+sites+" 个站点");
   else parts.push("还没有连上记录，同步后再看");
   return parts.join("。")+"。";
+}
+function renderSessionStats(sessions){
+  const avg=Number(sessions.avg_seconds)||0;
+  const last=Number(sessions.last_seconds)||0;
+  const count=Number(sessions.count)||0;
+  const finished=Number(sessions.finished)||0;
+  if($("trafficSessionAvg"))$("trafficSessionAvg").textContent=avg?formatDuration(avg):"--";
+  if($("trafficSessionExtra"))$("trafficSessionExtra").textContent=finished?("已结束 "+finished+" 次"):"还没有配对到完整连接";
+  if($("trafficLastSession"))$("trafficLastSession").textContent=last?formatDuration(last):(avg?formatDuration(avg):"--");
+  if($("trafficLastSessionHint"))$("trafficLastSessionHint").textContent=last?"最近一次从连上到断开":"日志里还没有完整的断开记录";
+  if($("trafficSessionCount"))$("trafficSessionCount").textContent=count?String(count):"0";
+  if($("trafficSessionCountHint"))$("trafficSessionCountHint").textContent=finished?("结束 "+finished+" · 仍在线 "+Math.max(0,count-finished)):"含仍在线的连接";
+}
+function renderDayNight(hourTotals,hasSeries){
+  let dayBytes=0,nightBytes=0;
+  (hourTotals||[]).forEach((value,hour)=>{
+    if(hour>=7&&hour<23)dayBytes+=value;else nightBytes+=value;
+  });
+  const total=dayBytes+nightBytes;
+  const dayPct=total?Math.round(dayBytes/total*100):0;
+  if($("trafficDayShare"))$("trafficDayShare").textContent=total?dayPct+"%":"--";
+  if($("trafficDayShareExtra"))$("trafficDayShareExtra").textContent=total?("白天 "+bytes(dayBytes)+" · 夜间 "+bytes(nightBytes)):"07:00–23:00";
+  if($("trafficDayNightVal"))$("trafficDayNightVal").textContent=total?("白天 "+dayPct+"%"):"--";
+  if($("trafficDayNightHint")){
+    $("trafficDayNightHint").textContent=hasSeries&&total
+      ?(dayPct>=55?"白天更忙 · 夜间 "+bytes(nightBytes):dayPct<=45?"夜间更忙 · 白天 "+bytes(dayBytes):"白天和夜间差不多")
+      :"白天按 07:00–23:00 计";
+  }
+  if($("trafficDayNightFill"))$("trafficDayNightFill").style.width=(total?dayPct:0)+"%";
 }
 function renderDestinations(data){
   const ip=String(data.egress_ip||"").trim()||"--";
@@ -1039,8 +1126,8 @@ function renderSiteMix(sites){
   const rest=rows.slice(5).reduce((n,row)=>n+weight(row),0);
   const parts=top.map((row,i)=>({label:row.host||"--",value:weight(row),color:MIX[i]}));
   if(rest)parts.push({label:"其他",value:rest,color:MIX[5]});
-  const cx=80,cy=80,r=62,ir=36;
-  const svg=svgNode("svg",{viewBox:"0 0 160 160",class:"mix-svg",role:"img","aria-label":"站点流量构成"});
+  const cx=100,cy=100,r=78,ir=44;
+  const svg=svgNode("svg",{viewBox:"0 0 200 200",class:"mix-svg",role:"img","aria-label":"站点流量构成"});
   let angle=-Math.PI/2;
   const usable=parts.filter(part=>part.value>0);
   if(usable.length<=1){
@@ -1058,8 +1145,8 @@ function renderSiteMix(sites){
   }
   svg.append(svgNode("circle",{cx,cy,r:ir,fill:"#fff"}));
   const lead=usable[0]||parts[0];
-  svg.append(svgNode("text",{x:cx,y:cy-2,"text-anchor":"middle","font-size":13,"font-weight":700,fill:"#111827"},lead?formatPct(lead.value/total*100):""));
-  svg.append(svgNode("text",{x:cx,y:cy+14,"text-anchor":"middle","font-size":10,fill:"#6b7280"},"最大一块"));
+  svg.append(svgNode("text",{x:cx,y:cy-4,"text-anchor":"middle","font-size":16,"font-weight":700,fill:"#111827"},lead?formatPct(lead.value/total*100):""));
+  svg.append(svgNode("text",{x:cx,y:cy+16,"text-anchor":"middle","font-size":12,fill:"#6b7280"},"最大一块"));
   const legend=el("div",{className:"mix-legend"});
   parts.forEach(part=>{
     legend.append(el("span",{},
