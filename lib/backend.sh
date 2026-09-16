@@ -1573,6 +1573,12 @@ def user_traffic_analysis(username: str) -> dict[str, Any]:
                 },
             )
             seen_ips.add(ip)
+    if len(client_ips) == 1:
+        fallback = client_ips[0]
+        for row in live:
+            if not row.get("client"):
+                row["client"] = fallback["ip"]
+                row["client_port"] = fallback.get("port") or ""
     peak: Optional[dict[str, Any]] = None
     for item in series:
         delta_total = int(item["up"]) + int(item["down"])

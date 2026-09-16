@@ -535,6 +535,40 @@ class ClientIpAndSortTests(unittest.TestCase):
         payload = self.namespace["user_traffic_analysis"]("alice")
         self.assertEqual([row["host"] for row in payload["sites"]], ["hot.example", "quiet.example"])
 
+    def test_live_rows_reuse_user_client_ip_when_stream_has_none(self):
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        self.state_file.write_text(
+            json.dumps(
+                {
+                    "client_ips": {
+                        "alice": {"198.51.100.40": {"port": "1234", "last_seen": now}}
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.namespace.update(
+            {
+                "hy2_is_off": lambda: False,
+                "load_env": lambda: {"API_SECRET": "secret", "PUBLIC_IP": "203.0.113.9"},
+                "hysteria_api": lambda path, secret, **kwargs: {
+                    "streams": [
+                        {
+                            "auth": "alice",
+                            "req_addr": "192.0.2.1:443",
+                            "hooked_req_addr": "a.example:443",
+                            "tx": 10,
+                            "rx": 20,
+                            "state": "estab",
+                        }
+                    ]
+                },
+            }
+        )
+        payload = self.namespace["user_traffic_analysis"]("alice")
+        self.assertEqual(payload["live"][0]["client"], "198.51.100.40")
+        self.assertEqual(payload["live"][0]["client_port"], "1234")
+
     def test_traffic_analysis_exposes_client_ips_and_live_client(self):
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         self.state_file.write_text(
