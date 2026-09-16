@@ -235,7 +235,8 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
   .metrics{grid-template-columns:1fr}.main{padding:14px}
   .table-wrap th:nth-child(3),.table-wrap td:nth-child(3),
   .table-wrap th:nth-child(4),.table-wrap td:nth-child(4),
-  .table-wrap th:nth-child(5),.table-wrap td:nth-child(5){display:none}
+  .table-wrap th:nth-child(5),.table-wrap td:nth-child(5),
+  .table-wrap th:nth-child(7),.table-wrap td:nth-child(7){display:none}
   .topbar{padding:12px 14px}
   .dest-table th:nth-child(3),.dest-table td:nth-child(3),
   .dest-table th:nth-child(6),.dest-table td:nth-child(6),
@@ -304,6 +305,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
               <th class="sortable" data-sort="upload">上行</th>
               <th class="sortable" data-sort="download">下行</th>
               <th class="sortable" data-sort="total">合计</th>
+              <th class="sortable" data-sort="lifetime_total">历史累计</th>
               <th style="text-align:right;width:52px">操作</th>
             </tr>
           </thead>
@@ -616,6 +618,7 @@ function sortValue(row,key){
   if(key==="port")return Number(row.port)||0;
   if(key==="upload"||key==="download"||key==="hits")return Number(row[key])||0;
   if(key==="total"||key==="bytes")return Number(row.total!=null?row.total:(Number(row.upload)||0)+(Number(row.download)||0));
+  if(key==="lifetime_total")return Number(row.lifetime_total)||0;
   if(key==="share")return Number(row.share)||0;
   if(key==="state")return streamState(row.state);
   if(key==="last_seen"||key==="first_seen"||key==="last_active")return Date.parse(row[key])||0;
@@ -1353,7 +1356,7 @@ function renderUsers(users){
   markSort(document.querySelector(".table-wrap table"),userSort);
   $("userSummary").textContent="👥 "+list.length+" 个账号 · 点表头排序";
   if(!list.length){
-    root.append(el("tr",{},el("td",{colSpan:7,className:"hint",text:"📭 暂无用户。打开右上角菜单添加。"})));
+    root.append(el("tr",{},el("td",{colSpan:8,className:"hint",text:"📭 暂无用户。打开右上角菜单添加。"})));
     return;
   }
   list.forEach(user=>{
@@ -1404,6 +1407,7 @@ function renderUsers(users){
       el("td",{className:"traffic-up",text:"↑ "+bytes(user.upload)}),
       el("td",{className:"traffic-down",text:"↓ "+bytes(user.download)}),
       el("td",{text:bytes(user.total)}),
+      el("td",{text:bytes(user.lifetime_total||0)}),
       el("td",{className:"ops"},btn,menu)
     ));
   });
