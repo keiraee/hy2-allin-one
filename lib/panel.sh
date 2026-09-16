@@ -140,7 +140,14 @@ tr.disabled td{opacity:.55}
 .site-bars{display:flex;flex-direction:column;gap:8px;margin:0 0 12px}
 .site-bar-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,2.2fr) auto;gap:10px;align-items:center;font-size:13px}
 .site-bar-row .track{height:12px;background:#eef2f7;border-radius:99px;overflow:hidden}
-.site-bar-row .fill{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,#38bdf8,#f97316)}
+.traffic-mix{display:grid;grid-template-columns:160px minmax(0,1fr);gap:16px;align-items:center;margin:0 0 12px}
+.traffic-mix.hide{display:none}
+.mix-svg{width:160px;height:160px;display:block}
+.mix-legend{display:flex;flex-direction:column;gap:6px;font-size:12px}
+.mix-legend span{display:flex;align-items:center;gap:8px}
+.mix-legend i{width:10px;height:10px;border-radius:2px;display:block;flex-shrink:0}
+.mix-legend b{font-weight:650;word-break:break-all}
+.mix-legend em{font-style:normal;color:var(--muted);margin-left:auto;white-space:nowrap}
 .traffic-block{margin-bottom:16px}
 .traffic-block:last-child{margin-bottom:0}
 .traffic-block-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px}
@@ -192,6 +199,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
   .table-wrap th:nth-child(5),.table-wrap td:nth-child(5){display:none}
   .traffic-kpis{grid-template-columns:repeat(2,1fr)}
   .traffic-split{grid-template-columns:1fr}
+  .traffic-mix{grid-template-columns:1fr}
 }
 @media(max-width:560px){
   .metrics{grid-template-columns:1fr}.main{padding:14px}
@@ -368,6 +376,12 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
           <span class="hint">近 7 日 · 含首次 / 最近访问时间</span>
         </div>
         <div id="trafficSiteBars" class="site-bars"></div>
+        <div class="traffic-block-h" style="margin-top:4px">
+          <h3>站点构成</h3>
+          <span class="hint">近 7 日 Top 5 + 其他</span>
+        </div>
+        <div id="trafficMix" class="traffic-mix"></div>
+        <p id="trafficMixHint" class="hint" style="margin:0 0 12px"></p>
         <div class="dest-wrap"><table id="trafficSiteTable" class="dest-table"><thead><tr>
           <th class="sortable" data-sort="host">网站</th>
           <th class="sortable" data-sort="ip">IP</th>
@@ -444,6 +458,7 @@ const formatActive=raw=>{
 };
 const VALID_NAME=/^[A-Za-z0-9_-]{1,32}$/;
 const HEAT=["#dbeafe","#93c5fd","#38bdf8","#fbbf24","#f97316","#b91c1c"];
+const MIX=["#0369a1","#047857","#f97316","#7c3aed","#b91c1c","#94a3b8"];
 let toastTimer=null, openMenu=null, noteUser="";
 let userList=[], liveList=[], siteList=[];
 let userSort={key:"username",dir:1};
@@ -665,6 +680,8 @@ async function openTraffic(username){
   clearNode($("trafficLive"));
   clearNode($("trafficSites"));
   if($("trafficSiteBars"))clearNode($("trafficSiteBars"));
+  if($("trafficMix")){clearNode($("trafficMix"));$("trafficMix").classList.add("hide")}
+  if($("trafficMixHint"))$("trafficMixHint").textContent="";
   $("trafficPeak").classList.remove("show");
   $("trafficEmpty").classList.remove("show");
   $("trafficCharts").classList.remove("hide");
@@ -894,6 +911,7 @@ function renderDestinations(data){
     :"客户端：暂无记录";
   renderClientCards(data.client_ips||[], liveList);
   renderSiteBars(siteList);
+  renderSiteMix(siteList);
   renderLiveRows();
   renderSiteRows();
 }
@@ -934,6 +952,56 @@ function renderSiteBars(sites){
       el("span",{className:"hint",text:right})
     ));
   });
+}
+function renderSiteMix(sites){
+  const root=$("trafficMix");
+  const hint=$("trafficMixHint");
+  if(!root)return;
+  clearNode(root);
+  const rows=sites||[];
+  if(!rows.length){
+    root.classList.add("hide");
+    if(hint)hint.textContent="";
+    return;
+  }
+  root.classList.remove("hide");
+  const weight=row=>Number(row.total)||Number(row.hits)||0;
+  const total=rows.reduce((n,row)=>n+weight(row),0)||1;
+  const top=rows.slice(0,5);
+  const rest=rows.slice(5).reduce((n,row)=>n+weight(row),0);
+  const parts=top.map((row,i)=>({label:row.host||"--",value:weight(row),color:MIX[i]}));
+  if(rest)parts.push({label:"其他",value:rest,color:MIX[5]});
+  const cx=80,cy=80,r=62,ir=36;
+  const svg=svgNode("svg",{viewBox:"0 0 160 160",class:"mix-svg",role:"img","aria-label":"站点流量构成"});
+  let angle=-Math.PI/2;
+  const usable=parts.filter(part=>part.value>0);
+  if(usable.length<=1){
+    svg.append(svgNode("circle",{cx,cy,r,fill:(usable[0]||parts[0]||{}).color||MIX[5]}));
+  }else{
+    usable.forEach(part=>{
+      const slice=part.value/total*Math.PI*2;
+      const start=angle;
+      angle+=slice;
+      const x1=cx+r*Math.cos(start), y1=cy+r*Math.sin(start);
+      const x2=cx+r*Math.cos(angle), y2=cy+r*Math.sin(angle);
+      const large=slice>Math.PI?1:0;
+      svg.append(svgNode("path",{d:"M "+cx+" "+cy+" L "+x1+" "+y1+" A "+r+" "+r+" 0 "+large+" 1 "+x2+" "+y2+" Z",fill:part.color}));
+    });
+  }
+  svg.append(svgNode("circle",{cx,cy,r:ir,fill:"#fff"}));
+  const lead=usable[0]||parts[0];
+  svg.append(svgNode("text",{x:cx,y:cy-2,"text-anchor":"middle","font-size":13,"font-weight":700,fill:"#111827"},lead?formatPct(lead.value/total*100):""));
+  svg.append(svgNode("text",{x:cx,y:cy+14,"text-anchor":"middle","font-size":10,fill:"#6b7280"},"最大一块"));
+  const legend=el("div",{className:"mix-legend"});
+  parts.forEach(part=>{
+    legend.append(el("span",{},
+      el("i",{style:{background:part.color}}),
+      el("b",{text:part.label}),
+      el("em",{text:formatPct(part.value/total*100)})
+    ));
+  });
+  root.append(svg,legend);
+  if(hint)hint.textContent=lead?("近 7 日里，"+lead.label+" 大约占 "+formatPct(lead.value/total*100)+"。其余站点合在「其他」里。"):"";
 }
 function renderLiveRows(){
   const liveRoot=$("trafficLive");clearNode(liveRoot);

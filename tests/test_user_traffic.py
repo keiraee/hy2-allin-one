@@ -413,6 +413,9 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn('data-sort="share"', panel)
         self.assertIn("作息曲线", panel)
         self.assertIn("trafficHours", panel)
+        self.assertIn("站点构成", panel)
+        self.assertIn("trafficMix", panel)
+        self.assertIn("function renderSiteMix", panel)
 
 
 class ClientIpAndSortTests(unittest.TestCase):
