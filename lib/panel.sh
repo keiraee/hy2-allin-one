@@ -219,7 +219,10 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
   .traffic-board,.traffic-tables,.traffic-insights{grid-template-columns:1fr}
   .traffic-kpis{grid-template-columns:repeat(4,1fr)}
 }
-@media(max-width:900px){.metrics{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:900px){
+  .metrics{grid-template-columns:repeat(2,1fr)}
+  .traffic-kpis{grid-template-columns:repeat(2,1fr)}
+}
 .traffic-up{color:#0369a1}.traffic-down{color:#047857}
 @media(max-width:720px){
   .table-wrap th:nth-child(5),.table-wrap td:nth-child(5){display:none}
