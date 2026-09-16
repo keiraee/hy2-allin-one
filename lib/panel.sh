@@ -1410,7 +1410,9 @@ async function load(){
     $("time").textContent="更新 "+data.generated_at+" · "+data.server.ip+" · "+data.server.domain;
     $("traffic").textContent=bytes(t.used)+" / "+bytes(t.limit);
     $("remain").textContent="入 "+bytes(t.rx)+" · 出 "+bytes(t.tx)+" · 剩余 "+bytes(t.remain);
-    $("trafficBar").style.width=Math.min(100,Number(t.percent)||0)+"%";
+    const pctVal=Math.min(100,Number(t.percent)||0);
+    $("trafficBar").style.width=pctVal+"%";
+    $("trafficBar").style.background=pctVal>=90?"#b91c1c":pctVal>=60?"#f59e0b":"var(--accent)";
     $("cpu").textContent=data.server.cpu+"%";$("load").textContent="负载 "+data.server.load.join(" / ");
     $("memory").textContent=data.server.memory.percent+"%";$("swap").textContent="Swap "+data.server.memory.swap_percent+"%";
     $("disk").textContent=data.server.disk.percent+"%";$("uptime").textContent="运行 "+duration(data.server.uptime);
