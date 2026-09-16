@@ -120,6 +120,11 @@ tr.disabled td{opacity:.55}
 .traffic-peak{display:none;margin:0 0 14px;padding:10px 12px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:13px;line-height:1.45}
 .traffic-peak.show{display:block}
 .traffic-summary{margin:0 0 12px;padding:12px 14px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;font-size:14px;line-height:1.6}
+.hour-profile{display:flex;align-items:flex-end;gap:4px;height:140px}
+.hour-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;min-width:0;height:100%}
+.hour-col .bar{display:block;width:100%;border-radius:3px 3px 0 0;min-height:2px;background:#38bdf8}
+.hour-col.peak .bar{background:#b91c1c}
+.hour-col .lbl{font-size:10px;color:var(--muted);margin-top:4px}
 .heat-cell.now{box-shadow:inset 0 0 0 1px #334155}
 .day-cols{display:flex;align-items:stretch;gap:10px;height:196px}
 .day-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:0}
@@ -387,6 +392,14 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
           <div class="heat-wrap"><div id="trafficHeat" class="heat" role="img" aria-label="近7日每小时流量热力"></div></div>
           <div id="trafficHeatLegend" class="heat-legend"></div>
           <p id="trafficHeatHint" class="hint" style="margin-top:8px">格子越大越好认：颜色越红这一小时越多，悬停可看具体用量。</p>
+        </div>
+        <div class="traffic-block">
+          <div class="traffic-block-h">
+            <h3>作息曲线</h3>
+            <span class="hint">把 7 天压成一天，看通常几点在用</span>
+          </div>
+          <div id="trafficHours" class="hour-profile" role="img" aria-label="一天中各小时用量"></div>
+          <p id="trafficHoursHint" class="hint" style="margin-top:8px"></p>
         </div>
         <div class="traffic-split">
           <div class="traffic-block">
@@ -758,6 +771,30 @@ function renderTraffic(data){
     heatHint.textContent=peakCell
       ?("最红一格是周"+weekdayName(peakCell.date)+" "+pad2(peakCell.hour)+":00，约 "+bytes(peakCell.value)+"。把鼠标放在其他格子上也能看该小时用量。")
       :"格子越大越好认：颜色越红这一小时越多。同步几次后会出现高峰。";
+  }
+  const hourTotals=Array(24).fill(0);
+  days.forEach(day=>hours.forEach(hour=>{hourTotals[hour]+=heat[dayKey(day)][hour]}));
+  const maxHour=Math.max(1,...hourTotals);
+  let busyHour=0;
+  hourTotals.forEach((value,hour)=>{if(value>hourTotals[busyHour])busyHour=hour});
+  const hourRoot=$("trafficHours");
+  if(hourRoot){
+    clearNode(hourRoot);
+    hours.forEach(hour=>{
+      hourRoot.append(el("div",{
+        className:"hour-col"+(hour===busyHour&&hourTotals[hour]?" peak":""),
+        title:pad2(hour)+":00 · "+bytes(hourTotals[hour])
+      },
+        el("span",{className:"bar",style:{height:Math.max(2,Math.round(hourTotals[hour]/maxHour*110))+"px"}}),
+        el("span",{className:"lbl",text:hour%3===0?String(hour):""})
+      ));
+    });
+  }
+  const hoursHint=$("trafficHoursHint");
+  if(hoursHint){
+    hoursHint.textContent=hasSeries
+      ?"这个号近 7 日多半在 "+pad2(busyHour)+":00 前后最忙（合计 "+bytes(hourTotals[busyHour])+"）。柱子是每天同一小时加总。"
+      :"还没有 5 分钟增量，作息曲线会先空着。";
   }
   const maxDay=Math.max(1,...days.map(day=>daily[dayKey(day)].total));
   const dayRoot=$("trafficDays");clearNode(dayRoot);

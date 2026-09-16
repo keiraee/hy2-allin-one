@@ -411,7 +411,8 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("function streamState", panel)
         self.assertIn("trafficLiveCount", panel)
         self.assertIn('data-sort="share"', panel)
-        self.assertIn('data-sort="state"', panel)
+        self.assertIn("作息曲线", panel)
+        self.assertIn("trafficHours", panel)
 
 
 class ClientIpAndSortTests(unittest.TestCase):
