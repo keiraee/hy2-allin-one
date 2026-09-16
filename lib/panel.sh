@@ -134,6 +134,10 @@ tr.disabled td{opacity:.55}
 .hour-col .bar{display:block;width:100%;border-radius:4px 4px 0 0;min-height:3px;background:#38bdf8}
 .hour-col.peak .bar{background:#b91c1c}
 .hour-col .lbl{font-size:11px;color:var(--muted);margin-top:6px}
+.hour-profile.empty{display:flex;align-items:center;justify-content:center;height:200px}
+.chart-empty{display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--muted);font-size:13px}
+.chart-empty-icon{font-size:28px;opacity:.5}
+.week-split.empty{display:flex;align-items:center;justify-content:center;height:240px}
 .heat-cell.now{box-shadow:inset 0 0 0 1px #334155}
 .day-cols{display:flex;align-items:stretch;gap:12px;height:240px}
 .day-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:0}
@@ -412,13 +416,13 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
               <h3>🕐 作息曲线</h3>
               <span class="hint">把 7 天压成一天，看通常几点在用</span>
             </div>
-            <div id="trafficHours" class="hour-profile" role="img" aria-label="一天中各小时用量"></div>
+            <div id="trafficHours" class="hour-profile empty" role="img" aria-label="一天中各小时用量"><div class="chart-empty"><span class="chart-empty-icon">📊</span><span>暂无数据，请先同步历史流量</span></div></div>
             <p id="trafficHoursHint" class="hint" style="margin-top:8px"></p>
             <div class="traffic-block-h" style="margin-top:16px">
               <h3>📊 工作日 / 周末</h3>
               <span class="hint">近 7 日增量对比</span>
             </div>
-            <div id="trafficWeek" class="week-split"></div>
+            <div id="trafficWeek" class="week-split empty"><div class="chart-empty"><span class="chart-empty-icon">📊</span><span>暂无数据</span></div></div>
             <p id="trafficWeekHint" class="hint" style="margin-top:8px"></p>
           </div>
         </div>
@@ -908,6 +912,7 @@ function renderTraffic(data){
   const hourRoot=$("trafficHours");
   if(hourRoot){
     clearNode(hourRoot);
+    hourRoot.classList.remove("empty");
     hours.forEach(hour=>{
       hourRoot.append(el("div",{
         className:"hour-col"+(hour===busyHour&&hourTotals[hour]?" peak":""),
@@ -1062,6 +1067,7 @@ function renderWeekSplit(series,hasSeries){
   const hint=$("trafficWeekHint");
   if(!root)return;
   clearNode(root);
+  root.classList.remove("empty");
   let weekday=0,weekend=0;
   (series||[]).forEach(item=>{
     const d=new Date(item.t);
