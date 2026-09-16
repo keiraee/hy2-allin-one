@@ -1,4 +1,4 @@
-# HY2 AIO v1.3.28
+# HY2 AIO v1.4.0
 
 一键部署 Hysteria 2 + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -8,7 +8,7 @@
 ## 快速开始
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.28/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.4.0/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -127,7 +127,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.3.28` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.4.0` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
 | `CADDY_VERSION` | Caddy 回退安装版本 | `v2.11.4` |
@@ -164,6 +164,13 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v1.4.0
+- 用户行菜单新增流量分析：接近全屏双栏看板，热力、作息、趋势、按日、上下行、站点构成一次看完
+- 从 Hysteria 日志解析客户端 IP、访问站点、首次/最近访问时间和连接时长；表格可排序
+- 用户表增加速率模式、历史累计；整机进度条按用量变色；侧边栏可手动备份
+- 记住 `HY2_REPO_REF=main` 升级轨道，正式安装默认仍跟 Release，不会被 main 带跑
+- 修复：空图表占位、窄屏合计列被藏、顶栏 `vundefined`、菜单升级提示空值等
 
 ### v1.3.28
 - 修复：已是最新版时敲 `hy2` 只印 banner 就退出（升级提示空值触发 `set -e`）

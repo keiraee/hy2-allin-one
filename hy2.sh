@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
 DEFAULT_REPO_SLUG="keiraee/hy2-allin-one"
 REPO_SLUG="${HY2_REPO:-$DEFAULT_REPO_SLUG}"
-REPO_REF="${HY2_REPO_REF:-v1.3.28}"
+REPO_REF="${HY2_REPO_REF:-v1.4.0}"
 
 apply_repo_url() {
   if [ -n "${HY2_REPO_URL:-}" ]; then
