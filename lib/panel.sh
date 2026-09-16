@@ -112,6 +112,7 @@ tr.disabled td{opacity:.55}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
 .modal.traffic-modal{width:98vw;height:96vh;max-width:none;max-height:96vh;padding:0;display:flex;flex-direction:column;overflow:hidden;border-radius:12px}
 .traffic-modal .drawer-h{padding:12px 20px}
+.traffic-modal-h{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--line)}
 .traffic-body{padding:14px 18px 20px;overflow:auto;flex:1;background:#eef1f5}
 .traffic-kpis{display:grid;grid-template-columns:repeat(8,1fr);gap:10px;margin-bottom:12px}
 .traffic-kpis .metric{padding:14px 16px;background:#fff;border-radius:14px}
@@ -365,7 +366,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
 
 <div id="trafficModal" class="modal-scrim" role="dialog" aria-modal="true" aria-labelledby="trafficTitle">
   <div class="modal traffic-modal">
-    <div class="drawer-h">
+    <div class="traffic-modal-h">
       <div>
         <h2 id="trafficTitle">流量分析</h2>
         <p id="trafficUser" class="hint" style="margin:4px 0 0"></p>
