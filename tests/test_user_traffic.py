@@ -470,6 +470,12 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("nth-child(5)", block560)
         self.assertNotIn("nth-child(6)", block560)
 
+    def test_topbar_omits_missing_version(self):
+        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        self.assertNotIn('"v"+data.version', panel)
+        self.assertIn("data.version", panel)
+        self.assertIn("unknown", panel[panel.index("$(\"time\")"):panel.index("$(\"traffic\")")])
+
 
 class ClientIpAndSortTests(unittest.TestCase):
     def setUp(self):

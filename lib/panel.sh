@@ -1445,7 +1445,8 @@ async function load(){
     const response=await fetch("data.json?t="+Date.now(),{cache:"no-store"});
     if(!response.ok)throw new Error("HTTP "+response.status);
     const data=await response.json(),t=data.server.traffic;
-    $("time").textContent="v"+data.version+" · 更新 "+data.generated_at+" · "+data.server.ip+" · "+data.server.domain;
+    const ver=String(data.version||"").replace(/^v/i,"").trim();
+    $("time").textContent=(ver&&ver!=="unknown"?("v"+ver+" · "):"")+"更新 "+data.generated_at+" · "+data.server.ip+" · "+data.server.domain;
     $("traffic").textContent=bytes(t.used)+" / "+bytes(t.limit);
     $("remain").textContent="入 "+bytes(t.rx)+" · 出 "+bytes(t.tx)+" · 剩余 "+bytes(t.remain);
     const pctVal=Math.min(100,Number(t.percent)||0);
