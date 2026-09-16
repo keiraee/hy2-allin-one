@@ -585,7 +585,9 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
         output_users: list[dict[str, Any]] = []
         timestamp = iso_now()
         remember_user_streams(state, stream_dump, timestamp)
-        remember_client_ips(state, stream_dump, hysteria_connect_log_lines(), timestamp)
+        log_lines = hysteria_connect_log_lines()
+        remember_client_ips(state, stream_dump, log_lines, timestamp)
+        remember_log_destinations(state, log_lines, timestamp)
 
         for username, info in sorted(users.items()):
             user_state = state_users.setdefault(
@@ -1111,6 +1113,90 @@ def prune_client_ips(state: dict[str, Any]) -> None:
             bucket.pop(user, None)
 
 
+def is_plausible_host(host: str) -> bool:
+    text = str(host or "").strip().strip(".")
+    if not text or "%" in text or " " in text or len(text) > 253:
+        return False
+    if is_ip_host(text):
+        return True
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", text):
+        return False
+    return "." in text or text.lower() == "localhost"
+
+
+def remember_log_destinations(
+    state: dict[str, Any], log_lines: list[str], timestamp: str
+) -> None:
+    if not isinstance(state, dict):
+        return
+    dest = state.setdefault("destinations", {})
+    if not isinstance(dest, dict):
+        dest = {}
+        state["destinations"] = dest
+    created: set[tuple[str, str]] = set()
+    for line in log_lines or []:
+        text = str(line or "")
+        if "tcp error" not in text.lower():
+            continue
+        start = text.find("{")
+        if start == -1:
+            continue
+        try:
+            obj = json.loads(text[start:])
+        except Exception:
+            obj = None
+        if not isinstance(obj, dict):
+            continue
+        user = str(obj.get("id") or "").strip()
+        req = str(obj.get("reqAddr") or obj.get("req_addr") or "").strip()
+        if not user or not req or not USERNAME_PATTERN.fullmatch(user):
+            continue
+        host, port = split_host_port(req)
+        if not is_plausible_host(host):
+            continue
+        bucket = dest.get(user)
+        if not isinstance(bucket, dict):
+            bucket = {}
+            dest[user] = bucket
+        item = bucket.get(host)
+        if not isinstance(item, dict):
+            item = {
+                "ip": "",
+                "port": "",
+                "upload": 0,
+                "download": 0,
+                "hits": 0,
+                "last_seen": "",
+            }
+            bucket[host] = item
+        if is_ip_host(host):
+            item["ip"] = host
+        if port:
+            item["port"] = port
+        item["last_seen"] = timestamp
+        key = (user, host)
+        if key not in created:
+            item["hits"] = int(item.get("hits", 0) or 0) + 1
+            created.add(key)
+    for user, bucket in list(dest.items()):
+        if not isinstance(bucket, dict):
+            dest.pop(user, None)
+            continue
+        ranked = sorted(
+            bucket.items(),
+            key=lambda kv: (
+                int((kv[1] or {}).get("upload", 0) or 0)
+                + int((kv[1] or {}).get("download", 0) or 0)
+                + int((kv[1] or {}).get("hits", 0) or 0),
+                str((kv[1] or {}).get("last_seen") or ""),
+            ),
+            reverse=True,
+        )
+        dest[user] = {name: info for name, info in ranked[:DEST_MAX_PER_USER]}
+        if not dest[user]:
+            dest.pop(user, None)
+
+
 def remember_client_ips(
     state: dict[str, Any],
     streams: list[Any],
@@ -1363,7 +1449,7 @@ def sites_for_user(username: str) -> list[dict[str, Any]]:
                 "last_seen": str(item.get("last_seen") or ""),
             }
         )
-    rows.sort(key=lambda row: row["total"], reverse=True)
+    rows.sort(key=lambda row: (row["total"], row["hits"]), reverse=True)
     return rows[:DEST_MAX_PER_USER]
 
 

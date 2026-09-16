@@ -484,6 +484,57 @@ class ClientIpAndSortTests(unittest.TestCase):
         self.assertIn("203.0.113.9", state["client_ips"]["bob"])
         self.assertEqual(alice["198.51.100.30"]["port"], "6000")
 
+    def test_remember_log_destinations_from_tcp_error_once_per_host(self):
+        state: dict = {}
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        lines = [
+            'WARN        TCP error        {"addr": "111.21.214.117:61252", "id": "alice", "reqAddr": "edge.microsoft.com:443", "error": "x"}',
+            'WARN        TCP error        {"addr": "111.21.214.117:61252", "id": "alice", "reqAddr": "edge.microsoft.com:443", "error": "y"}',
+            'WARN        TCP error        {"addr": "111.21.214.117:61252", "id": "alice", "reqAddr": "aweme.snssdk.com%28null%29:443", "error": "z"}',
+            'WARN        TCP error        {"addr": "219.144.6.152:40540", "id": "bob", "reqAddr": "bag.itunes.apple.com:443", "error": "t"}',
+        ]
+        self.namespace["remember_log_destinations"](state, lines, now)
+        alice = state["destinations"]["alice"]
+        self.assertEqual(alice["edge.microsoft.com"]["hits"], 1)
+        self.assertEqual(alice["edge.microsoft.com"]["port"], "443")
+        self.assertNotIn("aweme.snssdk.com%28null%29", alice)
+        self.assertIn("bag.itunes.apple.com", state["destinations"]["bob"])
+        self.namespace["remember_log_destinations"](state, lines, now)
+        self.assertEqual(state["destinations"]["alice"]["edge.microsoft.com"]["hits"], 2)
+
+    def test_log_only_sites_rank_by_hits_when_bytes_are_zero(self):
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        self.namespace["hy2_is_off"] = lambda: True
+        self.state_file.write_text(
+            json.dumps(
+                {
+                    "destinations": {
+                        "alice": {
+                            "quiet.example": {
+                                "ip": "",
+                                "port": "443",
+                                "upload": 0,
+                                "download": 0,
+                                "hits": 1,
+                                "last_seen": now,
+                            },
+                            "hot.example": {
+                                "ip": "",
+                                "port": "443",
+                                "upload": 0,
+                                "download": 0,
+                                "hits": 9,
+                                "last_seen": now,
+                            },
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        payload = self.namespace["user_traffic_analysis"]("alice")
+        self.assertEqual([row["host"] for row in payload["sites"]], ["hot.example", "quiet.example"])
+
     def test_traffic_analysis_exposes_client_ips_and_live_client(self):
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         self.state_file.write_text(
