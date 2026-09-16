@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import hmac
+import ipaddress
 import json
 import math
 import os
@@ -22,7 +23,7 @@ import time
 import urllib.parse
 import urllib.request
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import tempfile
@@ -556,6 +557,7 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
         hy2_enabled = not hy2_is_off()
         traffic: dict[str, Any] = {}
         online: dict[str, Any] = {}
+        stream_dump: list[Any] = []
         if hy2_enabled:
             try:
                 # Snapshot only. Clearing here would drop bytes if we crash before persist.
@@ -572,9 +574,17 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
                 online = {}
                 errors.append(f"online API: {error}")
 
+            try:
+                stream_dump = normalize_streams_payload(
+                    hysteria_api("/dump/streams", env["API_SECRET"], attempts=2, delay=0.2)
+                )
+            except Exception:
+                stream_dump = []
+
         state_users = state.setdefault("users", {})
         output_users: list[dict[str, Any]] = []
         timestamp = iso_now()
+        remember_user_streams(state, stream_dump, timestamp)
 
         for username, info in sorted(users.items()):
             user_state = state_users.setdefault(
@@ -974,6 +984,347 @@ def hy2_turn_on() -> dict[str, Any]:
 
 
 USERNAME_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,32}")
+TRAFFIC_HISTORY_DAYS = 7
+DEST_MAX_PER_USER = 80
+
+
+def split_host_port(addr: str) -> tuple[str, str]:
+    text = str(addr or "").strip()
+    if not text:
+        return "", ""
+    if text.startswith("["):
+        end = text.find("]")
+        if end == -1:
+            return text.strip("[]"), ""
+        host = text[1:end]
+        rest = text[end + 1 :]
+        return host, rest[1:] if rest.startswith(":") else ""
+    if text.count(":") == 1:
+        host, port = text.rsplit(":", 1)
+        if port.isdigit():
+            return host, port
+    return text, ""
+
+
+def is_ip_host(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
+def stream_target(stream: dict[str, Any]) -> dict[str, str]:
+    hooked_host, hooked_port = split_host_port(str(stream.get("hooked_req_addr") or ""))
+    req_host, req_port = split_host_port(str(stream.get("req_addr") or ""))
+    port = hooked_port or req_port
+    ip = ""
+    if is_ip_host(req_host):
+        ip = req_host
+    elif is_ip_host(hooked_host):
+        ip = hooked_host
+    host = ""
+    if hooked_host and not is_ip_host(hooked_host):
+        host = hooked_host
+    elif req_host and not is_ip_host(req_host):
+        host = req_host
+    else:
+        host = ip or hooked_host or req_host
+    return {"host": host, "ip": ip, "port": port}
+
+
+def normalize_streams_payload(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict):
+        raw = payload.get("streams", [])
+        return [item for item in raw if isinstance(item, dict)] if isinstance(raw, list) else []
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    return []
+
+
+def remember_user_streams(
+    state: dict[str, Any], streams: list[Any], timestamp: str
+) -> None:
+    seen = state.setdefault("stream_bytes", {})
+    dest = state.setdefault("destinations", {})
+    if not isinstance(seen, dict):
+        seen = {}
+        state["stream_bytes"] = seen
+    if not isinstance(dest, dict):
+        dest = {}
+        state["destinations"] = dest
+    current: set[str] = set()
+    if not isinstance(streams, list):
+        streams = []
+    for stream in streams:
+        if not isinstance(stream, dict):
+            continue
+        user = str(stream.get("auth") or "").strip()
+        if not user:
+            continue
+        key = f"{user}:{stream.get('connection')}:{stream.get('stream')}"
+        current.add(key)
+        try:
+            tx = int(stream.get("tx") or 0)
+            rx = int(stream.get("rx") or 0)
+        except (TypeError, ValueError):
+            tx = rx = 0
+        prev = seen.get(key)
+        first = not isinstance(prev, dict)
+        prev_tx = int((prev or {}).get("tx", 0) or 0) if isinstance(prev, dict) else 0
+        prev_rx = int((prev or {}).get("rx", 0) or 0) if isinstance(prev, dict) else 0
+        dtx = counter_delta(tx, prev_tx)
+        drx = counter_delta(rx, prev_rx)
+        seen[key] = {"tx": tx, "rx": rx}
+        target = stream_target(stream)
+        host = target["host"] or target["ip"] or "unknown"
+        bucket = dest.setdefault(user, {})
+        if not isinstance(bucket, dict):
+            bucket = {}
+            dest[user] = bucket
+        item = bucket.get(host)
+        if not isinstance(item, dict):
+            item = {
+                "ip": "",
+                "port": "",
+                "upload": 0,
+                "download": 0,
+                "hits": 0,
+                "last_seen": "",
+            }
+            bucket[host] = item
+        if target["ip"]:
+            item["ip"] = target["ip"]
+        if target["port"]:
+            item["port"] = target["port"]
+        item["upload"] = int(item.get("upload", 0) or 0) + dtx
+        item["download"] = int(item.get("download", 0) or 0) + drx
+        if first:
+            item["hits"] = int(item.get("hits", 0) or 0) + 1
+        item["last_seen"] = timestamp
+    for stale in [key for key in list(seen) if key not in current]:
+        seen.pop(stale, None)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=TRAFFIC_HISTORY_DAYS)
+    for user, bucket in list(dest.items()):
+        if not isinstance(bucket, dict):
+            dest.pop(user, None)
+            continue
+        for host, item in list(bucket.items()):
+            if not isinstance(item, dict):
+                bucket.pop(host, None)
+                continue
+            seen_at = parse_history_time(str(item.get("last_seen", "")))
+            if seen_at is None or seen_at < cutoff:
+                bucket.pop(host, None)
+        ranked = sorted(
+            bucket.items(),
+            key=lambda kv: int((kv[1] or {}).get("upload", 0) or 0)
+            + int((kv[1] or {}).get("download", 0) or 0),
+            reverse=True,
+        )
+        dest[user] = {name: info for name, info in ranked[:DEST_MAX_PER_USER]}
+        if not dest[user]:
+            dest.pop(user, None)
+
+
+def live_streams_for_user(username: str) -> list[dict[str, Any]]:
+    if hy2_is_off():
+        return []
+    try:
+        env = load_env()
+        payload = hysteria_api(
+            "/dump/streams", env.get("API_SECRET", ""), attempts=1, delay=0.1
+        )
+    except Exception:
+        return []
+    rows: list[dict[str, Any]] = []
+    for stream in normalize_streams_payload(payload):
+        if str(stream.get("auth") or "").strip() != username:
+            continue
+        target = stream_target(stream)
+        try:
+            upload = int(stream.get("tx") or 0)
+            download = int(stream.get("rx") or 0)
+        except (TypeError, ValueError):
+            upload = download = 0
+        rows.append(
+            {
+                "host": target["host"] or target["ip"] or "unknown",
+                "ip": target["ip"],
+                "port": target["port"],
+                "upload": upload,
+                "download": download,
+                "state": str(stream.get("state") or ""),
+                "last_active": str(stream.get("last_active_at") or ""),
+            }
+        )
+    rows.sort(key=lambda row: row["upload"] + row["download"], reverse=True)
+    return rows[:DEST_MAX_PER_USER]
+
+
+def sites_for_user(username: str) -> list[dict[str, Any]]:
+    state = read_json(STATE_FILE, {})
+    bucket: dict[str, Any] = {}
+    if isinstance(state, dict):
+        dest = state.get("destinations")
+        if isinstance(dest, dict) and isinstance(dest.get(username), dict):
+            bucket = dest[username]
+    cutoff = datetime.now(timezone.utc) - timedelta(days=TRAFFIC_HISTORY_DAYS)
+    rows: list[dict[str, Any]] = []
+    for host, item in bucket.items():
+        if not isinstance(item, dict):
+            continue
+        seen_at = parse_history_time(str(item.get("last_seen", "")))
+        if seen_at is not None and seen_at < cutoff:
+            continue
+        upload = int(item.get("upload", 0) or 0)
+        download = int(item.get("download", 0) or 0)
+        rows.append(
+            {
+                "host": str(host),
+                "ip": str(item.get("ip") or ""),
+                "port": str(item.get("port") or ""),
+                "upload": upload,
+                "download": download,
+                "total": upload + download,
+                "hits": int(item.get("hits", 0) or 0),
+                "last_seen": str(item.get("last_seen") or ""),
+            }
+        )
+    rows.sort(key=lambda row: row["total"], reverse=True)
+    return rows[:DEST_MAX_PER_USER]
+
+
+def parse_history_time(raw: str) -> Optional[datetime]:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        stamp = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if stamp.tzinfo is None:
+        stamp = stamp.replace(tzinfo=timezone.utc)
+    return stamp.astimezone(timezone.utc)
+
+
+def history_files() -> list[Path]:
+    files: list[Path] = []
+    rotated = HISTORY_CSV.with_name("history.csv.1")
+    if rotated.exists():
+        files.append(rotated)
+    if HISTORY_CSV.exists():
+        files.append(HISTORY_CSV)
+    return files
+
+
+def load_user_history_rows(username: str) -> list[tuple[datetime, int, int]]:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=TRAFFIC_HISTORY_DAYS)
+    rows: list[tuple[datetime, int, int]] = []
+    for path in history_files():
+        try:
+            with path.open(newline="", encoding="utf-8") as file:
+                reader = csv.DictReader(file)
+                for item in reader:
+                    if str(item.get("用户", "")).strip() != username:
+                        continue
+                    stamp = parse_history_time(str(item.get("时间", "")))
+                    if stamp is None or stamp < cutoff:
+                        continue
+                    try:
+                        upload = int(item.get("用户上传", 0) or 0)
+                        download = int(item.get("用户下载", 0) or 0)
+                    except (TypeError, ValueError):
+                        continue
+                    rows.append((stamp, max(upload, 0), max(download, 0)))
+        except OSError:
+            continue
+    rows.sort(key=lambda item: item[0])
+    return rows
+
+
+def series_from_history(rows: list[tuple[datetime, int, int]]) -> list[dict[str, Any]]:
+    series: list[dict[str, Any]] = []
+    prev_up: Optional[int] = None
+    prev_down: Optional[int] = None
+    for stamp, upload, download in rows:
+        if prev_up is None or prev_down is None:
+            prev_up, prev_down = upload, download
+            continue
+        up = counter_delta(upload, prev_up)
+        down = counter_delta(download, prev_down)
+        prev_up, prev_down = upload, download
+        series.append(
+            {
+                "t": stamp.isoformat(timespec="seconds"),
+                "up": up,
+                "down": down,
+            }
+        )
+    return series
+
+
+def user_traffic_analysis(username: str) -> dict[str, Any]:
+    username = str(username or "").strip()
+    if not USERNAME_PATTERN.fullmatch(username):
+        raise ValueError("用户名格式错误")
+    users = load_users()
+    if username not in users:
+        raise ValueError("用户不存在")
+
+    data = read_json(DATA_FILE, {})
+    snapshot: dict[str, Any] = {}
+    traffic: dict[str, Any] = {}
+    if isinstance(data, dict):
+        for item in data.get("users") or []:
+            if isinstance(item, dict) and str(item.get("username", "")) == username:
+                snapshot = item
+                break
+        server = data.get("server")
+        if isinstance(server, dict) and isinstance(server.get("traffic"), dict):
+            traffic = server["traffic"]
+
+    upload = int(snapshot.get("upload", 0) or 0)
+    download = int(snapshot.get("download", 0) or 0)
+    total = int(snapshot.get("total", upload + download) or (upload + download))
+    lifetime = int(snapshot.get("lifetime_total", 0) or 0)
+    used = int(traffic.get("used", 0) or 0)
+    share = round(total / used * 100, 1) if used else 0.0
+    egress = ""
+    if isinstance(data, dict) and isinstance(data.get("server"), dict):
+        egress = str(data["server"].get("ip") or "")
+    if not egress:
+        try:
+            egress = str(load_env().get("PUBLIC_IP", "") or "")
+        except Exception:
+            egress = ""
+    series = series_from_history(load_user_history_rows(username))
+    peak: Optional[dict[str, Any]] = None
+    for item in series:
+        delta_total = int(item["up"]) + int(item["down"])
+        if peak is None or delta_total > int(peak["total"]):
+            peak = {
+                "t": item["t"],
+                "up": item["up"],
+                "down": item["down"],
+                "total": delta_total,
+            }
+    return {
+        "username": username,
+        "month": {
+            "upload": upload,
+            "download": download,
+            "total": total,
+            "lifetime_total": lifetime,
+            "share_percent": share,
+        },
+        "series": series,
+        "has_history": bool(series),
+        "peak": peak,
+        "egress_ip": egress,
+        "live": live_streams_for_user(username),
+        "sites": sites_for_user(username),
+    }
 
 
 def forget_user_side_state(username: str) -> None:
@@ -991,7 +1342,15 @@ def forget_user_side_state(username: str) -> None:
         users_state = state.get("users")
         if isinstance(users_state, dict) and username in users_state:
             users_state.pop(username, None)
-            atomic_json(STATE_FILE, state)
+        destinations = state.get("destinations")
+        if isinstance(destinations, dict) and username in destinations:
+            destinations.pop(username, None)
+        stream_bytes = state.get("stream_bytes")
+        if isinstance(stream_bytes, dict):
+            prefix = username + ":"
+            for key in [item for item in list(stream_bytes) if str(item).startswith(prefix)]:
+                stream_bytes.pop(key, None)
+        atomic_json(STATE_FILE, state)
 
 
 def mutate_users(mutator) -> dict[str, Any]:
@@ -1489,6 +1848,15 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/user/credentials":
                 self.handle_user_credentials(self.read_body())
+                return
+            if path == "/user/traffic":
+                payload = self.read_body()
+                try:
+                    data = user_traffic_analysis(str(payload.get("username", "")).strip())
+                except ValueError as error:
+                    self.send_json(400, {"ok": False, "error": str(error)})
+                    return
+                self.send_json(200, {"ok": True, **data})
                 return
             if path in (
                 "/user/note",

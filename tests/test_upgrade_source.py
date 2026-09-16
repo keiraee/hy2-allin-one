@@ -238,11 +238,12 @@ source ./hy2.sh
 upgrade_already_current "$root/same.env" v1.3.24 && echo same-yes || echo same-no
 upgrade_already_current "$root/other.env" v1.3.24 && echo other-yes || echo other-no
 upgrade_already_current "$root/same.env" main && echo main-yes || echo main-no
+upgrade_already_current "$root/same.env" abcdef0 && echo sha-yes || echo sha-no
 """
         )
         self.assertEqual(0, result.returncode, result.stderr or result.stdout)
         self.assertEqual(
-            ["same-yes", "other-no", "main-no"],
+            ["same-yes", "other-no", "main-no", "sha-no"],
             result.stdout.strip().splitlines(),
         )
 
@@ -288,6 +289,141 @@ resolve_upgrade_source
         self.assertEqual("升级 未知 → v9.9.9", messages[0])
         self.assertEqual("模块来源：alice/hy2-fork @ v9.9.9", messages[1])
         self.assertTrue(messages[2].startswith("模块地址："))
+
+    def test_saved_main_track_is_used_when_repo_ref_is_unset(self):
+        result = run_bash(
+            r"""
+set -Eeuo pipefail
+root="$(mktemp -d)"
+trap 'rm -rf "$root"' EXIT
+printf '%s\n' 'AIO_VERSION=1.3.28' 'HY2_TRACK_REF=main' > "$root/config.env"
+source ./hy2.sh
+HY2_ENV_FILE="$root/config.env"
+unset HY2_REPO_REF
+unset HY2_REPO_URL
+unset HY2_UPGRADE_BANNER
+HY2_REPO=keiraee/hy2-allin-one
+resolve_upgrade_source
+printf 'REF=%s\n' "$REPO_REF"
+printf 'TRACK=%s\n' "$HY2_PERSIST_TRACK"
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        self.assertIn("keiraee/hy2-allin-one @ main", result.stdout)
+        self.assertIn("https://raw.githubusercontent.com/keiraee/hy2-allin-one/main", result.stdout)
+
+    def test_cli_upgrade_follows_saved_main_track_instead_of_latest(self):
+        result = run_bash(
+            r"""
+set -Eeuo pipefail
+hy2_testdir="$(mktemp -d)"
+trap 'rm -rf "$hy2_testdir"' EXIT
+mkdir -p "$hy2_testdir/commands"
+printf '%s\n' 'AIO_VERSION=1.3.28' 'HY2_TRACK_REF=main' > "$hy2_testdir/config.env"
+cat > "$hy2_testdir/commands/curl" <<'EOS'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HY2_TESTDIR/trace.log"
+out=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-o" ]; then
+    out="$arg"
+  fi
+  prev="$arg"
+done
+if printf '%s' "$*" | grep -q '/releases/latest'; then
+  printf '%s\n' '{"tag_name":"v1.3.28"}'
+  [ -z "$out" ] && exit 0
+fi
+if [ -n "$out" ]; then
+  {
+    echo '#!/bin/sh'
+    echo 'echo "HY2_REPO=${HY2_REPO-}" > "$HY2_TESTDIR/seen.env"'
+    echo 'echo "HY2_REPO_REF=${HY2_REPO_REF-}" >> "$HY2_TESTDIR/seen.env"'
+    echo 'echo "HY2_PERSIST_TRACK=${HY2_PERSIST_TRACK-}" >> "$HY2_TESTDIR/seen.env"'
+  } > "$out"
+  exit 0
+fi
+exit 1
+EOS
+chmod +x "$hy2_testdir/commands/curl"
+cat > "$hy2_testdir/commands/id" <<'EOS'
+#!/bin/sh
+printf '0\n'
+EOS
+chmod +x "$hy2_testdir/commands/id"
+export PATH="$hy2_testdir/commands:$PATH"
+export HY2_TESTDIR="$hy2_testdir"
+export HY2_REPO=alice/hy2-fork
+export HY2_ENV_FILE="$hy2_testdir/config.env"
+unset HY2_REPO_REF
+unset HY2_REPO_URL
+env PATH="$hy2_testdir/commands:/usr/bin:/bin" HY2_TESTDIR="$hy2_testdir" /bin/bash "$PWD/bin/hy2.sh" upgrade
+test -f "$hy2_testdir/seen.env"
+grep -q 'HY2_REPO_REF=main' "$hy2_testdir/seen.env"
+grep -q 'HY2_PERSIST_TRACK=main' "$hy2_testdir/seen.env"
+grep -q 'main/hy2.sh' "$hy2_testdir/trace.log"
+! grep -q 'releases/latest' "$hy2_testdir/trace.log"
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        self.assertNotIn("无需升级", result.stdout)
+
+    def test_cli_upgrade_latest_overrides_saved_main_track(self):
+        result = run_bash(
+            r"""
+set -Eeuo pipefail
+hy2_testdir="$(mktemp -d)"
+trap 'rm -rf "$hy2_testdir"' EXIT
+mkdir -p "$hy2_testdir/commands"
+printf '%s\n' 'AIO_VERSION=1.3.28' 'HY2_TRACK_REF=main' > "$hy2_testdir/config.env"
+cat > "$hy2_testdir/commands/curl" <<'EOS'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HY2_TESTDIR/trace.log"
+out=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-o" ]; then
+    out="$arg"
+  fi
+  prev="$arg"
+done
+if printf '%s' "$*" | grep -q '/releases/latest'; then
+  printf '%s\n' '{"tag_name":"v9.9.9"}'
+  [ -z "$out" ] && exit 0
+fi
+if [ -n "$out" ]; then
+  {
+    echo '#!/bin/sh'
+    echo 'echo "HY2_REPO=${HY2_REPO-}" > "$HY2_TESTDIR/seen.env"'
+    echo 'echo "HY2_REPO_REF=${HY2_REPO_REF-}" >> "$HY2_TESTDIR/seen.env"'
+    echo 'echo "HY2_PERSIST_TRACK=${HY2_PERSIST_TRACK-}" >> "$HY2_TESTDIR/seen.env"'
+  } > "$out"
+  exit 0
+fi
+exit 1
+EOS
+chmod +x "$hy2_testdir/commands/curl"
+cat > "$hy2_testdir/commands/id" <<'EOS'
+#!/bin/sh
+printf '0\n'
+EOS
+chmod +x "$hy2_testdir/commands/id"
+export PATH="$hy2_testdir/commands:$PATH"
+export HY2_TESTDIR="$hy2_testdir"
+export HY2_REPO=alice/hy2-fork
+export HY2_ENV_FILE="$hy2_testdir/config.env"
+export HY2_REPO_REF=latest
+unset HY2_REPO_URL
+env PATH="$hy2_testdir/commands:/usr/bin:/bin" HY2_TESTDIR="$hy2_testdir" HY2_REPO_REF=latest /bin/bash "$PWD/bin/hy2.sh" upgrade
+test -f "$hy2_testdir/seen.env"
+grep -q 'HY2_REPO_REF=v9.9.9' "$hy2_testdir/seen.env"
+grep -q 'HY2_PERSIST_TRACK=latest' "$hy2_testdir/seen.env"
+grep -q 'releases/latest' "$hy2_testdir/trace.log"
+grep -q 'v9.9.9/hy2.sh' "$hy2_testdir/trace.log"
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
 
 
 if __name__ == "__main__":

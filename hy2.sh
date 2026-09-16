@@ -50,6 +50,10 @@ upgrade_already_current() {
   local from to
   from="$(read_installed_aio_version "${1:-}")"
   to="$(normalize_aio_version "${2:-}")"
+  case "$to" in
+    v[0-9]*|[0-9]*) ;;
+    *) return 1 ;;
+  esac
   [ "$from" != "未知" ] && [ -n "$to" ] && [ "$from" = "$to" ]
 }
 
@@ -165,14 +169,31 @@ resolve_latest_repo_ref() {
   apply_repo_url
 }
 
-resolve_upgrade_source() {
-  REPO_SLUG="${HY2_REPO:-$DEFAULT_REPO_SLUG}"
-  if [ -z "${HY2_REPO_REF:-}" ] || [ "${HY2_REPO_REF}" = "latest" ]; then
-    resolve_latest_repo_ref
-  else
-    REPO_REF="$HY2_REPO_REF"
-    apply_repo_url
+read_saved_track_ref() {
+  local env_file="${HY2_ENV_FILE:-/etc/hy2-aio/config.env}" value=""
+  if [ -f "$env_file" ]; then
+    value="$(awk -F= '/^HY2_TRACK_REF=/{gsub(/\r/,""); print $2; exit}' "$env_file" || true)"
   fi
+  printf '%s' "$value"
+}
+
+resolve_upgrade_source() {
+  local requested="${HY2_REPO_REF:-}"
+  REPO_SLUG="${HY2_REPO:-$DEFAULT_REPO_SLUG}"
+  if [ -z "$requested" ]; then
+    requested="$(read_saved_track_ref)"
+  fi
+  if [ -z "$requested" ] || [ "$requested" = "latest" ]; then
+    resolve_latest_repo_ref
+    HY2_PERSIST_TRACK=latest
+  else
+    REPO_REF="$requested"
+    apply_repo_url
+    HY2_PERSIST_TRACK="$requested"
+  fi
+  export HY2_PERSIST_TRACK
+  export REPO_REF
+  export REPO_URL
   log_upgrade_plan
   log_repo_source "模块来源"
 }
@@ -605,7 +626,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_RATE_LIMIT_API  面板 API 每 IP 每分钟次数，默认 120
   HY2_REPO            GitHub 仓库 slug，默认 keiraee/hy2-allin-one
   HY2_REPO_URL        模块下载地址（覆盖 raw 默认；fork 请优先用 HY2_REPO）
-  HY2_REPO_REF        Git 分支/tag/commit，默认 v1.3.28；upgrade 空值=latest
+  HY2_REPO_REF        Git 分支/tag/commit；upgrade 空值=已记住的轨道或 latest
   HY2_YES             设为 1 跳过卸载确认
   HY2_PURGE           设为 1 时卸载并删除配置/数据
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
@@ -631,6 +652,16 @@ main() {
       else
         apply_repo_url
         if [ "$command" = "repair" ]; then
+          if [ -z "${HY2_PERSIST_TRACK:-}" ]; then
+            case "${HY2_REPO_REF:-}" in
+              ""|latest) ;;
+              v[0-9]*|[0-9]*) ;;
+              *)
+                HY2_PERSIST_TRACK="$HY2_REPO_REF"
+                export HY2_PERSIST_TRACK
+                ;;
+            esac
+          fi
           log_upgrade_plan
         fi
         log_repo_source "模块来源"

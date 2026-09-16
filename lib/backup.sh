@@ -191,23 +191,34 @@ repair_cmd() {
   ensure_mode_file
   ensure_hysteria_config_perms
 
-  python3 - "$ENV_FILE" "$SCRIPT_VERSION" <<'PY'
+  python3 - "$ENV_FILE" "$SCRIPT_VERSION" "${HY2_PERSIST_TRACK:-}" <<'PY'
 import os
 import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
 version = sys.argv[2]
+track = sys.argv[3] if len(sys.argv) > 3 else ""
 lines = path.read_text(encoding="utf-8").splitlines()
 found_version = False
 found_obfs = False
 found_keep = False
 found_idle = False
+found_track = False
 output = []
 for line in lines:
     if line.startswith("AIO_VERSION="):
         output.append(f"AIO_VERSION={version}")
         found_version = True
+    elif line.startswith("HY2_TRACK_REF="):
+        if track == "latest":
+            continue
+        if track:
+            output.append(f"HY2_TRACK_REF={track}")
+            found_track = True
+        else:
+            output.append(line)
+            found_track = True
     elif line.startswith("OBFS_ENABLED="):
         output.append(line)
         found_obfs = True
@@ -221,6 +232,8 @@ for line in lines:
         output.append(line)
 if not found_version:
     output.insert(0, f"AIO_VERSION={version}")
+if track and track != "latest" and not found_track:
+    output.append(f"HY2_TRACK_REF={track}")
 if not found_obfs:
     output.append("OBFS_ENABLED=true")
 if not found_keep:

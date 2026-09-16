@@ -109,6 +109,12 @@ lines.extend([
     f'  listen: "127.0.0.1:{env.get("STATS_PORT", "9999")}"',
     f"  secret: {json.dumps(env['API_SECRET'])}",
     "",
+    "sniff:",
+    "  enable: true",
+    "  timeout: 2s",
+    "  tcpPorts: 80,443",
+    "  udpPorts: 443",
+    "",
 ])
 
 descriptor, temporary_name = tempfile.mkstemp(

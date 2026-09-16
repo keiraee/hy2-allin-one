@@ -23,11 +23,27 @@ hy2 upgrade
 hy2 restart
 ```
 
+跟踪 **main 开发版**（不发 Release 也能更新）：
+
+```bash
+# 第一次必须带 HY2_REPO_REF=main，本机会写入 HY2_TRACK_REF=main
+sudo HY2_REPO_REF=main hy2 upgrade
+sudo hy2 restart
+# 之后直接 hy2 upgrade 继续跟 main，不会被后续正式版 tag 带跑
+```
+
+切回 GitHub 正式版轨道：
+
+```bash
+sudo HY2_REPO_REF=latest hy2 upgrade
+sudo hy2 restart
+```
+
 若本机还没有 `hy2 upgrade`（很旧的安装），先执行一次：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.3.28/hy2.sh -o hy2.sh
-sudo bash hy2.sh repair
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/main/hy2.sh -o hy2.sh
+sudo HY2_REPO_REF=main bash hy2.sh upgrade
 ```
 
 `upgrade` / `repair` 会打回滚快照、更新模块与配置、写入 Hysteria 配置（含 QUIC 保活）；**默认不重启 Hysteria**。使配置生效请 `sudo hy2 restart`，或用 `sudo hy2 obfs on|off`（会重启 Hysteria）。
@@ -92,7 +108,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref | `v1.3.28` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.3.28` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
 | `CADDY_VERSION` | Caddy 回退安装版本 | `v2.11.4` |

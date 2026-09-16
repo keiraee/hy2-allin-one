@@ -12,21 +12,28 @@ REPO_SLUG="${HY2_REPO:-$DEFAULT_REPO_SLUG}"
 # 自更新：先拉最新引导脚本再 repair，不依赖本机旧模块里的逻辑
 if [ "${1:-}" = "upgrade" ]; then
   [ "$(id -u)" -eq 0 ] || { printf '%s\n' "需要 root。已是 root：hy2 upgrade；有 sudo：sudo hy2 upgrade" >&2; exit 1; }
+  env_file="${HY2_ENV_FILE:-/etc/hy2-aio/config.env}"
   ref="${HY2_REPO_REF:-}"
+  persist=""
+  if [ -z "$ref" ] && [ -f "$env_file" ]; then
+    ref="$(awk -F= '/^HY2_TRACK_REF=/{gsub(/\r/,""); print $2; exit}' "$env_file" || true)"
+  fi
   if [ -z "$ref" ] || [ "$ref" = "latest" ]; then
+    persist="latest"
     ref="$(curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
       "https://api.github.com/repos/${REPO_SLUG}/releases/latest" \
       | python3 -c 'import sys, json; print(json.load(sys.stdin)["tag_name"])')" \
       || { printf '%s\n' "无法获取 latest release（${REPO_SLUG}）" >&2; exit 1; }
+  else
+    persist="$ref"
   fi
-  [ -n "$ref" ] || { printf '%s\n' "latest release 为空" >&2; exit 1; }
+  [ -n "$ref" ] || { printf '%s\n' "upgrade 目标为空" >&2; exit 1; }
   if [ -n "${HY2_REPO_URL:-}" ]; then
     bootstrap_url="${HY2_REPO_URL%/}/hy2.sh"
   else
     bootstrap_url="https://raw.githubusercontent.com/${REPO_SLUG}/${ref}/hy2.sh"
   fi
   current="未知"
-  env_file="${HY2_ENV_FILE:-/etc/hy2-aio/config.env}"
   if [ -f "$env_file" ]; then
     current="$(awk -F= '/^AIO_VERSION=/{gsub(/\r/,""); print $2; exit}' "$env_file" || true)"
     [ -n "$current" ] || current="未知"
@@ -41,7 +48,15 @@ if [ "${1:-}" = "upgrade" ]; then
     v*) ;;
     [0-9]*) target="v${target}" ;;
   esac
-  if [ "$current" != "未知" ] && [ "$current" = "$target" ]; then
+  skip=0
+  case "$ref" in
+    v[0-9]*|[0-9]*)
+      if [ "$current" != "未知" ] && [ "$current" = "$target" ]; then
+        skip=1
+      fi
+      ;;
+  esac
+  if [ "$skip" -eq 1 ]; then
     printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "已是 ${current}，无需升级"
     exit 0
   fi
@@ -54,7 +69,7 @@ if [ "${1:-}" = "upgrade" ]; then
     "${bootstrap_url}?nocache=$(date +%s)" -o "$tmp/hy2.sh" \
     || { printf '%s\n' "下载 hy2.sh 失败" >&2; exit 1; }
   HY2_REPO="$REPO_SLUG" HY2_REPO_REF="$ref" HY2_REPO_URL="${HY2_REPO_URL:-}" \
-    HY2_UPGRADE_BANNER=1 \
+    HY2_PERSIST_TRACK="$persist" HY2_UPGRADE_BANNER=1 \
     bash "$tmp/hy2.sh" repair
   exit $?
 fi

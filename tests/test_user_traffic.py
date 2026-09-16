@@ -1,0 +1,388 @@
+import csv
+import json
+import tempfile
+import unittest
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+HISTORY_HEADER = [
+    "时间",
+    "整机接收",
+    "整机发送",
+    "整机合计",
+    "CPU",
+    "内存百分比",
+    "用户",
+    "在线设备",
+    "用户上传",
+    "用户下载",
+    "用户合计",
+]
+
+
+def load_backend_namespace():
+    shell_source = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+    start_marker = '  cat > "$APP_FILE" <<\'PY\'\n'
+    end_marker = '\nPY\n  chmod 0755 "$APP_FILE"'
+    start = shell_source.index(start_marker) + len(start_marker)
+    end = shell_source.index(end_marker, start)
+    namespace = {"__name__": "hy2_aio_user_traffic_test"}
+    exec(compile(shell_source[start:end], "server.py", "exec"), namespace)
+    return namespace
+
+
+def write_history(path: Path, rows: list[list[object]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(HISTORY_HEADER)
+        writer.writerows(rows)
+
+
+def history_row(stamp: str, username: str, upload: int, download: int) -> list[object]:
+    return [
+        stamp,
+        0,
+        0,
+        0,
+        0,
+        0,
+        username,
+        0,
+        upload,
+        download,
+        upload + download,
+    ]
+
+
+class UserTrafficAnalysisTests(unittest.TestCase):
+    def setUp(self):
+        self.namespace = load_backend_namespace()
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.users_file = self.root / "users.json"
+        self.data_file = self.root / "data.json"
+        self.history = self.root / "history.csv"
+        self.users_file.write_text(
+            json.dumps(
+                {
+                    "alice": {"password": "x", "token": "t", "disabled": False},
+                    "bob": {"password": "y", "token": "u", "disabled": False},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        self.data_file.write_text(
+            json.dumps(
+                {
+                    "server": {"traffic": {"used": 2000}, "ip": "203.0.113.9"},
+                    "users": [
+                        {
+                            "username": "alice",
+                            "upload": 400,
+                            "download": 1600,
+                            "total": 2000,
+                            "lifetime_total": 5000,
+                        }
+                    ],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        self.namespace.update(
+            {
+                "USERS_FILE": self.users_file,
+                "DATA_FILE": self.data_file,
+                "HISTORY_CSV": self.history,
+            }
+        )
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def analyze(self, username: str = "alice"):
+        return self.namespace["user_traffic_analysis"](username)
+
+    def test_rejects_invalid_username(self):
+        with self.assertRaisesRegex(ValueError, "用户名"):
+            self.analyze("bad name")
+
+    def test_rejects_unknown_user(self):
+        with self.assertRaisesRegex(ValueError, "用户不存在"):
+            self.analyze("carol")
+
+    def test_month_snapshot_without_history(self):
+        payload = self.analyze()
+        self.assertEqual(payload["username"], "alice")
+        self.assertEqual(payload["month"]["upload"], 400)
+        self.assertEqual(payload["month"]["download"], 1600)
+        self.assertEqual(payload["month"]["total"], 2000)
+        self.assertEqual(payload["month"]["lifetime_total"], 5000)
+        self.assertEqual(payload["month"]["share_percent"], 100.0)
+        self.assertEqual(payload["egress_ip"], "203.0.113.9")
+        self.assertEqual(payload["series"], [])
+        self.assertEqual(payload["live"], [])
+        self.assertEqual(payload["sites"], [])
+        self.assertFalse(payload["has_history"])
+        self.assertIsNone(payload["peak"])
+
+    def test_series_uses_cumulative_deltas_and_skips_other_users(self):
+        now = datetime.now(timezone.utc)
+        t0 = (now - timedelta(minutes=15)).isoformat(timespec="seconds")
+        t1 = (now - timedelta(minutes=10)).isoformat(timespec="seconds")
+        t2 = (now - timedelta(minutes=5)).isoformat(timespec="seconds")
+        write_history(
+            self.history,
+            [
+                history_row(t0, "alice", 100, 200),
+                history_row(t0, "bob", 900, 900),
+                history_row(t1, "alice", 150, 500),
+                history_row(t2, "alice", 180, 800),
+            ],
+        )
+        payload = self.analyze()
+        self.assertTrue(payload["has_history"])
+        self.assertEqual(
+            [(item["up"], item["down"]) for item in payload["series"]],
+            [(50, 300), (30, 300)],
+        )
+        self.assertEqual(payload["series"][0]["t"], t1)
+        self.assertEqual(payload["peak"]["t"], t1)
+        self.assertEqual(payload["peak"]["total"], 350)
+
+    def test_month_reset_does_not_create_negative_delta(self):
+        now = datetime.now(timezone.utc)
+        t0 = (now - timedelta(minutes=10)).isoformat(timespec="seconds")
+        t1 = (now - timedelta(minutes=5)).isoformat(timespec="seconds")
+        write_history(
+            self.history,
+            [
+                history_row(t0, "alice", 1000, 2000),
+                history_row(t1, "alice", 40, 80),
+            ],
+        )
+        payload = self.analyze()
+        self.assertEqual(payload["series"][0]["up"], 40)
+        self.assertEqual(payload["series"][0]["down"], 80)
+
+    def test_drops_samples_older_than_seven_days(self):
+        now = datetime.now(timezone.utc)
+        old = (now - timedelta(days=8)).isoformat(timespec="seconds")
+        recent0 = (now - timedelta(hours=3)).isoformat(timespec="seconds")
+        recent1 = (now - timedelta(hours=2)).isoformat(timespec="seconds")
+        write_history(
+            self.history,
+            [
+                history_row(old, "alice", 10, 10),
+                history_row(recent0, "alice", 20, 30),
+                history_row(recent1, "alice", 25, 40),
+            ],
+        )
+        payload = self.analyze()
+        self.assertEqual(len(payload["series"]), 1)
+        self.assertEqual(payload["series"][0]["t"], recent1)
+        self.assertEqual(payload["series"][0]["up"], 5)
+        self.assertEqual(payload["series"][0]["down"], 10)
+
+    def test_reads_rotated_history_before_current_file(self):
+        now = datetime.now(timezone.utc)
+        t0 = (now - timedelta(minutes=20)).isoformat(timespec="seconds")
+        t1 = (now - timedelta(minutes=10)).isoformat(timespec="seconds")
+        rotated = self.history.with_name("history.csv.1")
+        write_history(rotated, [history_row(t0, "alice", 10, 20)])
+        write_history(self.history, [history_row(t1, "alice", 40, 70)])
+        payload = self.analyze()
+        self.assertEqual(payload["series"][0]["up"], 30)
+        self.assertEqual(payload["series"][0]["down"], 50)
+
+    def test_zero_machine_usage_has_zero_share(self):
+        self.data_file.write_text(
+            json.dumps(
+                {
+                    "server": {"traffic": {"used": 0}},
+                    "users": [
+                        {
+                            "username": "alice",
+                            "upload": 0,
+                            "download": 0,
+                            "total": 0,
+                            "lifetime_total": 0,
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        payload = self.analyze()
+        self.assertEqual(payload["month"]["share_percent"], 0.0)
+
+    def test_handler_exposes_user_traffic_route(self):
+        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        self.assertIn('path == "/user/traffic"', backend)
+        self.assertIn("user_traffic_analysis", backend)
+
+    def test_stream_target_prefers_sniffed_hostname_and_request_ip(self):
+        target = self.namespace["stream_target"](
+            {
+                "req_addr": "192.0.2.1:443",
+                "hooked_req_addr": "www.example.com:443",
+            }
+        )
+        self.assertEqual(target["host"], "www.example.com")
+        self.assertEqual(target["ip"], "192.0.2.1")
+        self.assertEqual(target["port"], "443")
+
+    def test_stream_target_parses_ipv6(self):
+        target = self.namespace["stream_target"](
+            {"req_addr": "[2001:db8::1]:443", "hooked_req_addr": ""}
+        )
+        self.assertEqual(target["host"], "2001:db8::1")
+        self.assertEqual(target["ip"], "2001:db8::1")
+        self.assertEqual(target["port"], "443")
+
+    def test_remember_user_streams_counts_deltas_and_unique_hits(self):
+        state: dict = {}
+        now = datetime.now(timezone.utc)
+        t0 = (now - timedelta(minutes=2)).isoformat(timespec="seconds")
+        t1 = now.isoformat(timespec="seconds")
+        first = {
+            "auth": "alice",
+            "connection": 1,
+            "stream": 4,
+            "req_addr": "192.0.2.8:443",
+            "hooked_req_addr": "cdn.example.com:443",
+            "tx": 100,
+            "rx": 400,
+        }
+        self.namespace["remember_user_streams"](state, [first], t0)
+        first["tx"] = 150
+        first["rx"] = 900
+        self.namespace["remember_user_streams"](state, [first], t1)
+        site = state["destinations"]["alice"]["cdn.example.com"]
+        self.assertEqual(site["ip"], "192.0.2.8")
+        self.assertEqual(site["upload"], 150)
+        self.assertEqual(site["download"], 900)
+        self.assertEqual(site["hits"], 1)
+
+    def test_sites_and_live_are_scoped_to_the_requested_user(self):
+        self.namespace.update(
+            {
+                "STATE_FILE": self.root / "state.json",
+                "hy2_is_off": lambda: False,
+                "load_env": lambda: {"API_SECRET": "secret", "PUBLIC_IP": "203.0.113.9"},
+                "hysteria_api": lambda path, secret, **kwargs: {
+                    "streams": [
+                        {
+                            "auth": "alice",
+                            "req_addr": "192.0.2.1:443",
+                            "hooked_req_addr": "a.example:443",
+                            "tx": 10,
+                            "rx": 20,
+                            "state": "estab",
+                            "last_active_at": "now",
+                        },
+                        {
+                            "auth": "bob",
+                            "req_addr": "192.0.2.2:443",
+                            "hooked_req_addr": "b.example:443",
+                            "tx": 99,
+                            "rx": 99,
+                            "state": "estab",
+                            "last_active_at": "now",
+                        },
+                    ]
+                },
+            }
+        )
+        (self.root / "state.json").write_text(
+            json.dumps(
+                {
+                    "destinations": {
+                        "alice": {
+                            "a.example": {
+                                "ip": "192.0.2.1",
+                                "port": "443",
+                                "upload": 10,
+                                "download": 20,
+                                "hits": 1,
+                                "last_seen": datetime.now(timezone.utc).isoformat(
+                                    timespec="seconds"
+                                ),
+                            }
+                        },
+                        "bob": {
+                            "b.example": {
+                                "ip": "192.0.2.2",
+                                "port": "443",
+                                "upload": 99,
+                                "download": 99,
+                                "hits": 3,
+                                "last_seen": datetime.now(timezone.utc).isoformat(
+                                    timespec="seconds"
+                                ),
+                            }
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        payload = self.analyze("alice")
+        self.assertEqual(payload["live"][0]["host"], "a.example")
+        self.assertEqual(len(payload["live"]), 1)
+        self.assertEqual(payload["sites"][0]["host"], "a.example")
+        self.assertEqual(len(payload["sites"]), 1)
+
+    def test_forget_user_clears_destination_samples(self):
+        state_file = self.root / "state.json"
+        self.namespace["STATE_FILE"] = state_file
+        state_file.write_text(
+            json.dumps(
+                {
+                    "users": {"alice": {}, "bob": {}},
+                    "destinations": {"alice": {"x": {}}, "bob": {"y": {}}},
+                    "stream_bytes": {"alice:1:2": {"tx": 1, "rx": 1}, "bob:3:4": {"tx": 2, "rx": 2}},
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.namespace["forget_user_side_state"]("bob")
+        state = json.loads(state_file.read_text(encoding="utf-8"))
+        self.assertNotIn("bob", state["destinations"])
+        self.assertNotIn("bob:3:4", state["stream_bytes"])
+        self.assertIn("alice", state["destinations"])
+        self.assertIn("alice:1:2", state["stream_bytes"])
+
+    def test_hysteria_config_enables_sniff_for_hostnames(self):
+        config = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
+        self.assertIn("sniff:", config)
+        self.assertIn("enable: true", config)
+        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        self.assertIn("/dump/streams", backend)
+
+
+class UserTrafficPanelTests(unittest.TestCase):
+    def test_user_menu_opens_traffic_analysis_modal(self):
+        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        self.assertIn("流量分析", panel)
+        self.assertIn("api/user/traffic", panel)
+        self.assertIn('id="trafficModal"', panel)
+        self.assertIn("menuItem(\"流量分析\"", panel)
+        self.assertIn("#dbeafe", panel)
+        self.assertIn("#b91c1c", panel)
+        self.assertIn("时段热力", panel)
+        self.assertIn("增量趋势", panel)
+        self.assertIn("按日用量", panel)
+        self.assertIn("上下行结构", panel)
+        self.assertIn("出口 IP", panel)
+        self.assertIn("当前连接", panel)
+        self.assertIn("访问站点", panel)
+
+
+if __name__ == "__main__":
+    unittest.main()
