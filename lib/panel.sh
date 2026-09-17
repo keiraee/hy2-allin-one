@@ -126,7 +126,7 @@ tr.disabled td{opacity:.55}
 .modal h3{margin:0 0 6px;font-size:14px}
 .modal .hint{margin-bottom:12px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
-.modal.traffic-modal{width:98vw;height:96vh;max-width:none;max-height:96vh;padding:0;display:flex;flex-direction:column;overflow:hidden;border-radius:var(--radius);background:var(--bg)}
+.modal.traffic-modal{width:100%;height:100%;max-width:none;max-height:none;min-width:0;min-height:0;padding:0;display:flex;flex-direction:column;overflow:hidden;border-radius:var(--radius);background:var(--bg)}
 .traffic-modal-h{display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:48px;border-bottom:1px solid var(--line);background:var(--bg)}
 .traffic-modal-h h2{margin:0;font-size:13px;font-weight:700}
 .traffic-body{padding:16px 20px 20px;overflow:auto;flex:1;background:var(--bg)}
