@@ -51,8 +51,23 @@ if [ "${1:-}" = "upgrade" ]; then
       fi
       ;;
   esac
+  saved_modules=""
+  saved_commit=""
+  if [ -f "$env_file" ]; then
+    saved_modules="$(awk -F= '/^HY2_MODULES_SHA=/{gsub(/\r/,""); print substr($0, index($0,"=")+1); exit}' "$env_file" || true)"
+    saved_commit="$(awk -F= '/^HY2_REPO_SHA=/{gsub(/\r/,""); print substr($0, index($0,"=")+1); exit}' "$env_file" || true)"
+  fi
+  saved_label="无"
+  if [ -n "$saved_modules" ]; then
+    saved_label="${saved_modules:0:12}"
+    if printf '%s' "$saved_commit" | grep -qiE '^[0-9a-f]{40}$'; then
+      saved_label="${saved_label}（提交 ${saved_commit:0:12}）"
+    fi
+  fi
   if [ "$skip" -eq 1 ]; then
     printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "已是 ${current}，无需升级"
+    printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "上次哈希：${saved_label}"
+    printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "本次哈希：未下载"
     exit 0
   fi
   fetch_ref="$ref"
@@ -76,6 +91,7 @@ if [ "${1:-}" = "upgrade" ]; then
     bootstrap_url="${raw_base}/hy2.sh"
   fi
   printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "升级 ${current} → ${target}"
+  printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "上次哈希：${saved_label}"
   printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "引导脚本：${bootstrap_url}"
   tmp="$(mktemp -d)"
   # shellcheck disable=SC2064
@@ -83,8 +99,12 @@ if [ "${1:-}" = "upgrade" ]; then
   curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
     "${bootstrap_url}?nocache=$(date +%s)" -o "$tmp/hy2.sh" \
     || { printf '%s\n' "下载 hy2.sh 失败" >&2; exit 1; }
+  fetch_commit=""
+  if printf '%s' "$fetch_ref" | grep -qiE '^[0-9a-f]{40}$'; then
+    fetch_commit="$fetch_ref"
+  fi
   HY2_REPO="$REPO_SLUG" HY2_REPO_REF="$ref" HY2_REPO_URL="${HY2_REPO_URL:-$raw_base}" \
-    HY2_PERSIST_TRACK="$persist" HY2_UPGRADE_BANNER=1 \
+    HY2_PERSIST_TRACK="$persist" HY2_UPGRADE_BANNER=1 HY2_FETCH_COMMIT="$fetch_commit" \
     bash "$tmp/hy2.sh" repair
   exit $?
 fi

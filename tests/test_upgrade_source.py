@@ -1,7 +1,9 @@
+import itertools
 import os
 import re
 import shlex
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +11,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
+_RUN_SEQ = itertools.count()
+
+
+def posix_path(path: Path) -> str:
+    text = path.resolve().as_posix()
+    if len(text) >= 2 and text[1] == ":":
+        return f"/mnt/{text[0].lower()}{text[2:]}"
+    return text
 
 
 def log_messages(stdout: str) -> list[str]:
@@ -25,15 +35,28 @@ def run_bash(script: str, *, env=None, cwd=ROOT) -> subprocess.CompletedProcess:
     merged = os.environ.copy()
     if env:
         merged.update(env)
-    return subprocess.run(
-        ["bash", "-c", script],
-        cwd=cwd,
-        env=merged,
-        text=True,
-        encoding="utf-8",
-        capture_output=True,
-        check=False,
-    )
+    path = ROOT / "tests" / f".tmp_run_{os.getpid()}_{next(_RUN_SEQ)}.sh"
+    path.write_bytes(script.replace("\r\n", "\n").encode("utf-8"))
+    try:
+        return subprocess.run(
+            ["bash", path.relative_to(ROOT).as_posix()],
+            cwd=cwd,
+            env=merged,
+            text=True,
+            encoding="utf-8",
+            capture_output=True,
+            check=False,
+        )
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def persist_env_script() -> str:
+    text = (ROOT / "lib" / "backup.sh").read_text(encoding="utf-8").replace("\r\n", "\n")
+    marker = "import os\nimport re\nimport sys\nfrom pathlib import Path"
+    start = text.index(marker)
+    end = text.index("os.replace(temporary, path)\nPY", start)
+    return text[start : end] + "os.replace(temporary, path)\n"
 
 
 class UpgradeSourceTests(unittest.TestCase):
@@ -109,14 +132,15 @@ printf '%s\\n' 'unexpected curl' >&2
 exit 1
 """,
                 encoding="utf-8",
+                newline="\n",
             )
             curl.chmod(0o755)
             trace = Path(tmp) / "trace.log"
             result = run_bash(
                 f"""
 set -Eeuo pipefail
-export PATH={shlex.quote(str(commands))}:"$PATH"
-export MOCK_TRACE={shlex.quote(str(trace))}
+export PATH={shlex.quote(posix_path(commands))}:"$PATH"
+export MOCK_TRACE={shlex.quote(posix_path(trace))}
 export HY2_REPO=alice/hy2-fork
 source ./hy2.sh
 resolve_latest_repo_ref
@@ -141,7 +165,7 @@ printf '%s %s %s\\n' "$REPO_SLUG" "$REPO_REF" "$REPO_URL"
             curl = commands / "curl"
             curl.write_text(
                 f"""#!/bin/sh
-printf '%s\\n' "$*" >> {shlex.quote(str(trace))}
+printf '%s\\n' "$*" >> {shlex.quote(posix_path(trace))}
 out=""
 url=""
 while [ "$#" -gt 0 ]; do
@@ -160,22 +184,23 @@ if [ -n "$out" ]; then
 #!/usr/bin/env bash
 printf 'HY2_REPO=%s\\nHY2_REPO_REF=%s\\nHY2_REPO_URL=%s\\n' \\
   "${{HY2_REPO-}}" "${{HY2_REPO_REF-}}" "${{HY2_REPO_URL-}}" \\
-  > {shlex.quote(str(seen))}
+  > {shlex.quote(posix_path(seen))}
 EOS
   exit 0
 fi
 exit 1
 """,
                 encoding="utf-8",
+                newline="\n",
             )
             curl.chmod(0o755)
             ident = commands / "id"
-            ident.write_text("#!/bin/sh\nprintf '0\\n'\n", encoding="utf-8")
+            ident.write_text("#!/bin/sh\nprintf '0\\n'\n", encoding="utf-8", newline="\n")
             ident.chmod(0o755)
             result = run_bash(
                 f"""
 set -Eeuo pipefail
-export PATH={shlex.quote(str(commands))}:"$PATH"
+export PATH={shlex.quote(posix_path(commands))}:"$PATH"
 export HY2_REPO=alice/hy2-fork
 unset HY2_REPO_REF
 unset HY2_REPO_URL
@@ -200,7 +225,9 @@ set -Eeuo pipefail
 hy2_testdir="$(mktemp -d)"
 trap 'rm -rf "$hy2_testdir"' EXIT
 mkdir -p "$hy2_testdir/commands"
-printf '%s\n' 'AIO_VERSION=v9.9.9' > "$hy2_testdir/config.env"
+printf '%s\n' 'AIO_VERSION=v9.9.9' \
+  'HY2_MODULES_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+  'HY2_REPO_SHA=0123456789abcdef0123456789abcdef01234567' > "$hy2_testdir/config.env"
 cat > "$hy2_testdir/commands/curl" <<'EOS'
 #!/bin/sh
 printf '%s\n' '{"tag_name":"v9.9.9"}'
@@ -225,6 +252,8 @@ test ! -f "$hy2_testdir/seen.env"
         )
         self.assertEqual(0, result.returncode, result.stderr or result.stdout)
         self.assertIn("已是 v9.9.9，无需升级", result.stdout)
+        self.assertIn("上次哈希：aaaaaaaaaaaa（提交 0123456789ab）", result.stdout)
+        self.assertIn("本次哈希：未下载", result.stdout)
 
     def test_upgrade_already_current_compares_normalized_versions(self):
         result = run_bash(
@@ -239,11 +268,12 @@ upgrade_already_current "$root/same.env" v1.3.24 && echo same-yes || echo same-n
 upgrade_already_current "$root/other.env" v1.3.24 && echo other-yes || echo other-no
 upgrade_already_current "$root/same.env" main && echo main-yes || echo main-no
 upgrade_already_current "$root/same.env" abcdef0 && echo sha-yes || echo sha-no
+upgrade_already_current "$root/same.env" 0568973f657caf864f4a8bdf88d36ddb9581af58 && echo digitsha-yes || echo digitsha-no
 """
         )
         self.assertEqual(0, result.returncode, result.stderr or result.stdout)
         self.assertEqual(
-            ["same-yes", "other-no", "main-no", "sha-no"],
+            ["same-yes", "other-no", "main-no", "sha-no", "digitsha-no"],
             result.stdout.strip().splitlines(),
         )
 
@@ -260,10 +290,10 @@ printf '%s\\n' "$(normalize_aio_version 1.3.21)"
 printf '%s\\n' "$(normalize_aio_version v1.3.22)"
 printf '%s\\n' "$(normalize_aio_version main)"
 printf '%s\\n' "$(normalize_aio_version '')"
-printf '%s\\n' "$(read_installed_aio_version {shlex.quote(str(env_file))})"
-log_upgrade_plan {shlex.quote(str(env_file))}
+printf '%s\\n' "$(read_installed_aio_version {shlex.quote(posix_path(env_file))})"
+log_upgrade_plan {shlex.quote(posix_path(env_file))}
 HY2_UPGRADE_BANNER=1
-log_upgrade_plan {shlex.quote(str(env_file))}
+log_upgrade_plan {shlex.quote(posix_path(env_file))}
 """
             )
             self.assertEqual(0, result.returncode, result.stderr or result.stdout)
@@ -458,6 +488,149 @@ grep -q 'v9.9.9/hy2.sh' "$hy2_testdir/trace.log"
         )
         self.assertEqual(0, result.returncode, result.stderr or result.stdout)
 
+    def test_hash_label_and_fetched_modules_log(self):
+        result = run_bash(
+            r"""
+set -Eeuo pipefail
+source ./hy2.sh
+test "$(hash_label)" = "无"
+test "$(hash_label "")" = "无"
+test "$(hash_label abcdef0123456789)" = "abcdef012345"
+test "$(hash_label abcdef0123456789 0123456789abcdef0123456789abcdef01234567)" = "abcdef012345（提交 0123456789ab）"
+envf="$(mktemp)"
+printf '%s\n' 'HY2_MODULES_SHA=oldhasholdhasholdhasholdhasholdhasholdhasholdhasholdhasholdha' \
+  'HY2_REPO_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$envf"
+export HY2_ENV_FILE="$envf"
+export HY2_FETCH_COMMIT=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+log_fetched_modules_hash newhashnewhashnewhashnewhashnewhashnewhashnewhashnewhashnewhas
+test "$HY2_FETCH_MODULES_SHA" = "newhashnewhashnewhashnewhashnewhashnewhashnewhashnewhashnewhas"
+rm -f "$envf"
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        messages = log_messages(result.stdout)
+        self.assertIn("上次哈希：oldhasholdha（提交 aaaaaaaaaaaa）", messages)
+        self.assertIn("本次哈希：newhashnewha（提交 bbbbbbbbbbbb）", messages)
+        self.assertIn("哈希已变化", messages)
+
+    def test_fetched_modules_hash_unchanged(self):
+        result = run_bash(
+            r"""
+set -Eeuo pipefail
+source ./hy2.sh
+envf="$(mktemp)"
+printf '%s\n' 'HY2_MODULES_SHA=samehashsamehashsamehashsamehashsamehashsamehashsamehashsameha' > "$envf"
+export HY2_ENV_FILE="$envf"
+unset HY2_FETCH_COMMIT || true
+log_fetched_modules_hash samehashsamehashsamehashsamehashsamehashsamehashsamehashsameha
+rm -f "$envf"
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        messages = log_messages(result.stdout)
+        self.assertIn("上次哈希：samehashsame", messages)
+        self.assertIn("本次哈希：samehashsame", messages)
+        self.assertIn("哈希未变化（模块文件与上次相同）", messages)
+
+    def test_file_sha256_ignores_crlf(self):
+        result = run_bash(
+            r"""
+set -Eeuo pipefail
+source ./hy2.sh
+lf="$(mktemp)"
+crlf="$(mktemp)"
+printf 'abc\n' > "$lf"
+printf 'abc\r\n' > "$crlf"
+a="$(file_sha256 "$lf")"
+b="$(file_sha256 "$crlf")"
+rm -f "$lf" "$crlf"
+test "$a" = "$b"
+printf '%s\n' "$a"
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        self.assertEqual(
+            "edeaaff3f1774ad2888673770c6d64097e391bc362d7d6fb34982ddf0efd18cb",
+            result.stdout.strip().splitlines()[-1],
+        )
+
+    def test_remember_fetch_commit_from_raw_url(self):
+        result = run_bash(
+            r"""
+set -Eeuo pipefail
+source ./hy2.sh
+HY2_FETCH_COMMIT=
+HY2_REPO_URL=https://raw.githubusercontent.com/alice/hy2-fork/0123456789abcdef0123456789abcdef01234567
+remember_fetch_commit main
+printf '%s\n' "$HY2_FETCH_COMMIT"
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        self.assertEqual(
+            "0123456789abcdef0123456789abcdef01234567",
+            result.stdout.strip().splitlines()[-1],
+        )
+
+    def test_repair_persist_updates_module_hashes(self):
+        persist_py = persist_env_script()
+        with tempfile.TemporaryDirectory() as tmp:
+            env_file = Path(tmp) / "config.env"
+            env_file.write_text(
+                "AIO_VERSION=1.3.28\nHY2_TRACK_REF=main\nHY2_MODULES_SHA=old\nHY2_REPO_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+                encoding="utf-8",
+            )
+            script = Path(tmp) / "persist.py"
+            script.write_text(persist_py, encoding="utf-8")
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(script),
+                    str(env_file),
+                    "1.4.0",
+                    "main",
+                    "newmodulesha",
+                    "0123456789abcdef0123456789abcdef01234567",
+                ],
+                cwd=tmp,
+                text=True,
+                encoding="utf-8",
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            text = env_file.read_text(encoding="utf-8")
+            self.assertIn("AIO_VERSION=1.4.0", text)
+            self.assertIn("HY2_MODULES_SHA=newmodulesha", text)
+            self.assertIn("HY2_REPO_SHA=0123456789abcdef0123456789abcdef01234567", text)
+
+            completed = subprocess.run(
+                [sys.executable, str(script), str(env_file), "1.4.0", "main", "", ""],
+                cwd=tmp,
+                text=True,
+                encoding="utf-8",
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            kept = env_file.read_text(encoding="utf-8")
+            self.assertIn("HY2_MODULES_SHA=newmodulesha", kept)
+            self.assertIn("HY2_REPO_SHA=0123456789abcdef0123456789abcdef01234567", kept)
+
+            completed = subprocess.run(
+                [sys.executable, str(script), str(env_file), "1.4.0", "latest", "releasehash", "v1.4.0"],
+                cwd=tmp,
+                text=True,
+                encoding="utf-8",
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            released = env_file.read_text(encoding="utf-8")
+            self.assertIn("HY2_MODULES_SHA=releasehash", released)
+            self.assertNotIn("HY2_REPO_SHA=", released)
+            self.assertNotIn("HY2_TRACK_REF=", released)
+
 
 if __name__ == "__main__":
     unittest.main()
+

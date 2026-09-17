@@ -85,17 +85,72 @@ is_release_tag() {
   printf '%s' "${1:-}" | grep -qE '^v?[0-9]+(\.[0-9]+)*([.-][0-9A-Za-z]+)*$'
 }
 
+read_env_value() {
+  local key="$1" env_file="${2:-${HY2_ENV_FILE:-/etc/hy2-aio/config.env}}"
+  [ -f "$env_file" ] || return 0
+  awk -F= -v key="$key" '$1==key {gsub(/\r/,""); print substr($0, index($0,"=")+1); exit}' "$env_file"
+}
+
+file_sha256() {
+  python3 - "$1" <<'PY'
+import hashlib, pathlib, sys
+data = pathlib.Path(sys.argv[1]).read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+print(hashlib.sha256(data).hexdigest())
+PY
+}
+
+hash_label() {
+  local digest="${1:-}" commit="${2:-}" out
+  [ -n "$digest" ] || { printf '%s' "无"; return 0; }
+  out="${digest:0:12}"
+  if is_commit_sha "$commit"; then
+    out="${out}（提交 ${commit:0:12}）"
+  fi
+  printf '%s' "$out"
+}
+
+remember_fetch_commit() {
+  local sha="${1:-}" url="${HY2_REPO_URL:-${REPO_URL:-}}"
+  if ! is_commit_sha "$sha"; then
+    sha="$(printf '%s' "$url" | python3 -c 'import re,sys; m=re.search(r"/([0-9a-fA-F]{40})(?:/|$)", sys.stdin.read()); print((m.group(1) if m else "").lower())')"
+  fi
+  if is_commit_sha "$sha"; then
+    HY2_FETCH_COMMIT="$sha"
+    export HY2_FETCH_COMMIT
+  fi
+}
+
+log_fetched_modules_hash() {
+  local new="${1:-}" old old_commit new_commit
+  old="$(read_env_value HY2_MODULES_SHA)"
+  old_commit="$(read_env_value HY2_REPO_SHA)"
+  new_commit="${HY2_FETCH_COMMIT:-}"
+  _bootstrap_log "上次哈希：$(hash_label "$old" "$old_commit")"
+  _bootstrap_log "本次哈希：$(hash_label "$new" "$new_commit")"
+  if [ -z "$old" ]; then
+    _bootstrap_log "首次记录哈希"
+  elif [ "$old" = "$new" ]; then
+    _bootstrap_log "哈希未变化（模块文件与上次相同）"
+  else
+    _bootstrap_log "哈希已变化"
+  fi
+  HY2_FETCH_MODULES_SHA="$new"
+  export HY2_FETCH_MODULES_SHA
+}
+
 # Branch names like main are mutable; raw.githubusercontent.com caches them.
 # Pin downloads to the current commit so SHA256SUMS and modules refresh together.
 pin_github_raw_to_commit() {
   local requested="${REPO_REF:-}" payload sha
   if [ -n "${HY2_REPO_URL:-}" ]; then
     apply_repo_url
+    remember_fetch_commit "$REPO_REF"
     return 0
   fi
   [ -n "$requested" ] || return 0
   if is_commit_sha "$requested" || is_release_tag "$requested"; then
     apply_repo_url
+    remember_fetch_commit "$requested"
     return 0
   fi
   REPO_TRACK="${REPO_TRACK:-$requested}"
@@ -107,6 +162,7 @@ pin_github_raw_to_commit() {
   _bootstrap_log "钉住提交：${REPO_TRACK} → ${sha:0:12}"
   REPO_REF="$sha"
   apply_repo_url
+  remember_fetch_commit "$sha"
 }
 
 # 下载远程模块（先拉 SHA256SUMS，再逐文件校验）
@@ -131,6 +187,7 @@ fetch_modules() {
   sums="$(mktemp)"
   _bootstrap_log "下载：SHA256SUMS"
   _bootstrap_curl "${REPO_URL}/SHA256SUMS?nocache=$(date +%s)" -o "$sums" || { rm -f "$sums"; _bootstrap_die "下载 SHA256SUMS 失败（请确认已发布 ${REPO_REF}）"; }
+  log_fetched_modules_hash "$(file_sha256 "$sums")"
 
   for f in "${files[@]}"; do
     _bootstrap_log "下载：$f"
@@ -466,6 +523,12 @@ QUIC_MAX_IDLE_TIMEOUT=$QUIC_MAX_IDLE_TIMEOUT
 SNI_GUARD=$SNI_GUARD
 CLIENT_INSECURE=$CLIENT_INSECURE
 EOF
+  if [ -n "${HY2_FETCH_MODULES_SHA:-}" ]; then
+    printf 'HY2_MODULES_SHA=%s\n' "$HY2_FETCH_MODULES_SHA" >> "$ENV_FILE"
+  fi
+  if is_commit_sha "${HY2_FETCH_COMMIT:-}"; then
+    printf 'HY2_REPO_SHA=%s\n' "$HY2_FETCH_COMMIT" >> "$ENV_FILE"
+  fi
   chown root:hy2-aio "$ENV_FILE"
   chmod 0640 "$ENV_FILE"
   configure_firewall_v12
@@ -680,8 +743,10 @@ main() {
     remote)
       if [ "$command" = "upgrade" ]; then
         resolve_upgrade_source
-        if upgrade_already_current "${HY2_ENV_FILE:-/etc/hy2-aio/config.env}" "$REPO_REF"; then
-          _bootstrap_log "已是 $(normalize_aio_version "$REPO_REF")，无需升级"
+        if upgrade_already_current "${HY2_ENV_FILE:-/etc/hy2-aio/config.env}" "${REPO_TRACK:-$REPO_REF}"; then
+          _bootstrap_log "已是 $(normalize_aio_version "${REPO_TRACK:-$REPO_REF}")，无需升级"
+          _bootstrap_log "上次哈希：$(hash_label "$(read_env_value HY2_MODULES_SHA)" "$(read_env_value HY2_REPO_SHA)")"
+          _bootstrap_log "本次哈希：未下载"
           return 0
         fi
       else

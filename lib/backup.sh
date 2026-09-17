@@ -191,20 +191,27 @@ repair_cmd() {
   ensure_mode_file
   ensure_hysteria_config_perms
 
-  python3 - "$ENV_FILE" "$SCRIPT_VERSION" "${HY2_PERSIST_TRACK:-}" <<'PY'
+  python3 - "$ENV_FILE" "$SCRIPT_VERSION" "${HY2_PERSIST_TRACK:-}" "${HY2_FETCH_MODULES_SHA:-}" "${HY2_FETCH_COMMIT:-}" <<'PY'
 import os
+import re
 import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
 version = sys.argv[2]
 track = sys.argv[3] if len(sys.argv) > 3 else ""
+modules_sha = sys.argv[4] if len(sys.argv) > 4 else ""
+repo_sha = sys.argv[5] if len(sys.argv) > 5 else ""
+if not re.fullmatch(r"[0-9a-fA-F]{40}", repo_sha or ""):
+    repo_sha = ""
 lines = path.read_text(encoding="utf-8").splitlines()
 found_version = False
 found_obfs = False
 found_keep = False
 found_idle = False
 found_track = False
+found_modules = False
+found_repo_sha = False
 output = []
 for line in lines:
     if line.startswith("AIO_VERSION="):
@@ -219,6 +226,17 @@ for line in lines:
         else:
             output.append(line)
             found_track = True
+    elif line.startswith("HY2_MODULES_SHA="):
+        output.append(f"HY2_MODULES_SHA={modules_sha}" if modules_sha else line)
+        found_modules = True
+    elif line.startswith("HY2_REPO_SHA="):
+        if modules_sha:
+            if repo_sha:
+                output.append(f"HY2_REPO_SHA={repo_sha}")
+            found_repo_sha = True
+        else:
+            output.append(line)
+            found_repo_sha = True
     elif line.startswith("OBFS_ENABLED="):
         output.append(line)
         found_obfs = True
@@ -234,6 +252,10 @@ if not found_version:
     output.insert(0, f"AIO_VERSION={version}")
 if track and track != "latest" and not found_track:
     output.append(f"HY2_TRACK_REF={track}")
+if modules_sha and not found_modules:
+    output.append(f"HY2_MODULES_SHA={modules_sha}")
+if repo_sha and not found_repo_sha:
+    output.append(f"HY2_REPO_SHA={repo_sha}")
 if not found_obfs:
     output.append("OBFS_ENABLED=true")
 if not found_keep:
@@ -299,6 +321,13 @@ PY
     log "已修复，版本仍为 v${to_version}"
   else
     log "已从 v${from_version} 升级到 v${to_version}"
+  fi
+  if [ -n "${HY2_FETCH_MODULES_SHA:-}" ]; then
+    if [ -n "${HY2_FETCH_COMMIT:-}" ]; then
+      log "模块哈希：${HY2_FETCH_MODULES_SHA:0:12}（提交 ${HY2_FETCH_COMMIT:0:12}）"
+    else
+      log "模块哈希：${HY2_FETCH_MODULES_SHA:0:12}"
+    fi
   fi
   log "已写入 QUIC 保活与混淆开关到配置；Hysteria 未自动重启"
   log "使配置生效：hy2 restart   （或 hy2 obfs on|off）"
