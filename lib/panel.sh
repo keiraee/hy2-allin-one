@@ -87,7 +87,8 @@ tr.disabled td{opacity:.55}
   cursor:pointer;font:inherit;font-size:16px;line-height:1;color:var(--muted)}
 .menu-btn:hover,.menu-btn.open{background:var(--surface-2);border-color:var(--line);color:var(--text)}
 .menu{display:none;position:fixed;min-width:168px;background:var(--surface);
-  border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:4px;z-index:45}
+  border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:4px;z-index:45;
+  max-height:calc(100vh - 16px);overflow:auto}
 .menu.open{display:block}
 .menu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;
   border-radius:4px;font:inherit;cursor:pointer;color:var(--text)}

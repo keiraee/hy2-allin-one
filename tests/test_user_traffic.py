@@ -411,6 +411,7 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("当前连接", panel)
         self.assertIn("访问站点", panel)
         self.assertIn("客户端 IP", panel)
+        self.assertIn("max-height:calc(100vh - 16px);overflow:auto", panel)
         self.assertIn('let liveSort={key:"total",dir:-1}', panel)
         self.assertIn('class="sortable"', panel)
         self.assertIn("bindSortHeaders", panel)
