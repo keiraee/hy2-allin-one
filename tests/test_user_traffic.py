@@ -481,14 +481,29 @@ class UserTrafficPanelTests(unittest.TestCase):
         panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
         idx720 = panel.index("@media(max-width:720px)")
         idx560 = panel.index("@media(max-width:560px)")
-        block720 = panel[idx720:idx560].split(".dest-table")[0]
-        block560 = panel[idx560:panel.index("</style>")].split(".dest-table")[0]
+        block720 = panel[idx720:idx560].split("#trafficLiveTable")[0]
+        block560 = panel[idx560:panel.index("</style>")].split("#trafficLiveTable")[0]
         self.assertIn("nth-child(3)", block720)
         self.assertIn("nth-child(7)", block720)
         self.assertNotIn("nth-child(6)", block720)
         self.assertIn("nth-child(4)", block560)
         self.assertIn("nth-child(5)", block560)
         self.assertNotIn("nth-child(6)", block560)
+
+    def test_narrow_dest_tables_hide_matching_columns(self):
+        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        idx720 = panel.index("@media(max-width:720px)")
+        idx560 = panel.index("@media(max-width:560px)")
+        block720 = panel[idx720:idx560]
+        block560 = panel[idx560:panel.index("</style>")]
+        self.assertIn("#trafficLiveTable th:nth-child(3)", block720)
+        self.assertIn("#trafficLiveTable th:nth-child(4)", block720)
+        self.assertNotIn("#trafficLiveTable th:nth-child(5)", block720)
+        self.assertIn("#trafficSiteTable th:nth-child(4)", block720)
+        self.assertIn("#trafficSiteTable th:nth-child(5)", block720)
+        self.assertIn("#trafficLiveTable th:nth-child(5)", block560)
+        self.assertIn("#trafficSiteTable th:nth-child(2)", block560)
+        self.assertNotIn("#trafficSiteTable th:nth-child(6)", block560)
 
     def test_topbar_omits_missing_version(self):
         panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")

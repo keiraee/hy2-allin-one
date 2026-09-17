@@ -248,17 +248,22 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
   .traffic-kpis,.chart-grid,.traffic-board,.traffic-tables,.traffic-insights{grid-template-columns:1fr}
   .chart-grid .span-2{grid-column:auto}
   .traffic-mix{grid-template-columns:1fr}
-  .dest-table th:nth-child(4),.dest-table td:nth-child(4),
-  .dest-table th:nth-child(5),.dest-table td:nth-child(5){display:none}
+  #trafficLiveTable th:nth-child(3),#trafficLiveTable td:nth-child(3),
+  #trafficLiveTable th:nth-child(4),#trafficLiveTable td:nth-child(4){display:none}
+  #trafficSiteTable th:nth-child(4),#trafficSiteTable td:nth-child(4),
+  #trafficSiteTable th:nth-child(5),#trafficSiteTable td:nth-child(5){display:none}
 }
 @media(max-width:560px){
   .metrics{grid-template-columns:1fr}.main{padding:14px}
   .table-wrap th:nth-child(4),.table-wrap td:nth-child(4),
   .table-wrap th:nth-child(5),.table-wrap td:nth-child(5){display:none}
   .topbar{padding:0 12px}
-  .dest-table th:nth-child(3),.dest-table td:nth-child(3),
-  .dest-table th:nth-child(6),.dest-table td:nth-child(6),
-  .dest-table th:nth-child(7),.dest-table td:nth-child(7){display:none}
+  #trafficLiveTable th:nth-child(5),#trafficLiveTable td:nth-child(5),
+  #trafficLiveTable th:nth-child(6),#trafficLiveTable td:nth-child(6),
+  #trafficLiveTable th:nth-child(7),#trafficLiveTable td:nth-child(7){display:none}
+  #trafficSiteTable th:nth-child(2),#trafficSiteTable td:nth-child(2),
+  #trafficSiteTable th:nth-child(3),#trafficSiteTable td:nth-child(3),
+  #trafficSiteTable th:nth-child(7),#trafficSiteTable td:nth-child(7){display:none}
 }
 </style>
 </head>
