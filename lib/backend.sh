@@ -1776,8 +1776,97 @@ def forget_user_side_state(username: str) -> None:
         atomic_json(STATE_FILE, state)
 
 
-def mutate_users(mutator) -> dict[str, Any]:
-    """修改 users.json 并重建 Hysteria；失败时回滚。"""
+def users_fingerprint(users: dict[str, Any]) -> str:
+    return json.dumps(users, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def publish_users_to_panel(users: dict[str, Any], timestamp: str) -> None:
+    """把 users.json 立刻写进 data.json，避免面板还要等一次全量采集。"""
+    if not DATA_FILE.exists():
+        return
+    try:
+        data = read_json(DATA_FILE, {})
+    except Exception:
+        return
+    if not isinstance(data, dict):
+        data = {}
+    existing: dict[str, dict[str, Any]] = {}
+    raw_users = data.get("users")
+    if isinstance(raw_users, list):
+        for item in raw_users:
+            if isinstance(item, dict) and item.get("username"):
+                existing[str(item["username"])] = item
+    output: list[dict[str, Any]] = []
+    for username, info in sorted(users.items()):
+        if not isinstance(info, dict):
+            info = {}
+        prev = existing.get(username, {})
+        kept = username in existing
+        upload = int(prev.get("upload") or 0) if kept else 0
+        download = int(prev.get("download") or 0) if kept else 0
+        output.append(
+            {
+                "username": username,
+                "note": str(info.get("note", "") or ""),
+                "disabled": bool(info.get("disabled", False)),
+                "online": int(prev.get("online") or 0) if kept else 0,
+                "upload": upload,
+                "download": download,
+                "total": upload + download,
+                "lifetime_total": int(prev.get("lifetime_total") or 0) if kept else 0,
+                "last_active": str(prev.get("last_active") or "从未") if kept else "从未",
+                "client_ip": str(prev.get("client_ip") or "") if kept else "",
+                "mode": str(prev.get("mode") or "BBR 自动估速") if kept else "BBR 自动估速",
+            }
+        )
+    data["users"] = output
+    data["generated_at"] = timestamp
+    server = data.get("server")
+    if not isinstance(server, dict):
+        server = {}
+        data["server"] = server
+    server["hy2_enabled"] = not hy2_is_off()
+    summary = data.get("summary")
+    if not isinstance(summary, dict):
+        summary = {}
+        data["summary"] = summary
+    summary["users"] = len(output)
+    summary["online_users"] = sum(1 for item in output if item.get("online"))
+    summary["devices"] = sum(int(item.get("online") or 0) for item in output)
+    try:
+        atomic_json(DATA_FILE, data)
+        apply_web_permissions()
+    except Exception as error:
+        print(f"[hy2-aio] panel user sync failed: {error}", flush=True)
+
+
+def mutation_snapshot(users: dict[str, Any]) -> dict[str, Any]:
+    timestamp = iso_now()
+    publish_users_to_panel(users, timestamp)
+    return {
+        "generated_at": timestamp,
+        "server": {"hy2_enabled": not hy2_is_off()},
+    }
+
+
+def _collect_after_mutation() -> None:
+    try:
+        collect(run_backup=False)
+    except Exception as error:
+        print(f"[hy2-aio] post-mutation collect failed: {error}", flush=True)
+
+
+def schedule_collect() -> None:
+    threading.Thread(
+        target=_collect_after_mutation,
+        daemon=True,
+        name="hy2-aio-collect",
+    ).start()
+
+
+def mutate_users(mutator, apply_hysteria: bool = True) -> dict[str, Any]:
+    """修改 users.json；认证相关变更才重建 Hysteria。成功后立刻回面板，采集放到后台。"""
+    need_collect = False
     with LOCK, user_mutation_lock():
         users = load_users()
         users_backup = USERS_FILE.read_bytes()
@@ -1785,42 +1874,51 @@ def mutate_users(mutator) -> dict[str, Any]:
         config_backup = HYSTERIA_CONFIG.read_bytes()
         config_mode = HYSTERIA_CONFIG.stat().st_mode & 0o777
         was_off = hy2_is_off()
+        before = users_fingerprint(users)
         try:
             mutator(users)
         except ValueError:
             raise
         except Exception as error:
             raise ValueError(str(error) or "用户数据无效") from error
+        if users_fingerprint(users) == before:
+            return mutation_snapshot(users)
         try:
             atomic_json(USERS_FILE, users)
-            result = subprocess.run(
-                [str(REBUILD_FILE)], capture_output=True, text=True, timeout=30
-            )
-            if result.returncode != 0:
-                raise RuntimeError(result.stderr.strip() or "rebuild_config.py 执行失败")
-            apply_hysteria_after_users(users)
+            if apply_hysteria:
+                result = subprocess.run(
+                    [str(REBUILD_FILE)], capture_output=True, text=True, timeout=30
+                )
+                if result.returncode != 0:
+                    raise RuntimeError(result.stderr.strip() or "rebuild_config.py 执行失败")
+                apply_hysteria_after_users(users)
         except Exception:
             atomic_bytes(USERS_FILE, users_backup, users_mode)
-            atomic_bytes(HYSTERIA_CONFIG, config_backup, config_mode)
-            try:
-                if was_off:
-                    set_hy2_off()
-                    request_hysteria("stop")
-                else:
-                    set_hy2_on()
-                    restart_hysteria()
-            except Exception:
-                pass
+            if apply_hysteria:
+                atomic_bytes(HYSTERIA_CONFIG, config_backup, config_mode)
+                try:
+                    if was_off:
+                        set_hy2_off()
+                        request_hysteria("stop")
+                    else:
+                        set_hy2_on()
+                        restart_hysteria()
+                except Exception:
+                    pass
             raise
         os.chmod(USERS_FILE, 0o640)
         try:
             shutil.chown(USERS_FILE, user="hy2-aio", group="hy2-aio")
         except Exception:
             pass
-        return collect()
+        snapshot = mutation_snapshot(users)
+        need_collect = apply_hysteria
+    if need_collect:
+        schedule_collect()
+    return snapshot
 
 
-def apply_user_change(username: str, update) -> dict[str, Any]:
+def apply_user_change(username: str, update, apply_hysteria: bool = True) -> dict[str, Any]:
     if not USERNAME_PATTERN.fullmatch(username):
         raise ValueError("用户名格式错误")
 
@@ -1829,7 +1927,7 @@ def apply_user_change(username: str, update) -> dict[str, Any]:
             raise ValueError("用户不存在")
         update(users[username])
 
-    return mutate_users(mutator)
+    return mutate_users(mutator, apply_hysteria=apply_hysteria)
 
 
 def add_user(username: str) -> dict[str, Any]:
@@ -1838,7 +1936,7 @@ def add_user(username: str) -> dict[str, Any]:
 
     def mutator(users: dict[str, Any]) -> None:
         if username in users:
-            raise ValueError("用户已存在")
+            return
         users[username] = {
             "password": secrets.token_hex(16),
             "token": secrets.token_hex(24),
@@ -2161,7 +2259,11 @@ class Handler(BaseHTTPRequestHandler):
                 if len(note) > 100:
                     self.send_json(400, {"ok": False, "error": "备注最长 100 字符"})
                     return
-                data = apply_user_change(username, lambda info: info.update({"note": note}))
+                data = apply_user_change(
+                    username,
+                    lambda info: info.update({"note": note}),
+                    apply_hysteria=False,
+                )
             elif action == "disable":
                 data = apply_user_change(username, lambda info: info.update({"disabled": True}))
             elif action == "enable":

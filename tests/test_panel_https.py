@@ -73,6 +73,11 @@ env BACKEND_HOST="$BACKEND_HOST" BACKEND_PORT="$BACKEND_PORT" \
             self.assertNotIn('port == "80"', source, relative)
             self.assertNotIn("f\"http://{domain}\"", source, relative)
 
+    def test_api_reverse_proxy_waits_for_slow_user_mutations(self):
+        config = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
+        self.assertIn("response_header_timeout 90s", config)
+        self.assertIn("read_timeout 90s", config)
+
 
 if __name__ == "__main__":
     unittest.main()

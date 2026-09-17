@@ -35,12 +35,40 @@ class BackendUserTransactionTests(unittest.TestCase):
         self.rebuild_file = self.root / "rebuild_config.py"
         self.users_file.parent.mkdir(parents=True)
         self.config_file.parent.mkdir(parents=True)
+        self.data_file = self.root / "www/data.json"
+        self.data_file.parent.mkdir(parents=True)
         self.users_file.write_text(
             json.dumps({"alice": {"password": "old", "disabled": False}}, indent=2)
             + "\n",
             encoding="utf-8",
         )
         self.config_file.write_text("old generated config\n", encoding="utf-8")
+        self.data_file.write_text(
+            json.dumps(
+                {
+                    "generated_at": "old",
+                    "server": {"hy2_enabled": True},
+                    "summary": {"users": 1, "online_users": 0, "devices": 0},
+                    "users": [
+                        {
+                            "username": "alice",
+                            "note": "",
+                            "disabled": False,
+                            "online": 0,
+                            "upload": 9,
+                            "download": 1,
+                            "total": 10,
+                            "lifetime_total": 10,
+                            "last_active": "kept",
+                            "client_ip": "1.1.1.1",
+                            "mode": "BBR 自动估速",
+                        }
+                    ],
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         self.rebuild_file.write_text("# fixture\n", encoding="utf-8")
         self.original_users = self.users_file.read_bytes()
         self.original_config = self.config_file.read_bytes()
@@ -51,7 +79,10 @@ class BackendUserTransactionTests(unittest.TestCase):
                 "USER_MUTATION_LOCK": self.lock_file,
                 "REBUILD_FILE": self.rebuild_file,
                 "HY2_OFF_FILE": self.root / "hy2.off",
-                "collect": lambda: {"ok": True},
+                "DATA_FILE": self.data_file,
+                "WEB_DIR": self.data_file.parent,
+                "collect": lambda **_kwargs: {"ok": True, "slow": False},
+                "schedule_collect": mock.Mock(),
             }
         )
 
@@ -144,6 +175,70 @@ class BackendUserTransactionTests(unittest.TestCase):
         self.assertTrue(self.namespace["HY2_OFF_FILE"].exists())
         self.namespace["request_hysteria"].assert_not_called()
         self.namespace["restart_hysteria"].assert_not_called()
+
+    def test_note_change_skips_rebuild_and_hysteria(self):
+        self.namespace["subprocess"] = SimpleNamespace(
+            run=mock.Mock(), DEVNULL=subprocess.DEVNULL
+        )
+        self.namespace["restart_hysteria"] = mock.Mock()
+        self.namespace["request_hysteria"] = mock.Mock()
+
+        self.namespace["apply_user_change"](
+            "alice",
+            lambda info: info.update({"note": "iPhone"}),
+            apply_hysteria=False,
+        )
+
+        users = json.loads(self.users_file.read_text(encoding="utf-8"))
+        panel = json.loads(self.data_file.read_text(encoding="utf-8"))
+        self.assertEqual("iPhone", users["alice"]["note"])
+        self.assertEqual("iPhone", panel["users"][0]["note"])
+        self.assertEqual(9, panel["users"][0]["upload"])
+        self.namespace["subprocess"].run.assert_not_called()
+        self.namespace["restart_hysteria"].assert_not_called()
+        self.namespace["request_hysteria"].assert_not_called()
+        self.namespace["schedule_collect"].assert_not_called()
+
+    def test_add_existing_user_is_idempotent(self):
+        self.namespace["subprocess"] = SimpleNamespace(
+            run=mock.Mock(), DEVNULL=subprocess.DEVNULL
+        )
+        self.namespace["restart_hysteria"] = mock.Mock()
+
+        result = self.namespace["add_user"]("alice")
+
+        self.assertTrue(result["server"]["hy2_enabled"])
+        self.assertEqual(self.original_users, self.users_file.read_bytes())
+        self.namespace["subprocess"].run.assert_not_called()
+        self.namespace["restart_hysteria"].assert_not_called()
+        self.namespace["schedule_collect"].assert_not_called()
+
+    def test_add_user_returns_before_collect_finishes(self):
+        def successful_rebuild(*_args, **_kwargs):
+            self.config_file.write_text("new generated config\n", encoding="utf-8")
+            return SimpleNamespace(returncode=0, stderr="")
+
+        def slow_collect(**_kwargs):
+            time.sleep(2)
+            return {"ok": True}
+
+        self.namespace["subprocess"] = SimpleNamespace(
+            run=mock.Mock(side_effect=successful_rebuild), DEVNULL=subprocess.DEVNULL
+        )
+        self.namespace["restart_hysteria"] = mock.Mock()
+        self.namespace["collect"] = slow_collect
+
+        started_at = time.perf_counter()
+        result = self.namespace["add_user"]("bob")
+        elapsed = time.perf_counter() - started_at
+
+        self.assertLess(elapsed, 0.5)
+        self.assertIn("bob", json.loads(self.users_file.read_text(encoding="utf-8")))
+        panel = json.loads(self.data_file.read_text(encoding="utf-8"))
+        self.assertTrue(any(item["username"] == "bob" for item in panel["users"]))
+        self.assertTrue(result["server"]["hy2_enabled"])
+        self.namespace["schedule_collect"].assert_called_once()
+        self.namespace["restart_hysteria"].assert_called_once()
 
 
 @unittest.skipIf(os.name == "nt", "CLI transaction harness requires bash and flock")

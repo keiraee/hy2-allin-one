@@ -232,11 +232,11 @@ modify_user() {
     failure="用户数据修改失败"
   elif ! chown hy2-aio:hy2-aio "$USERS_FILE" || ! chmod 0640 "$USERS_FILE"; then
     failure="用户文件权限设置失败"
-  elif ! "$REBUILD_FILE"; then
+  elif [ "$action" != "note" ] && ! "$REBUILD_FILE"; then
     failure="Hysteria 配置重建失败"
-  elif ! chown hysteria:hysteria "$HYSTERIA_CONFIG" || ! chmod 0660 "$HYSTERIA_CONFIG"; then
+  elif [ "$action" != "note" ] && { ! chown hysteria:hysteria "$HYSTERIA_CONFIG" || ! chmod 0660 "$HYSTERIA_CONFIG"; }; then
     failure="Hysteria 配置权限设置失败"
-  elif ! hy2_sync_service_to_users; then
+  elif [ "$action" != "note" ] && ! hy2_sync_service_to_users; then
     failure="Hysteria 服务切换失败"
   fi
 
@@ -256,8 +256,10 @@ modify_user() {
   if [ "$action" = "remove-user" ]; then
     forget_deleted_user_files "$username"
   fi
-  systemctl restart hy2-aio.service
-  sleep 2
+  if [ "$action" != "note" ]; then
+    systemctl restart hy2-aio.service
+    sleep 2
+  fi
   api_post sync >/dev/null || true
   write_access_file
   log "用户操作完成：$action $username"

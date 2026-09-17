@@ -467,6 +467,14 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("function applyTheme", panel)
         self.assertIn('themeColor("--surface","#ffffff")', panel)
         self.assertNotIn('themeColor("--bg","#ffffff")', panel)
+        self.assertIn("let mutateBusy=false", panel)
+        self.assertIn("async function runMutate", panel)
+        self.assertIn("if(event.repeat||mutateBusy)return", panel)
+        self.assertIn('id="busyScrim"', panel)
+        self.assertIn("function setBusyOverlay", panel)
+        self.assertIn(".busy-scrim.open{display:flex}", panel)
+        self.assertIn("正在添加用户…", panel)
+        self.assertIn("apply_hysteria=False", (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8"))
 
     def test_empty_hour_and_week_charts_keep_placeholder_without_series(self):
         panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")

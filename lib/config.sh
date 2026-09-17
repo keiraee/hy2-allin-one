@@ -420,6 +420,11 @@ content = f"""{site_addr} {{
                 header_up X-API-Secret "{api_secret}"
                 header_up X-Forwarded-For {{remote_host}}
                 header_up X-Real-IP {{remote_host}}
+                transport http {{
+                    dial_timeout 3s
+                    response_header_timeout 90s
+                    read_timeout 90s
+                }}
             }}
         }}
 

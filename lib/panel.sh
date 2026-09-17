@@ -122,8 +122,17 @@ tr.disabled td{opacity:.55}
 .input:focus{outline:none;border-color:var(--text)}
 .hint{font-size:12px;color:var(--muted);line-height:1.45;margin:0}
 .toast{position:fixed;right:16px;bottom:16px;background:var(--text);color:var(--bg);padding:10px 14px;
-  border-radius:var(--radius);opacity:0;pointer-events:none;transition:opacity .2s;z-index:80;max-width:320px;font-size:13px}
+  border-radius:var(--radius);opacity:0;pointer-events:none;transition:opacity .2s;z-index:100;max-width:320px;font-size:13px}
 .toast.show{opacity:1}
+.busy-scrim{display:none;position:fixed;inset:0;background:rgba(17,17,17,.42);z-index:90;align-items:center;justify-content:center;padding:16px}
+.busy-scrim.open{display:flex}
+html[data-theme="dark"] .busy-scrim{background:rgba(0,0,0,.55)}
+.busy-card{display:flex;flex-direction:column;align-items:center;gap:10px;min-width:168px;padding:18px 22px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.busy-spin,.btn-spin{width:22px;height:22px;border:2px solid var(--surface-3);border-top-color:var(--accent);border-radius:99px;animation:busy-rotate .7s linear infinite;flex-shrink:0}
+.btn-spin{width:14px;height:14px;border-width:1.5px}
+@keyframes busy-rotate{to{transform:rotate(360deg)}}
+.busy-card .hint{margin:0;text-align:center}
+.btn.is-busy{cursor:wait}
 .modal-scrim{display:none;position:fixed;inset:0;background:rgba(17,17,17,.4);z-index:70;align-items:center;justify-content:center;padding:8px}
 .modal-scrim.open{display:flex}
 .modal{background:var(--surface);border-radius:var(--radius);border:1px solid var(--line);width:min(400px,100%);padding:16px;box-shadow:var(--shadow)}
@@ -563,6 +572,12 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
   </div>
 </div>
 
+<div id="busyScrim" class="busy-scrim" aria-hidden="true" aria-busy="false">
+  <div class="busy-card" role="status">
+    <span class="busy-spin" aria-hidden="true"></span>
+    <p id="busyText" class="hint">处理中，请稍候…</p>
+  </div>
+</div>
 <div id="toast" class="toast"></div>
 
 <script>
@@ -613,6 +628,7 @@ function initTheme(){
   else applyTheme("light");
 }
 let toastTimer=null, openMenu=null, noteUser="";
+let mutateBusy=false;
 let userList=[], liveList=[], siteList=[];
 let userSort={key:"username",dir:1};
 let liveSort={key:"total",dir:-1};
@@ -624,6 +640,40 @@ function toast(message){
   node.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer=setTimeout(()=>node.classList.remove("show"),2200);
+}
+function setBusyOverlay(open,message){
+  const node=$("busyScrim");
+  if(!node)return;
+  node.classList.toggle("open",!!open);
+  node.setAttribute("aria-hidden",open?"false":"true");
+  node.setAttribute("aria-busy",open?"true":"false");
+  const text=$("busyText");
+  if(text)text.textContent=message||"处理中，请稍候…";
+  if(open)closeMenus();
+}
+function buttonSpinner(){
+  return el("span",{className:"btn-spin","aria-hidden":"true","data-busy-spin":"1"});
+}
+async function runMutate(button,work,message){
+  if(mutateBusy)return;
+  mutateBusy=true;
+  const label=message||"处理中，请稍候…";
+  setBusyOverlay(true,label);
+  if(button){
+    button.disabled=true;
+    button.classList.add("is-busy");
+    if(!button.querySelector("[data-busy-spin]"))button.prepend(buttonSpinner());
+  }
+  try{await work()}
+  finally{
+    mutateBusy=false;
+    setBusyOverlay(false);
+    if(button){
+      button.querySelectorAll("[data-busy-spin]").forEach(node=>node.remove());
+      button.classList.remove("is-busy");
+      button.disabled=false;
+    }
+  }
 }
 function el(tag,attrs={},...kids){
   const node=document.createElement(tag);
@@ -1350,57 +1400,77 @@ async function copyCredential(username,kind){
   }catch(error){toast("复制失败："+error.message)}
 }
 async function saveNote(){
+  const username=noteUser;
   const note=String($("noteInput").value||"").trim();
+  if(!username)return;
   if(note.length>100){toast("备注最长 100 字符");return}
-  const btn=$("noteSave");btn.disabled=true;
-  try{
-    await apiPost("api/user/note",{username:noteUser,note});
-    setNoteModal(false);
-    toast("备注已保存");
-    await load();
-  }catch(error){toast("保存失败："+error.message)}
-  btn.disabled=false;
+  await runMutate($("noteSave"),async()=>{
+    try{
+      await apiPost("api/user/note",{username,note});
+      setNoteModal(false);
+      toast("备注已保存");
+      await load();
+    }catch(error){toast("保存失败："+error.message)}
+  },"正在保存备注…");
 }
 async function toggleUser(username,disabled){
   closeMenus();
   if(!disabled&&!confirm("确认禁用 "+username+"？该用户将立即无法连接，数据保留。"))return;
-  try{
-    const result=await apiPost(disabled?"api/user/enable":"api/user/disable",{username});
-    toast(result.message||(disabled?"已启用 "+username:"已禁用 "+username));
-    await load();
-  }catch(error){toast("操作失败："+error.message)}
+  await runMutate(null,async()=>{
+    try{
+      const result=await apiPost(disabled?"api/user/enable":"api/user/disable",{username});
+      toast(result.message||(disabled?"已启用 "+username:"已禁用 "+username));
+      await load();
+    }catch(error){toast("操作失败："+error.message)}
+  },disabled?"正在启用用户…":"正在禁用用户…");
 }
 async function removeUser(username){
   closeMenus();
   if(!confirm("确认删除用户 "+username+"？此操作不可恢复。"))return;
-  try{
-    await apiPost("api/user/remove",{username});
-    toast("已删除 "+username);
-    await load();
-  }catch(error){toast("删除失败："+error.message)}
+  await runMutate(null,async()=>{
+    try{
+      await apiPost("api/user/remove",{username});
+      toast("已删除 "+username);
+      await load();
+    }catch(error){toast("删除失败："+error.message)}
+  },"正在删除用户…");
 }
 async function rotateUser(username){
   closeMenus();
   if(!confirm("确认轮换 "+username+" 的密码与订阅 token？旧订阅将失效。"))return;
-  try{
-    await apiPost("api/user/rotate",{username});
-    toast("已轮换 "+username+" 的密钥");
-    await load();
-  }catch(error){toast("轮换失败："+error.message)}
+  await runMutate(null,async()=>{
+    try{
+      await apiPost("api/user/rotate",{username});
+      toast("已轮换 "+username+" 的密钥");
+      await load();
+    }catch(error){toast("轮换失败："+error.message)}
+  },"正在轮换密钥…");
 }
 async function addUser(){
   const input=$("newUser");
   const username=String(input.value||"").trim();
   if(!VALID_NAME.test(username)){toast("用户名仅允许字母、数字、下划线、短横线，长度 1-32");return}
-  const btn=$("addBtn");btn.disabled=true;
-  try{
-    await apiPost("api/user/add",{username});
-    input.value="";
-    toast("已添加 "+username);
-    setDrawer(false);
-    await load();
-  }catch(error){toast("添加失败："+error.message)}
-  btn.disabled=false;
+  await runMutate($("addBtn"),async()=>{
+    try{
+      await apiPost("api/user/add",{username});
+      input.value="";
+      toast("已添加 "+username);
+      setDrawer(false);
+      await load();
+    }catch(error){
+      const message=String(error&&error.message||"");
+      if(/用户已存在/.test(message)){
+        await load();
+        if((userList||[]).some(user=>user.username===username)){
+          input.value="";
+          toast("已添加 "+username);
+          setDrawer(false);
+          return;
+        }
+      }
+      toast("添加失败："+message);
+    }
+  },"正在添加用户…");
 }
 async function exportLogs(){
   const range=$("logRange")?$("logRange").value||"24h":"24h";
@@ -1425,16 +1495,16 @@ async function exportLogs(){
   if(btn)btn.disabled=false;
 }
 async function syncNow(){
-  const buttons=[$("syncBtn"),$("drawerSync")];
-  buttons.forEach(b=>{b.disabled=true});
-  $("syncBtn").textContent="同步中…";
-  try{
-    await apiPost("api/sync",{});
-    await load();
-    toast("同步完成");
-  }catch(error){toast("同步失败："+error.message)}
-  buttons.forEach(b=>{b.disabled=false});
-  $("syncBtn").textContent="同步";
+  await runMutate($("syncBtn"),async()=>{
+    const extra=$("drawerSync");
+    if(extra)extra.disabled=true;
+    try{
+      await apiPost("api/sync",{});
+      await load();
+      toast("同步完成");
+    }catch(error){toast("同步失败："+error.message)}
+    finally{if(extra)extra.disabled=false;}
+  },"正在同步…");
 }
 
 function renderServices(services){
@@ -1449,14 +1519,13 @@ function renderServices(services){
 async function toggleHy2(){
   const enabled=window.__hy2Enabled!==false;
   if(enabled&&!confirm("确认关闭 Hysteria？客户端将无法连接。"))return;
-  const btn=$("hy2Toggle");
-  if(btn)btn.disabled=true;
-  try{
-    await apiPost(enabled?"api/hy2/off":"api/hy2/on",{});
-    toast(enabled?"HY2 已关闭":"HY2 已开启");
-    await load();
-  }catch(error){toast("操作失败："+error.message)}
-  if(btn)btn.disabled=false;
+  await runMutate($("hy2Toggle"),async()=>{
+    try{
+      await apiPost(enabled?"api/hy2/off":"api/hy2/on",{});
+      toast(enabled?"HY2 已关闭":"HY2 已开启");
+      await load();
+    }catch(error){toast("操作失败："+error.message)}
+  },enabled?"正在关闭 HY2…":"正在开启 HY2…");
 }
 function menuItem(text,handler,bad){
   return el("button",{type:"button",className:bad?"bad":"",text,onclick:handler});
@@ -1566,21 +1635,31 @@ $("themeBtn").onclick=()=>applyTheme(currentTheme()==="dark"?"light":"dark");
 $("drawerSync").onclick=()=>{setDrawer(false);syncNow()};
 $("exportLogs").onclick=exportLogs;
 $("backupBtn").onclick=async function(){
-  const btn=$("backupBtn");btn.disabled=true;
-  try{
-    const result=await apiPost("api/backup",{});
-    toast("备份完成"+(result.backup?"："+result.backup:""));
-  }catch(error){toast("备份失败："+error.message)}
-  btn.disabled=false;
+  await runMutate($("backupBtn"),async()=>{
+    try{
+      const result=await apiPost("api/backup",{});
+      toast("备份完成"+(result.backup?"："+result.backup:""));
+    }catch(error){toast("备份失败："+error.message)}
+  },"正在备份…");
 };
 $("menuBtn").onclick=()=>setDrawer(true);
 $("drawerClose").onclick=()=>setDrawer(false);
 $("scrim").onclick=()=>setDrawer(false);
 $("addBtn").onclick=addUser;
-$("newUser").addEventListener("keydown",event=>{if(event.key==="Enter")addUser()});
+$("newUser").addEventListener("keydown",event=>{
+  if(event.key!=="Enter")return;
+  event.preventDefault();
+  if(event.repeat||mutateBusy)return;
+  addUser();
+});
 $("noteCancel").onclick=()=>setNoteModal(false);
 $("noteSave").onclick=saveNote;
-$("noteInput").addEventListener("keydown",event=>{if(event.key==="Enter")saveNote()});
+$("noteInput").addEventListener("keydown",event=>{
+  if(event.key!=="Enter")return;
+  event.preventDefault();
+  if(event.repeat||mutateBusy)return;
+  saveNote();
+});
 $("noteModal").addEventListener("click",event=>{if(event.target===$("noteModal"))setNoteModal(false)});
 $("trafficClose").onclick=()=>setTrafficModal(false);
 $("trafficModal").addEventListener("click",event=>{if(event.target===$("trafficModal"))setTrafficModal(false)});
