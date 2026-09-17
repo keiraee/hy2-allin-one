@@ -45,6 +45,8 @@ a{color:inherit}button,input,select{font:inherit;color:inherit}
 .nav-status{font-size:12px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(42vw,520px)}
 .icon-btn{width:28px;height:28px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
 .icon-btn:hover{background:var(--surface-2);color:var(--text)}
+.ico{width:16px;height:16px;display:block;flex-shrink:0}
+.metric .label,.section-h h2{display:flex;align-items:center;gap:6px}
 .btn{border:1px solid var(--line);border-radius:4px;background:var(--surface);color:inherit;
   padding:5px 10px;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px;line-height:1.3}
 .btn:hover{background:var(--surface-2)}.btn:disabled{opacity:.55;cursor:wait}
@@ -61,7 +63,7 @@ a{color:inherit}button,input,select{font:inherit;color:inherit}
 .bar{height:4px;background:var(--surface-3);border-radius:2px;overflow:hidden;margin-top:10px}
 .bar i{display:block;height:100%;background:var(--accent);border-radius:2px}
 .section{margin-top:8px}
-.section-h{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0 0 10px}
+.section-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px}
 .section-h h2{margin:0;font-size:13px;font-weight:700}
 .pills{display:flex;flex-wrap:wrap;gap:8px}
 .pill{font-size:12px;padding:5px 9px;border-radius:4px;border:1px solid var(--line);background:var(--surface);color:var(--muted)}
@@ -85,7 +87,7 @@ tr.disabled td{opacity:.55}
 .status-active{font-size:12px;color:var(--faint);font-family:var(--mono)}
 .ops{position:relative;text-align:right}
 .menu-btn{width:28px;height:28px;border-radius:4px;border:1px solid transparent;background:transparent;
-  cursor:pointer;font:inherit;font-size:16px;line-height:1;color:var(--muted)}
+  cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0;color:var(--muted)}
 .menu-btn:hover,.menu-btn.open{background:var(--surface-2);border-color:var(--line);color:var(--text)}
 .menu{display:none;position:fixed;min-width:168px;background:var(--surface);
   border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:4px;z-index:45;
@@ -100,7 +102,7 @@ tr.disabled td{opacity:.55}
 .notice.show,.error.show{display:block}
 .notice{background:var(--surface-2);color:var(--muted)}
 .notice-close{position:absolute;top:4px;right:4px;width:28px;height:28px;border:0;border-radius:4px;
-  background:transparent;cursor:pointer;font:inherit;color:var(--muted)}
+  background:transparent;cursor:pointer;color:var(--muted);display:inline-flex;align-items:center;justify-content:center;padding:0}
 .error{background:var(--surface);color:var(--bad);border-color:var(--bad)}
 .error .notice-close{color:var(--bad)}
 .footer{margin-top:18px;font-size:12px;color:var(--faint)}
@@ -158,7 +160,7 @@ tr.disabled td{opacity:.55}
 .hour-col .lbl{font-size:11px;color:var(--faint);margin-top:6px}
 .hour-profile.empty,.week-split.empty{display:flex;align-items:center;justify-content:center;height:170px}
 .chart-empty{display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--faint);font-size:12px}
-.chart-empty-icon{display:none}
+.chart-empty .ico{width:20px;height:20px;opacity:.75}
 .heat-cell.now{box-shadow:inset 0 0 0 1px var(--text)}
 .day-cols{display:flex;align-items:stretch;gap:10px;height:170px}
 .day-col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:0}
@@ -270,6 +272,22 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
 </style>
 </head>
 <body>
+.svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;overflow:hidden" aria-hidden="true">
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/></symbol>
+  <symbol id="i-power" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10M12 20V4M6 20v-6"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 7L9 5l-3 7H2"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1.5"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></symbol>
+  <symbol id="i-memory" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="1.5"/><path d="M7 7v10M17 7v10M11 10h2M11 14h2"/></symbol>
+  <symbol id="i-disk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V8l4-4h12v16z"/><path d="M8 20v-6h8v6M8 4v4h7"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="3"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+</svg>
 <div class="shell">
   <header class="topbar">
     <div class="nav-left">
@@ -277,46 +295,46 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
     </div>
     <div class="nav-right">
       <div id="time" class="nav-status">正在读取数据…</div>
-      <button id="themeBtn" class="icon-btn" type="button" aria-label="切换到深色" title="主题">◐</button>
-      <button id="syncBtn" class="btn primary" type="button">同步</button>
-      <button id="menuBtn" class="btn" type="button" aria-haspopup="dialog">菜单</button>
+      <button id="themeBtn" class="icon-btn" type="button" aria-label="切换到深色" title="主题"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-moon"/></svg></button>
+      <button id="syncBtn" class="btn primary" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-refresh"/></svg>同步</button>
+      <button id="menuBtn" class="btn" type="button" aria-haspopup="dialog"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-menu"/></svg>菜单</button>
     </div>
   </header>
 
   <main class="main">
     <div id="error" class="error">
-      <button id="errorClose" class="notice-close" type="button" aria-label="关闭">×</button>
+      <button id="errorClose" class="notice-close" type="button" aria-label="关闭"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg></button>
       <span id="errorText"></span>
     </div>
     <div id="hy2OffBanner" class="notice" role="status">
       HY2 已关闭。UDP 未监听，客户端无法连接。整机流量仍计入面板与 SSH。
     </div>
     <div id="notice" class="notice" role="note">
-      <button id="noticeClose" class="notice-close" type="button" aria-label="关闭">×</button>
+      <button id="noticeClose" class="notice-close" type="button" aria-label="关闭"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg></button>
       套餐用量以「本月整机流量」为准（网卡本地计数，对齐云厂商限制）；Clash 订阅进度与此同步。用户表为 HY2 代理分摊参考。云厂商控制台仍是最终账单。
     </div>
 
     <div class="metrics">
       <div class="metric">
-        <div class="label">本月整机</div>
+        <div class="label"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-activity"/></svg>本月整机</div>
         <div id="traffic" class="value">--</div>
         <div id="remain" class="extra">--</div>
         <div class="bar"><i id="trafficBar" style="width:0"></i></div>
       </div>
-      <div class="metric"><div class="label">CPU / 负载</div><div id="cpu" class="value">--</div><div id="load" class="extra">--</div></div>
-      <div class="metric"><div class="label">内存 / Swap</div><div id="memory" class="value">--</div><div id="swap" class="extra">--</div></div>
-      <div class="metric"><div class="label">磁盘 / 运行</div><div id="disk" class="value">--</div><div id="uptime" class="extra">--</div></div>
+      <div class="metric"><div class="label"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-cpu"/></svg>CPU / 负载</div><div id="cpu" class="value">--</div><div id="load" class="extra">--</div></div>
+      <div class="metric"><div class="label"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-memory"/></svg>内存 / Swap</div><div id="memory" class="value">--</div><div id="swap" class="extra">--</div></div>
+      <div class="metric"><div class="label"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-disk"/></svg>磁盘 / 运行</div><div id="disk" class="value">--</div><div id="uptime" class="extra">--</div></div>
     </div>
     <section class="section">
       <div class="section-h">
-        <h2>服务</h2>
-        <button id="hy2Toggle" class="btn" type="button">关闭 HY2</button>
+        <h2><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-server"/></svg>服务</h2>
+        <button id="hy2Toggle" class="btn" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-power"/></svg>关闭 HY2</button>
       </div>
       <div id="services" class="pills"></div>
     </section>
     <section class="section">
       <div class="section-h">
-        <h2>用户</h2>
+        <h2><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-users"/></svg>用户</h2>
         <span id="userSummary" class="hint"></span>
       </div>
       <div class="table-wrap">
@@ -345,7 +363,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
 <aside id="drawer" class="drawer" aria-hidden="true">
   <div class="drawer-h">
     <h2>功能菜单</h2>
-    <button id="drawerClose" class="btn ghost" type="button" aria-label="关闭">×</button>
+    <button id="drawerClose" class="btn ghost" type="button" aria-label="关闭"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
   <div class="drawer-b">
     <div class="drawer-sec">
@@ -404,7 +422,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
         <h2 id="trafficTitle">流量分析</h2>
         <p id="trafficUser" class="hint" style="margin:4px 0 0"></p>
       </div>
-      <button id="trafficClose" class="btn ghost" type="button" aria-label="关闭">×</button>
+      <button id="trafficClose" class="btn ghost" type="button" aria-label="关闭"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg></button>
     </div>
     <div class="traffic-body">
       <div class="traffic-kpis">
@@ -436,7 +454,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
               <h3>作息曲线</h3>
               <span class="hint">7 天压成一天</span>
             </div>
-            <div id="trafficHours" class="hour-profile empty" role="img" aria-label="一天中各小时用量"><div class="chart-empty"><span>暂无数据，请先同步历史流量</span></div></div>
+            <div id="trafficHours" class="hour-profile empty" role="img" aria-label="一天中各小时用量"><div class="chart-empty"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chart"/></svg><span>暂无数据，请先同步历史流量</span></div></div>
             <p id="trafficHoursHint" class="hint" style="margin-top:8px"></p>
           </div>
           <div class="traffic-tile traffic-block span-2">
@@ -468,7 +486,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
           </div>
           <div class="traffic-tile traffic-stat">
             <div class="label">工作日 / 周末</div>
-            <div id="trafficWeek" class="week-split empty"><div class="chart-empty"><span>暂无数据</span></div></div>
+            <div id="trafficWeek" class="week-split empty"><div class="chart-empty"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chart"/></svg><span>暂无数据</span></div></div>
             <p id="trafficWeekHint" class="hint" style="margin-top:8px"></p>
           </div>
           <div class="traffic-tile traffic-stat">
@@ -584,7 +602,7 @@ function applyTheme(theme){
   const btn=$("themeBtn");
   if(btn){
     btn.setAttribute("aria-label",next==="dark"?"切换到浅色":"切换到深色");
-    btn.textContent=next==="dark"?"○":"◐";
+    btn.replaceChildren(iconSvg(next==="dark"?"sun":"moon"));
   }
 }
 function initTheme(){
@@ -740,7 +758,7 @@ function relTime(raw){
 }
 function weekdayName(date){return "日一二三四五六".charAt(date.getDay())}
 function chartEmpty(text){
-  return el("div",{className:"chart-empty"},el("span",{text:text||"暂无数据"}));
+  return el("div",{className:"chart-empty"},iconSvg("chart"),el("span",{text:text||"暂无数据"}));
 }
 function formatClientIps(list){
   if(!list||!list.length)return "暂无（用户连上后从连接日志采集）";
@@ -866,6 +884,17 @@ function svgNode(name,attrs,text){
   });
   if(text!=null&&text!=="")node.append(document.createTextNode(String(text)));
   return node;
+}
+function iconSvg(name){
+  const svg=svgNode("svg",{class:"ico",viewBox:"0 0 24 24","aria-hidden":"true"});
+  svg.append(svgNode("use",{href:"#i-"+name}));
+  return svg;
+}
+function setBtnIcon(node,name,label){
+  if(!node)return;
+  const kids=[iconSvg(name)];
+  if(label)kids.push(document.createTextNode(label));
+  node.replaceChildren(...kids);
 }
 function renderTraffic(data){
   const month=data.month||{};
@@ -1453,7 +1482,9 @@ function renderUsers(users){
     if(user.client_ip)statusKids.push(el("span",{className:"status-active",text:"客户端 "+user.client_ip}));
     const statusCell=el("div",{className:"status-cell"},...statusKids);
     const menu=el("div",{className:"menu"});
-    const btn=el("button",{className:"menu-btn",type:"button",title:"操作",text:"⋯",onclick:function(event){
+    const btn=el("button",{className:"menu-btn",type:"button",title:"操作"});
+    btn.append(iconSvg("more"));
+    btn.onclick=function(event){
       event.stopPropagation();
       const willOpen=!menu.classList.contains("open");
       closeMenus();
@@ -1464,7 +1495,7 @@ function renderUsers(users){
         openMenu=menu;
         positionMenu(menu,btn);
       }
-    }});
+    };
     menu.append(
       menuItem("复制订阅",()=>copyCredential(user.username,"subscription")),
       menuItem("复制直链",()=>copyCredential(user.username,"direct")),
@@ -1515,7 +1546,7 @@ async function load(){
     $("hy2OffBanner").classList.toggle("show",!hy2On);
     const toggle=$("hy2Toggle");
     if(toggle){
-      toggle.textContent=hy2On?"关闭 HY2":"开启 HY2";
+      setBtnIcon(toggle,"power",hy2On?"关闭 HY2":"开启 HY2");
       toggle.classList.toggle("bad",hy2On);
     }
     renderUsers(data.users);
