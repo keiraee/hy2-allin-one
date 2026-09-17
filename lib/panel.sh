@@ -595,7 +595,7 @@ function initTheme(){
 let toastTimer=null, openMenu=null, noteUser="";
 let userList=[], liveList=[], siteList=[];
 let userSort={key:"username",dir:1};
-let liveSort={key:"bytes",dir:-1};
+let liveSort={key:"total",dir:-1};
 let siteSort={key:"total",dir:-1};
 
 function toast(message){
