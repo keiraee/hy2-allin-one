@@ -233,7 +233,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
 }
 @media(max-width:1100px){
   .chart-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .traffic-board,.traffic-tables{grid-template-columns:1fr}
+  .traffic-board,.traffic-tables,.traffic-insights{grid-template-columns:1fr}
   .traffic-kpis{grid-template-columns:repeat(4,1fr)}
   .metrics{grid-template-columns:repeat(2,1fr)}
 }

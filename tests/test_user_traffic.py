@@ -467,7 +467,10 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("if(!hasSeries)", week)
         self.assertLess(week.index("if(!hasSeries)"), week.index("week-card"))
 
-    def test_narrow_user_table_keeps_monthly_total(self):
+    def test_tablet_collapses_traffic_insights(self):
+        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        block = panel[panel.index("@media(max-width:1100px)"):panel.index("@media(max-width:900px)")]
+        self.assertIn(".traffic-board,.traffic-tables,.traffic-insights{grid-template-columns:1fr}", block)
         panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
         idx720 = panel.index("@media(max-width:720px)")
         idx560 = panel.index("@media(max-width:560px)")
