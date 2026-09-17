@@ -42,11 +42,6 @@ a{color:inherit}button,input,select{font:inherit;color:inherit}
 .nav-left,.nav-right{display:flex;align-items:center;gap:14px;min-width:0}
 .nav-right{flex-shrink:0}
 .brand{font-size:13px;font-weight:700;letter-spacing:.02em;white-space:nowrap}
-.tabs{display:flex;align-items:stretch;height:48px;gap:2px}
-.tab{border:0;background:transparent;padding:0 12px;height:48px;color:var(--muted);cursor:pointer;position:relative}
-.tab:hover{color:var(--text)}
-.tab.on{color:var(--text);font-weight:650}
-.tab.on::after{content:"";position:absolute;left:12px;right:12px;bottom:0;height:2px;background:var(--text)}
 .nav-status{font-size:12px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(42vw,520px)}
 .icon-btn{width:28px;height:28px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;padding:0}
 .icon-btn:hover{background:var(--surface-2);color:var(--text)}
@@ -59,7 +54,6 @@ a{color:inherit}button,input,select{font:inherit;color:inherit}
 .btn.ghost{border-color:transparent;background:transparent}
 .btn.ghost:hover{background:var(--surface-2)}
 .main{flex:1;padding:20px;max-width:1440px;width:100%;margin:0 auto}
-.page{display:none}.page.on{display:block}
 .metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
 .metric{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px}
 .metric .label{font-size:13px;font-weight:700}.metric .value{font-size:20px;font-weight:700;margin-top:6px}
@@ -273,10 +267,6 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
   <header class="topbar">
     <div class="nav-left">
       <div class="brand">HY2 AIO</div>
-      <nav class="tabs" aria-label="页面">
-        <button class="tab on" type="button" data-tab="overview">概览</button>
-        <button class="tab" type="button" data-tab="users">用户</button>
-      </nav>
     </div>
     <div class="nav-right">
       <div id="time" class="nav-status">正在读取数据…</div>
@@ -299,52 +289,47 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
       套餐用量以「本月整机流量」为准（网卡本地计数，对齐云厂商限制）；Clash 订阅进度与此同步。用户表为 HY2 代理分摊参考。云厂商控制台仍是最终账单。
     </div>
 
-    <div id="page-overview" class="page on">
-      <div class="metrics">
-        <div class="metric">
-          <div class="label">本月整机</div>
-          <div id="traffic" class="value">--</div>
-          <div id="remain" class="extra">--</div>
-          <div class="bar"><i id="trafficBar" style="width:0"></i></div>
-        </div>
-        <div class="metric"><div class="label">CPU / 负载</div><div id="cpu" class="value">--</div><div id="load" class="extra">--</div></div>
-        <div class="metric"><div class="label">内存 / Swap</div><div id="memory" class="value">--</div><div id="swap" class="extra">--</div></div>
-        <div class="metric"><div class="label">磁盘 / 运行</div><div id="disk" class="value">--</div><div id="uptime" class="extra">--</div></div>
+    <div class="metrics">
+      <div class="metric">
+        <div class="label">本月整机</div>
+        <div id="traffic" class="value">--</div>
+        <div id="remain" class="extra">--</div>
+        <div class="bar"><i id="trafficBar" style="width:0"></i></div>
       </div>
-      <section class="section">
-        <div class="section-h">
-          <h2>服务</h2>
-          <button id="hy2Toggle" class="btn" type="button">关闭 HY2</button>
-        </div>
-        <div id="services" class="pills"></div>
-      </section>
+      <div class="metric"><div class="label">CPU / 负载</div><div id="cpu" class="value">--</div><div id="load" class="extra">--</div></div>
+      <div class="metric"><div class="label">内存 / Swap</div><div id="memory" class="value">--</div><div id="swap" class="extra">--</div></div>
+      <div class="metric"><div class="label">磁盘 / 运行</div><div id="disk" class="value">--</div><div id="uptime" class="extra">--</div></div>
     </div>
-
-    <div id="page-users" class="page">
-      <section class="section">
-        <div class="section-h">
-          <h2>用户</h2>
-          <span id="userSummary" class="hint"></span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th class="sortable" data-sort="username">用户</th>
-                <th class="sortable" data-sort="online">状态</th>
-                <th>速率模式</th>
-                <th class="sortable" data-sort="upload">上行</th>
-                <th class="sortable" data-sort="download">下行</th>
-                <th class="sortable" data-sort="total">合计</th>
-                <th class="sortable" data-sort="lifetime_total">历史累计</th>
-                <th style="text-align:right;width:52px">操作</th>
-              </tr>
-            </thead>
-            <tbody id="users"></tbody>
-          </table>
-        </div>
-      </section>
-    </div>
+    <section class="section">
+      <div class="section-h">
+        <h2>服务</h2>
+        <button id="hy2Toggle" class="btn" type="button">关闭 HY2</button>
+      </div>
+      <div id="services" class="pills"></div>
+    </section>
+    <section class="section">
+      <div class="section-h">
+        <h2>用户</h2>
+        <span id="userSummary" class="hint"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="sortable" data-sort="username">用户</th>
+              <th class="sortable" data-sort="online">状态</th>
+              <th>速率模式</th>
+              <th class="sortable" data-sort="upload">上行</th>
+              <th class="sortable" data-sort="download">下行</th>
+              <th class="sortable" data-sort="total">合计</th>
+              <th class="sortable" data-sort="lifetime_total">历史累计</th>
+              <th style="text-align:right;width:52px">操作</th>
+            </tr>
+          </thead>
+          <tbody id="users"></tbody>
+        </table>
+      </div>
+    </section>
     <div class="footer">60 秒自动刷新 · 操作后即时更新</div>
   </main>
 </div>
@@ -601,14 +586,6 @@ function initTheme(){
   if(saved==="dark"||saved==="light")applyTheme(saved);
   else if(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)applyTheme("dark");
   else applyTheme("light");
-}
-function setPage(name){
-  document.querySelectorAll(".tab").forEach(tab=>{
-    tab.classList.toggle("on",tab.getAttribute("data-tab")===name);
-  });
-  document.querySelectorAll(".page").forEach(page=>{
-    page.classList.toggle("on",page.id==="page-"+name);
-  });
 }
 let toastTimer=null, openMenu=null, noteUser="";
 let userList=[], liveList=[], siteList=[];
@@ -1385,7 +1362,6 @@ async function addUser(){
     input.value="";
     toast("已添加 "+username);
     setDrawer(false);
-    setPage("users");
     await load();
   }catch(error){toast("添加失败："+error.message)}
   btn.disabled=false;
@@ -1549,9 +1525,6 @@ async function load(){
 $("hy2Toggle").onclick=toggleHy2;
 $("syncBtn").onclick=syncNow;
 $("themeBtn").onclick=()=>applyTheme(currentTheme()==="dark"?"light":"dark");
-document.querySelectorAll(".tab").forEach(tab=>{
-  tab.onclick=()=>setPage(tab.getAttribute("data-tab"));
-});
 $("drawerSync").onclick=()=>{setDrawer(false);syncNow()};
 $("exportLogs").onclick=exportLogs;
 $("backupBtn").onclick=async function(){

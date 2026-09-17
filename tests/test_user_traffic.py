@@ -400,8 +400,7 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("#d9463f", panel)
         self.assertIn('data-theme="light"', panel)
         self.assertIn('id="themeBtn"', panel)
-        self.assertIn('id="page-overview"', panel)
-        self.assertIn('id="page-users"', panel)
+        self.assertIn('id="users"', panel)
         self.assertIn("max-width:1440px", panel)
         self.assertIn("chart-grid", panel)
         self.assertIn("时段热力", panel)
@@ -452,7 +451,6 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("groupSitesByRoot", panel)
         self.assertIn("formatDuration", panel)
         self.assertIn("function applyTheme", panel)
-        self.assertIn("function setPage", panel)
         self.assertIn("hy2-aio-theme", panel)
 
     def test_empty_hour_and_week_charts_keep_placeholder_without_series(self):
