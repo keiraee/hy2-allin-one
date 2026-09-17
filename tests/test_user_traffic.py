@@ -453,6 +453,7 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("session_stats_from_logs", (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8"))
         self.assertIn("groupSitesByRoot", panel)
         self.assertIn("formatDuration", panel)
+        self.assertIn(".mix-legend span{display:flex;align-items:center;gap:8px;width:100%;min-width:0}", panel)
         self.assertIn("function applyTheme", panel)
         self.assertIn("hy2-aio-theme", panel)
 

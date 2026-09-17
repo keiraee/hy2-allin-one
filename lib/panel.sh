@@ -175,9 +175,9 @@ tr.disabled td{opacity:.55}
 .traffic-mix.hide{display:none}
 .mix-svg{width:170px;height:170px;display:block}
 .mix-legend{display:flex;flex-direction:column;gap:6px;font-size:12px}
-.mix-legend span{display:flex;align-items:center;gap:8px}
+.mix-legend span{display:flex;align-items:center;gap:8px;width:100%;min-width:0}
 .mix-legend i{width:8px;height:8px;border-radius:99px;display:block;flex-shrink:0}
-.mix-legend b{font-weight:650;word-break:break-all}
+.mix-legend b{font-weight:650;word-break:break-all;min-width:0;flex:1}
 .mix-legend em{font-style:normal;color:var(--faint);margin-left:auto;white-space:nowrap;font-family:var(--mono)}
 .traffic-block{margin-bottom:0}
 .traffic-block-h{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px}
