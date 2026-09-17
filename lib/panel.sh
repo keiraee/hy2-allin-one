@@ -1235,7 +1235,7 @@ function renderSiteMix(sites){
       svg.append(svgNode("path",{d:"M "+cx+" "+cy+" L "+x1+" "+y1+" A "+r+" "+r+" 0 "+large+" 1 "+x2+" "+y2+" Z",fill:part.color}));
     });
   }
-  svg.append(svgNode("circle",{cx,cy,r:ir,fill:themeColor("--bg","#ffffff")}));
+  svg.append(svgNode("circle",{cx,cy,r:ir,fill:themeColor("--surface","#ffffff")}));
   const lead=usable[0]||parts[0];
   const mixMono=themeColor("--mono",'ui-monospace,"SF Mono",Menlo,Consolas,monospace');
   svg.append(svgNode("text",{x:cx,y:cy-4,"text-anchor":"middle","font-size":16,"font-weight":700,fill:themeColor("--text","#111111"),"font-family":mixMono},lead?formatPct(lead.value/total*100):""));

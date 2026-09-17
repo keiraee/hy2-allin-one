@@ -455,7 +455,8 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("formatDuration", panel)
         self.assertIn(".mix-legend span{display:flex;align-items:center;gap:8px;width:100%;min-width:0}", panel)
         self.assertIn("function applyTheme", panel)
-        self.assertIn("hy2-aio-theme", panel)
+        self.assertIn('themeColor("--surface","#ffffff")', panel)
+        self.assertNotIn('themeColor("--bg","#ffffff")', panel)
 
     def test_empty_hour_and_week_charts_keep_placeholder_without_series(self):
         panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
