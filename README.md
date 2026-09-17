@@ -29,7 +29,7 @@ hy2 restart
 
 ## 试用 main 开发版
 
-`main` 是仓库最新提交，**不是 Release**，可能比当前正式版多功能，也可能还不稳定。第一次必须带 `HY2_REPO_REF=main`，本机会写入 `HY2_TRACK_REF=main`；之后普通 `hy2 upgrade` 会继续跟 `main`，不会被后续正式版 tag 带跑。
+`main` 是仓库最新提交，**不是 Release**，可能比当前正式版多功能，也可能还不稳定。第一次必须带 `HY2_REPO_REF=main`，本机会写入 `HY2_TRACK_REF=main`；之后普通 `hy2 upgrade` 会继续跟 `main`，不会被后续正式版 tag 带跑。升级会先向 GitHub API 解析当前 commit，再按 SHA 下载 `SHA256SUMS` 和模块，避免 `raw.githubusercontent.com/main/` 把旧校验文件缓存住、面板不刷新。
 
 已安装，强制切到 / 更新 `main`：
 
@@ -42,6 +42,15 @@ sudo hy2 restart
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/main/hy2.sh -o hy2.sh
+sudo HY2_REPO_REF=main bash hy2.sh upgrade
+sudo hy2 restart
+```
+
+若升级日志没有 `钉住提交`、或面板仍是旧界面，说明 `main` 的 raw 缓存还没刷新。改用当前 commit 拉引导脚本：
+
+```bash
+sha=$(curl -fsSL https://api.github.com/repos/keiraee/hy2-allin-one/commits/main | python3 -c 'import sys,json; print(json.load(sys.stdin)["sha"])')
+curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/${sha}/hy2.sh" -o hy2.sh
 sudo HY2_REPO_REF=main bash hy2.sh upgrade
 sudo hy2 restart
 ```

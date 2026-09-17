@@ -28,11 +28,6 @@ if [ "${1:-}" = "upgrade" ]; then
     persist="$ref"
   fi
   [ -n "$ref" ] || { printf '%s\n' "upgrade 目标为空" >&2; exit 1; }
-  if [ -n "${HY2_REPO_URL:-}" ]; then
-    bootstrap_url="${HY2_REPO_URL%/}/hy2.sh"
-  else
-    bootstrap_url="https://raw.githubusercontent.com/${REPO_SLUG}/${ref}/hy2.sh"
-  fi
   current="未知"
   if [ -f "$env_file" ]; then
     current="$(awk -F= '/^AIO_VERSION=/{gsub(/\r/,""); print $2; exit}' "$env_file" || true)"
@@ -60,6 +55,26 @@ if [ "${1:-}" = "upgrade" ]; then
     printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "已是 ${current}，无需升级"
     exit 0
   fi
+  fetch_ref="$ref"
+  raw_base=""
+  if [ -n "${HY2_REPO_URL:-}" ]; then
+    raw_base="${HY2_REPO_URL%/}"
+    bootstrap_url="${raw_base}/hy2.sh"
+  else
+    if ! printf '%s' "$ref" | grep -qiE '^[0-9a-f]{40}$' \
+      && ! printf '%s' "$ref" | grep -qE '^v?[0-9]+(\.[0-9]+)*([.-][0-9A-Za-z]+)*$'; then
+      sha="$(curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+        "https://api.github.com/repos/${REPO_SLUG}/commits/${ref}" \
+        | python3 -c 'import sys, json; print(json.load(sys.stdin).get("sha") or "")')" \
+        || { printf '%s\n' "无法解析 Git 引用 ${REPO_SLUG}@${ref}" >&2; exit 1; }
+      printf '%s' "$sha" | grep -qiE '^[0-9a-f]{40}$' \
+        || { printf '%s\n' "GitHub 返回的 sha 无效：${sha}" >&2; exit 1; }
+      printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "钉住提交：${ref} → ${sha:0:12}"
+      fetch_ref="$sha"
+    fi
+    raw_base="https://raw.githubusercontent.com/${REPO_SLUG}/${fetch_ref}"
+    bootstrap_url="${raw_base}/hy2.sh"
+  fi
   printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "升级 ${current} → ${target}"
   printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "引导脚本：${bootstrap_url}"
   tmp="$(mktemp -d)"
@@ -68,7 +83,7 @@ if [ "${1:-}" = "upgrade" ]; then
   curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
     "${bootstrap_url}?nocache=$(date +%s)" -o "$tmp/hy2.sh" \
     || { printf '%s\n' "下载 hy2.sh 失败" >&2; exit 1; }
-  HY2_REPO="$REPO_SLUG" HY2_REPO_REF="$ref" HY2_REPO_URL="${HY2_REPO_URL:-}" \
+  HY2_REPO="$REPO_SLUG" HY2_REPO_REF="$ref" HY2_REPO_URL="${HY2_REPO_URL:-$raw_base}" \
     HY2_PERSIST_TRACK="$persist" HY2_UPGRADE_BANNER=1 \
     bash "$tmp/hy2.sh" repair
   exit $?

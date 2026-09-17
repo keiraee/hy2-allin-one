@@ -291,8 +291,7 @@ resolve_upgrade_source
         self.assertTrue(messages[2].startswith("模块地址："))
 
     def test_saved_main_track_is_used_when_repo_ref_is_unset(self):
-        result = run_bash(
-            r"""
+        script = r"""
 set -Eeuo pipefail
 root="$(mktemp -d)"
 trap 'rm -rf "$root"' EXIT
@@ -303,14 +302,40 @@ unset HY2_REPO_REF
 unset HY2_REPO_URL
 unset HY2_UPGRADE_BANNER
 HY2_REPO=keiraee/hy2-allin-one
+_bootstrap_curl() {
+  if printf '%s' "${1-}" | grep -q 'commits'; then
+    printf '%s\n' '{"sha":"0123456789abcdef0123456789abcdef01234567"}'
+    return 0
+  fi
+  printf '%s\n' "unexpected curl: ${1-}" >&2
+  return 1
+}
 resolve_upgrade_source
 printf 'REF=%s\n' "$REPO_REF"
 printf 'TRACK=%s\n' "$HY2_PERSIST_TRACK"
+printf 'URL=%s\n' "$REPO_URL"
 """
-        )
+        with tempfile.TemporaryDirectory(dir=ROOT / "tests") as tmp:
+            path = Path(tmp) / "run.sh"
+            path.write_bytes(script.lstrip().encode("utf-8"))
+            rel = path.relative_to(ROOT).as_posix()
+            result = subprocess.run(
+                ["bash", rel],
+                cwd=ROOT,
+                text=True,
+                encoding="utf-8",
+                capture_output=True,
+                check=False,
+            )
         self.assertEqual(0, result.returncode, result.stderr or result.stdout)
         self.assertIn("keiraee/hy2-allin-one @ main", result.stdout)
-        self.assertIn("https://raw.githubusercontent.com/keiraee/hy2-allin-one/main", result.stdout)
+        self.assertIn(
+            "https://raw.githubusercontent.com/keiraee/hy2-allin-one/0123456789abcdef0123456789abcdef01234567",
+            result.stdout,
+        )
+        self.assertIn("REF=0123456789abcdef0123456789abcdef01234567", result.stdout)
+        self.assertIn("TRACK=main", result.stdout)
+        self.assertIn("钉住提交：main → 0123456789ab", result.stdout)
 
     def test_cli_upgrade_follows_saved_main_track_instead_of_latest(self):
         result = run_bash(
@@ -331,6 +356,10 @@ for arg in "$@"; do
   fi
   prev="$arg"
 done
+if printf '%s' "$*" | grep -q '/commits/main'; then
+  printf '%s\n' '{"sha":"0123456789abcdef0123456789abcdef01234567"}'
+  [ -z "$out" ] && exit 0
+fi
 if printf '%s' "$*" | grep -q '/releases/latest'; then
   printf '%s\n' '{"tag_name":"v1.3.28"}'
   [ -z "$out" ] && exit 0
@@ -340,6 +369,7 @@ if [ -n "$out" ]; then
     echo '#!/bin/sh'
     echo 'echo "HY2_REPO=${HY2_REPO-}" > "$HY2_TESTDIR/seen.env"'
     echo 'echo "HY2_REPO_REF=${HY2_REPO_REF-}" >> "$HY2_TESTDIR/seen.env"'
+    echo 'echo "HY2_REPO_URL=${HY2_REPO_URL-}" >> "$HY2_TESTDIR/seen.env"'
     echo 'echo "HY2_PERSIST_TRACK=${HY2_PERSIST_TRACK-}" >> "$HY2_TESTDIR/seen.env"'
   } > "$out"
   exit 0
@@ -362,8 +392,11 @@ env PATH="$hy2_testdir/commands:/usr/bin:/bin" HY2_TESTDIR="$hy2_testdir" /bin/b
 test -f "$hy2_testdir/seen.env"
 grep -q 'HY2_REPO_REF=main' "$hy2_testdir/seen.env"
 grep -q 'HY2_PERSIST_TRACK=main' "$hy2_testdir/seen.env"
-grep -q 'main/hy2.sh' "$hy2_testdir/trace.log"
+grep -q '0123456789abcdef0123456789abcdef01234567' "$hy2_testdir/seen.env"
+grep -q '/commits/main' "$hy2_testdir/trace.log"
+grep -q '0123456789abcdef0123456789abcdef01234567/hy2.sh' "$hy2_testdir/trace.log"
 ! grep -q 'releases/latest' "$hy2_testdir/trace.log"
+! grep -q 'alice/hy2-fork/main/hy2.sh' "$hy2_testdir/trace.log"
 """
         )
         self.assertEqual(0, result.returncode, result.stderr or result.stdout)

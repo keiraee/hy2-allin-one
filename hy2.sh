@@ -22,7 +22,7 @@ apply_repo_url() {
 
 log_repo_source() {
   local label="${1:-来源}"
-  _bootstrap_log "${label}：${REPO_SLUG} @ ${REPO_REF}"
+  _bootstrap_log "${label}：${REPO_SLUG} @ ${REPO_TRACK:-$REPO_REF}"
   _bootstrap_log "模块地址：${REPO_URL}"
 }
 
@@ -61,7 +61,7 @@ log_upgrade_plan() {
   local from to env_file="${1:-/etc/hy2-aio/config.env}"
   [ "${HY2_UPGRADE_BANNER:-0}" = "1" ] && return 0
   from="$(read_installed_aio_version "$env_file")"
-  to="$(normalize_aio_version "${REPO_REF:-}")"
+  to="$(normalize_aio_version "${REPO_TRACK:-$REPO_REF}")"
   _bootstrap_log "升级 ${from} → ${to}"
   HY2_UPGRADE_BANNER=1
   export HY2_UPGRADE_BANNER
@@ -75,6 +75,38 @@ _bootstrap_die() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
 # GitHub raw CDN can keep serving the previous main tree for a few minutes after push.
 _bootstrap_curl() {
   curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$@"
+}
+
+is_commit_sha() {
+  printf '%s' "${1:-}" | grep -qiE '^[0-9a-f]{40}$'
+}
+
+is_release_tag() {
+  printf '%s' "${1:-}" | grep -qE '^v?[0-9]+(\.[0-9]+)*([.-][0-9A-Za-z]+)*$'
+}
+
+# Branch names like main are mutable; raw.githubusercontent.com caches them.
+# Pin downloads to the current commit so SHA256SUMS and modules refresh together.
+pin_github_raw_to_commit() {
+  local requested="${REPO_REF:-}" payload sha
+  if [ -n "${HY2_REPO_URL:-}" ]; then
+    apply_repo_url
+    return 0
+  fi
+  [ -n "$requested" ] || return 0
+  if is_commit_sha "$requested" || is_release_tag "$requested"; then
+    apply_repo_url
+    return 0
+  fi
+  REPO_TRACK="${REPO_TRACK:-$requested}"
+  payload="$(_bootstrap_curl "https://api.github.com/repos/${REPO_SLUG}/commits/${requested}")" \
+    || _bootstrap_die "无法解析 Git 引用 ${REPO_SLUG}@${requested}"
+  sha="$(printf '%s' "$payload" | python3 -c 'import sys, json; print(json.load(sys.stdin).get("sha") or "")')" \
+    || _bootstrap_die "无法解析 commit（${REPO_SLUG}@${requested}）"
+  is_commit_sha "$sha" || _bootstrap_die "GitHub 返回的 sha 无效：${sha}"
+  _bootstrap_log "钉住提交：${REPO_TRACK} → ${sha:0:12}"
+  REPO_REF="$sha"
+  apply_repo_url
 }
 
 # 下载远程模块（先拉 SHA256SUMS，再逐文件校验）
@@ -185,12 +217,15 @@ resolve_upgrade_source() {
   fi
   if [ -z "$requested" ] || [ "$requested" = "latest" ]; then
     resolve_latest_repo_ref
+    REPO_TRACK="$REPO_REF"
     HY2_PERSIST_TRACK=latest
   else
+    REPO_TRACK="$requested"
     REPO_REF="$requested"
-    apply_repo_url
     HY2_PERSIST_TRACK="$requested"
   fi
+  pin_github_raw_to_commit
+  export REPO_TRACK
   export HY2_PERSIST_TRACK
   export REPO_REF
   export REPO_URL
@@ -662,8 +697,10 @@ main() {
                 ;;
             esac
           fi
+          REPO_TRACK="${REPO_TRACK:-${HY2_PERSIST_TRACK:-$REPO_REF}}"
           log_upgrade_plan
         fi
+        pin_github_raw_to_commit
         log_repo_source "模块来源"
       fi
       tmp_dir="$(mktemp -d)"
