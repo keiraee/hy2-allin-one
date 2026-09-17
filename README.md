@@ -1,4 +1,4 @@
-# HY2 AIO v1.4.0
+# HY2 AIO v1.5.0
 
 一键部署 Hysteria 2 + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -8,7 +8,7 @@
 ## 快速开始
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.4.0/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.5.0/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -20,30 +20,28 @@ sudo bash hy2.sh install
 跟 GitHub 最新正式版（Release）：
 
 ```bash
-# 需 root：已是 root 直接执行；有 sudo 再加 sudo
-hy2 upgrade
-hy2 restart
+hy2 upgrade && hy2 restart
 ```
 
-`upgrade` / `repair` 会打回滚快照、更新模块与配置、写入 Hysteria 配置（含 QUIC 保活）；**默认不重启 Hysteria**。使配置生效请 `sudo hy2 restart`，或用 `sudo hy2 obfs on|off`（会重启 Hysteria）。
+需 root：已是 root 直接执行；有 sudo：`sudo hy2 upgrade && sudo hy2 restart`。
+
+`upgrade` / `repair` 会打回滚快照、更新模块与配置、写入 Hysteria 配置（含 QUIC 保活）；**默认不重启 Hysteria**，所以要和 `hy2 restart` 写在同一行。也可以用 `hy2 obfs on|off`（会重启 Hysteria）。
 
 ## 试用 main 开发版
 
-`main` 是仓库最新提交，**不是 Release**，可能比当前正式版多功能，也可能还不稳定。第一次必须带 `HY2_REPO_REF=main`，本机会写入 `HY2_TRACK_REF=main`；之后普通 `hy2 upgrade` 会继续跟 `main`，不会被后续正式版 tag 带跑。升级会先向 GitHub API 解析当前 commit，再按 SHA 下载 `SHA256SUMS` 和模块，避免 `raw.githubusercontent.com/main/` 把旧校验文件缓存住、面板不刷新。日志会打印 **上次哈希** 和 **本次哈希**（`SHA256SUMS` 指纹，main 轨道还会带提交短号）；两者不同才说明模块真的换成新文件。版本号在未发版时仍可能显示 `v1.4.0`。
+`main` 是仓库最新提交，**不是 Release**，可能比当前正式版多功能，也可能还不稳定。第一次必须带 `HY2_REPO_REF=main`，本机会写入 `HY2_TRACK_REF=main`；之后普通 `hy2 upgrade && hy2 restart` 会继续跟 `main`，不会被后续正式版 tag 带跑。升级会先向 GitHub API 解析当前 commit，再按 SHA 下载 `SHA256SUMS` 和模块，避免 `raw.githubusercontent.com/main/` 把旧校验文件缓存住、面板不刷新。日志会打印 **上次哈希** 和 **本次哈希**（`SHA256SUMS` 指纹，main 轨道还会带提交短号）；两者不同才说明模块真的换成新文件。
 
 已安装，强制切到 / 更新 `main`：
 
 ```bash
-sudo HY2_REPO_REF=main hy2 upgrade
-sudo hy2 restart
+HY2_REPO_REF=main hy2 upgrade && hy2 restart
 ```
 
 本机还没有 `hy2`，或旧版 `hy2 upgrade` 一直提示已是最新、实际没拉到 `main`：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/main/hy2.sh -o hy2.sh
-sudo HY2_REPO_REF=main bash hy2.sh upgrade
-sudo hy2 restart
+sudo HY2_REPO_REF=main bash hy2.sh upgrade && hy2 restart
 ```
 
 若升级日志没有 `钉住提交`、或面板仍是旧界面，说明 `main` 的 raw 缓存还没刷新。改用当前 commit 拉引导脚本：
@@ -51,8 +49,7 @@ sudo hy2 restart
 ```bash
 sha=$(curl -fsSL https://api.github.com/repos/keiraee/hy2-allin-one/commits/main | python3 -c 'import sys,json; print(json.load(sys.stdin)["sha"])')
 curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/${sha}/hy2.sh" -o hy2.sh
-sudo HY2_REPO_REF=main bash hy2.sh upgrade
-sudo hy2 restart
+sudo HY2_REPO_REF=main bash hy2.sh upgrade && hy2 restart
 ```
 
 全新安装也直接用 `main`：
@@ -65,15 +62,13 @@ sudo HY2_REPO_REF=main bash hy2.sh install
 记住轨道之后，日常更新：
 
 ```bash
-sudo hy2 upgrade
-sudo hy2 restart
+hy2 upgrade && hy2 restart
 ```
 
 切回 GitHub 正式版：
 
 ```bash
-sudo HY2_REPO_REF=latest hy2 upgrade
-sudo hy2 restart
+HY2_REPO_REF=latest hy2 upgrade && hy2 restart
 ```
 
 ## 使用方法
@@ -136,7 +131,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.4.0` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.5.0` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
 | `CADDY_VERSION` | Caddy 回退安装版本 | `v2.11.4` |
@@ -173,6 +168,15 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v1.5.0
+- 面板改成极简仪表盘风格，指标、服务、用户表回到同一页
+- 内联 SVG 线框图标（不加载外链）；修好精灵根标签写错导致图标全空白
+- 流量分析弹窗铺满、数字列右对齐、窄屏分表藏列、菜单超出视口可滚动
+- `main` 升级按 commit SHA 拉模块，避免 GitHub raw 把 SHA256SUMS 缓存住；日志打印上次/本次哈希
+- 添加用户立刻回面板，重复添加不再误报「用户已存在」；改备注不再重启 Hysteria
+- 写入时全屏蒙层和按钮转圈，避免连点
+- 升级写成一行：`hy2 upgrade && hy2 restart`
 
 ### v1.4.0
 - 用户行菜单新增流量分析：接近全屏双栏看板，热力、作息、趋势、按日、上下行、站点构成一次看完

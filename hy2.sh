@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
 DEFAULT_REPO_SLUG="keiraee/hy2-allin-one"
 REPO_SLUG="${HY2_REPO:-$DEFAULT_REPO_SLUG}"
-REPO_REF="${HY2_REPO_REF:-v1.4.0}"
+REPO_REF="${HY2_REPO_REF:-v1.5.0}"
 
 apply_repo_url() {
   if [ -n "${HY2_REPO_URL:-}" ]; then
@@ -593,7 +593,7 @@ EOF
   echo "  hy2 panel     # 查看面板账号和密码"
   echo "  hy2 show      # 看账号和订阅"
   echo "  hy2 obfs off  # 断线频繁时可关伪装"
-  echo "  hy2 upgrade   # 升级 AIO 到最新版"
+  echo "  hy2 upgrade && hy2 restart  # 升级到最新版并重启"
   echo
   echo "云控制台防火墙请放行：TCP 80、TCP ${PANEL_PORT}、UDP ${HY2_PORT}"
   echo "============================================================"

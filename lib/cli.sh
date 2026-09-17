@@ -319,7 +319,7 @@ PY
 )"; then
       latest="$(normalize_hint_version "$latest")"
       if [ -n "$latest" ] && [ "$latest" != "$current" ]; then
-        UPDATE_HINT="当前 v${current} · 可升级 v${latest}（hy2 upgrade）"
+        UPDATE_HINT="当前 v${current} · 可升级 v${latest}（hy2 upgrade && hy2 restart）"
       fi
       return 0
     fi
@@ -341,7 +341,7 @@ path.write_text(json.dumps({"checked_at": int(sys.argv[2]), "latest": sys.argv[3
 PY
 
   if [ "$latest" != "$current" ]; then
-    UPDATE_HINT="当前 v${current} · 可升级 v${latest}（hy2 upgrade）"
+    UPDATE_HINT="当前 v${current} · 可升级 v${latest}（hy2 upgrade && hy2 restart）"
   fi
 }
 
