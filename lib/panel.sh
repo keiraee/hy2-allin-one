@@ -71,6 +71,7 @@ table{width:100%;border-collapse:collapse}
 th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);font-size:13px;vertical-align:middle}
 th{font-size:11.5px;color:var(--faint);font-weight:600;background:var(--surface);text-transform:none}
 td.num,.dest-table td:nth-child(n+6){text-align:right}
+#trafficLiveTable th:nth-child(n+6),#trafficSiteTable th:nth-child(n+4),#trafficSiteTable td:nth-child(n+4){text-align:right}
 .table-wrap th:nth-child(4),.table-wrap td:nth-child(4),.table-wrap th:nth-child(5),.table-wrap td:nth-child(5),.table-wrap th:nth-child(6),.table-wrap td:nth-child(6),.table-wrap th:nth-child(7),.table-wrap td:nth-child(7){text-align:right}
 tr:last-child td{border-bottom:0}
 tr:hover td{background:var(--surface-2)}
