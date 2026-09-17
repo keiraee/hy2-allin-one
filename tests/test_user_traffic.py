@@ -401,6 +401,8 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn('data-theme="light"', panel)
         self.assertIn('id="themeBtn"', panel)
         self.assertIn('id="i-sun"', panel)
+        self.assertIn('<svg xmlns="http://www.w3.org/2000/svg"', panel)
+        self.assertNotIn(".svg xmlns=", panel)
         self.assertIn('id="i-moon"', panel)
         self.assertIn('id="i-x"', panel)
         self.assertIn('href="#i-refresh"', panel)
