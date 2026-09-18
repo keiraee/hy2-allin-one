@@ -111,6 +111,13 @@ class SubscriptionYamlTests(unittest.TestCase):
         self.assertIn("pbk=public-key-fixture", link)
         self.assertIn("sid=abcd1234", link)
         self.assertIn("#" + urllib.parse.quote("hy2超时备用临时节点", safe=""), link)
+        self.assertEqual(self.namespace["VLESS_NODE_NAME"], "hy2超时备用临时节点")
+        access = (ROOT / "lib" / "access.sh").read_text(encoding="utf-8")
+        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        self.assertIn(self.namespace["VLESS_NODE_NAME"], access)
+        self.assertNotIn('f"VLESS-{username}"', access)
+        self.assertNotIn('q("VLESS-" + username)', backend)
+        self.assertNotIn('"VLESS-alice"', self.yaml_text())
 
     def test_direct_links_are_two_lines(self):
         text = self.namespace["direct_links"](

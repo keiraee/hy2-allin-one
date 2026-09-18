@@ -176,7 +176,10 @@ rollback_cmd() {
   systemctl daemon-reload
   systemctl enable hy2-aio-reload-hysteria.path hy2-aio-reload-xray.path >/dev/null || true
   systemctl restart hy2-aio-reload-hysteria.path hy2-aio-reload-xray.path || true
-  systemctl restart hysteria-server.service hy2-xray.service hy2-aio.service caddy.service || true
+  systemctl restart hysteria-server.service || true
+  systemctl restart hy2-aio.service || true
+  systemctl restart hy2-xray.service || true
+  systemctl restart caddy.service || true
   log "回滚完成"
 }
 

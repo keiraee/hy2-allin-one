@@ -253,6 +253,14 @@ die() {{ printf 'ERROR: %s\\n' "$*" >&2; exit 1; }}
         self.assertIn("systemctl enable hy2-aio-reload-hysteria.path hy2-aio-reload-xray.path", rollback)
         self.assertIn("systemctl restart hy2-aio-reload-hysteria.path hy2-aio-reload-xray.path", rollback)
         self.assertIn("hy2-xray.service", rollback)
+        self.assertNotIn(
+            "systemctl restart hysteria-server.service hy2-xray.service hy2-aio.service caddy.service",
+            rollback,
+        )
+        self.assertLess(
+            rollback.index("systemctl restart hy2-aio.service"),
+            rollback.index("systemctl restart hy2-xray.service"),
+        )
         self.assertLess(
             rollback.index('validate_rollback_snapshot "$snapshot"'),
             rollback.index('tar -xzf "$snapshot"'),
