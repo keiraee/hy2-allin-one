@@ -249,6 +249,7 @@ ensure_reality_env() {
     fi
     out="$("$xray_bin" x25519)" || die "xray x25519 失败"
     priv="$(printf '%s\n' "$out" | awk -F': ' '/^PrivateKey/{print $2; exit}' | tr -d '[:space:]')"
+    # 兼容不同 Xray 版本：旧版输出 "Password"，新版输出 "PublicKey"
     pub="$(printf '%s\n' "$out" | awk -F': ' '/^(Password|PublicKey)/{print $2; exit}' | tr -d '[:space:]')"
     [ -n "$priv" ] && [ -n "$pub" ] || die "解析 Reality 密钥失败"
     REALITY_PRIVATE_KEY="$priv"
