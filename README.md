@@ -17,6 +17,8 @@ sudo bash hy2.sh install
 
 ## 已安装 · 升级
 
+`upgrade` 会比 **版本号和提交哈希**。正式版 tag（例如 `v1.6.0`）原地更新后，版本号不变也会继续拉新模块。日志里 **上次哈希 / 本次哈希** 对得上才跳过。
+
 跟 GitHub 最新正式版（Release）：
 
 ```bash
@@ -24,6 +26,13 @@ hy2 upgrade && hy2 restart
 ```
 
 需 root：已是 root 直接执行；有 sudo：`sudo hy2 upgrade && sudo hy2 restart`。
+
+已经装过同一版本、但 tag 后来又补了提交：新入口会对比哈希并继续升级。若本机 `hy2` 仍提示「无需升级」且本次哈希显示「未下载」，用仓库里的新引导脚本跑一次：
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.6.0/hy2.sh?nocache=$(date +%s)" -o hy2.sh
+sudo bash hy2.sh upgrade && hy2 restart
+```
 
 `upgrade` / `repair` 会打回滚快照、更新模块与配置、写入 Hysteria 配置（含 QUIC 保活）；**默认不重启 Hysteria**，所以要和 `hy2 restart` 写在同一行。也可以用 `hy2 obfs on|off`（会重启 Hysteria）。
 
@@ -37,7 +46,7 @@ hy2 upgrade && hy2 restart
 HY2_REPO_REF=main hy2 upgrade && hy2 restart
 ```
 
-本机还没有 `hy2`，或旧版 `hy2 upgrade` 一直提示已是最新、实际没拉到 `main`：
+本机还没有 `hy2`，或本机 `hy2` 仍按「同版本就跳过」、升不到已移动的 tag / `main`：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/main/hy2.sh -o hy2.sh
@@ -182,6 +191,8 @@ hy2-allin-one/
 - 单独升内核：`hy2 update` 升 Hysteria，`hy2 update-xray`（或 `hy2 update xray`）升 Xray
 - 修复：`hy2 restart` / 安装 / 回滚时 Xray 因 `/run/hy2-aio` 被清而 `226/NAMESPACE`
 - 改模块后补齐 `SHA256SUMS`，避免 `hy2 upgrade` 校验失败
+- `hy2 upgrade` 同版本仍比对提交哈希；正式版 tag 原地更新也会继续拉模块
+- 添删用户先落盘回成功，再后台重启内核，避免走代理打开面板时误报「用户已存在 / 不存在」
 
 ### v1.5.0
 - 面板改成极简仪表盘风格，指标、服务、用户表回到同一页

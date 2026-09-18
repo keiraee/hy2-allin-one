@@ -43,14 +43,6 @@ if [ "${1:-}" = "upgrade" ]; then
     v*) ;;
     [0-9]*) target="v${target}" ;;
   esac
-  skip=0
-  case "$ref" in
-    v[0-9]*|[0-9]*)
-      if [ "$current" != "未知" ] && [ "$current" = "$target" ]; then
-        skip=1
-      fi
-      ;;
-  esac
   saved_modules=""
   saved_commit=""
   if [ -f "$env_file" ]; then
@@ -63,21 +55,20 @@ if [ "${1:-}" = "upgrade" ]; then
     if printf '%s' "$saved_commit" | grep -qiE '^[0-9a-f]{40}$'; then
       saved_label="${saved_label}（提交 ${saved_commit:0:12}）"
     fi
-  fi
-  if [ "$skip" -eq 1 ]; then
-    printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "已是 ${current}，无需升级"
-    printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "上次哈希：${saved_label}"
-    printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "本次哈希：未下载"
-    exit 0
+  elif printf '%s' "$saved_commit" | grep -qiE '^[0-9a-f]{40}$'; then
+    saved_label="提交 ${saved_commit:0:12}"
   fi
   fetch_ref="$ref"
   raw_base=""
+  remote_commit=""
   if [ -n "${HY2_REPO_URL:-}" ]; then
     raw_base="${HY2_REPO_URL%/}"
     bootstrap_url="${raw_base}/hy2.sh"
   else
-    if ! printf '%s' "$ref" | grep -qiE '^[0-9a-f]{40}$' \
-      && ! printf '%s' "$ref" | grep -qE '^v?[0-9]+(\.[0-9]+)*([.-][0-9A-Za-z]+)*$'; then
+    if printf '%s' "$ref" | grep -qiE '^[0-9a-f]{40}$'; then
+      fetch_ref="$ref"
+      remote_commit="$ref"
+    else
       sha="$(curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
         "https://api.github.com/repos/${REPO_SLUG}/commits/${ref}" \
         | python3 -c 'import sys, json; print(json.load(sys.stdin).get("sha") or "")')" \
@@ -86,9 +77,36 @@ if [ "${1:-}" = "upgrade" ]; then
         || { printf '%s\n' "GitHub 返回的 sha 无效：${sha}" >&2; exit 1; }
       printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "钉住提交：${ref} → ${sha:0:12}"
       fetch_ref="$sha"
+      remote_commit="$sha"
     fi
     raw_base="https://raw.githubusercontent.com/${REPO_SLUG}/${fetch_ref}"
     bootstrap_url="${raw_base}/hy2.sh"
+  fi
+  skip=0
+  case "$ref" in
+    v[0-9]*|[0-9]*)
+      if [ "$current" != "未知" ] && [ "$current" = "$target" ] \
+        && printf '%s' "$saved_commit" | grep -qiE '^[0-9a-f]{40}$' \
+        && printf '%s' "$remote_commit" | grep -qiE '^[0-9a-f]{40}$' \
+        && [ "$saved_commit" = "$remote_commit" ]; then
+        skip=1
+      fi
+      ;;
+  esac
+  remote_label="未下载"
+  if printf '%s' "$remote_commit" | grep -qiE '^[0-9a-f]{40}$'; then
+    remote_label="${saved_modules:0:12}"
+    if [ -z "$saved_modules" ]; then
+      remote_label="提交 ${remote_commit:0:12}"
+    else
+      remote_label="${saved_modules:0:12}（提交 ${remote_commit:0:12}）"
+    fi
+  fi
+  if [ "$skip" -eq 1 ]; then
+    printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "已是 ${current}，提交未变化，无需升级"
+    printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "上次哈希：${saved_label}"
+    printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "本次哈希：${remote_label}"
+    exit 0
   fi
   printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "升级 ${current} → ${target}"
   printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "上次哈希：${saved_label}"

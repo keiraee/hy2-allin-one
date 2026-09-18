@@ -47,14 +47,19 @@ read_installed_aio_version() {
 }
 
 upgrade_already_current() {
-  local from to
+  local from to saved_commit
   from="$(read_installed_aio_version "${1:-}")"
   to="$(normalize_aio_version "${2:-}")"
   case "$to" in
     v[0-9]*|[0-9]*) ;;
     *) return 1 ;;
   esac
-  [ "$from" != "未知" ] && [ -n "$to" ] && [ "$from" = "$to" ]
+  [ "$from" != "未知" ] && [ -n "$to" ] && [ "$from" = "$to" ] || return 1
+  # 版本相同仍要比远程提交：正式版 tag 可能原地移动。
+  saved_commit="$(read_env_value HY2_REPO_SHA "${1:-}")"
+  is_commit_sha "${HY2_FETCH_COMMIT:-}" || return 1
+  is_commit_sha "$saved_commit" || return 1
+  [ "$saved_commit" = "$HY2_FETCH_COMMIT" ]
 }
 
 log_upgrade_plan() {
@@ -140,6 +145,7 @@ log_fetched_modules_hash() {
 
 # Branch names like main are mutable; raw.githubusercontent.com caches them.
 # Pin downloads to the current commit so SHA256SUMS and modules refresh together.
+# Tags can move (same version, new files); resolve them like branches.
 pin_github_raw_to_commit() {
   local requested="${REPO_REF:-}" payload sha
   if [ -n "${HY2_REPO_URL:-}" ]; then
@@ -148,7 +154,7 @@ pin_github_raw_to_commit() {
     return 0
   fi
   [ -n "$requested" ] || return 0
-  if is_commit_sha "$requested" || is_release_tag "$requested"; then
+  if is_commit_sha "$requested"; then
     apply_repo_url
     remember_fetch_commit "$requested"
     return 0
@@ -765,9 +771,9 @@ main() {
       if [ "$command" = "upgrade" ]; then
         resolve_upgrade_source
         if upgrade_already_current "${HY2_ENV_FILE:-/etc/hy2-aio/config.env}" "${REPO_TRACK:-$REPO_REF}"; then
-          _bootstrap_log "已是 $(normalize_aio_version "${REPO_TRACK:-$REPO_REF}")，无需升级"
+          _bootstrap_log "已是 $(normalize_aio_version "${REPO_TRACK:-$REPO_REF}")，提交未变化，无需升级"
           _bootstrap_log "上次哈希：$(hash_label "$(read_env_value HY2_MODULES_SHA)" "$(read_env_value HY2_REPO_SHA)")"
-          _bootstrap_log "本次哈希：未下载"
+          _bootstrap_log "本次哈希：$(hash_label "$(read_env_value HY2_MODULES_SHA)" "${HY2_FETCH_COMMIT:-}")"
           return 0
         fi
       else

@@ -179,6 +179,10 @@ if printf '%s' "$url" | grep -q '/releases/latest'; then
   printf '%s\\n' '{{"tag_name":"v9.9.9"}}'
   exit 0
 fi
+if printf '%s' "$url" | grep -q '/commits/v9.9.9'; then
+  printf '%s\\n' '{{"sha":"0123456789abcdef0123456789abcdef01234567"}}'
+  exit 0
+fi
 if [ -n "$out" ]; then
   cat > "$out" <<'EOS'
 #!/usr/bin/env bash
@@ -214,11 +218,11 @@ bash bin/hy2.sh upgrade
             self.assertIn("HY2_REPO_REF=v9.9.9", env_text)
             trace_text = trace.read_text(encoding="utf-8")
             self.assertIn("alice/hy2-fork", trace_text)
-            self.assertIn("v9.9.9/hy2.sh", trace_text)
+            self.assertIn("0123456789abcdef0123456789abcdef01234567/hy2.sh", trace_text)
             self.assertNotIn("keiraee/hy2-allin-one", trace_text)
             self.assertIn("升级 未知 → v9.9.9", result.stdout)
 
-    def test_cli_upgrade_skips_when_installed_version_matches_latest(self):
+    def test_cli_upgrade_skips_when_installed_version_and_commit_match(self):
         result = run_bash(
             r"""
 set -Eeuo pipefail
@@ -230,9 +234,16 @@ printf '%s\n' 'AIO_VERSION=v9.9.9' \
   'HY2_REPO_SHA=0123456789abcdef0123456789abcdef01234567' > "$hy2_testdir/config.env"
 cat > "$hy2_testdir/commands/curl" <<'EOS'
 #!/bin/sh
-printf '%s\n' '{"tag_name":"v9.9.9"}'
-echo "$*" >> "$HY2_TESTDIR/trace.log"
-exit 0
+printf '%s\n' "$*" >> "$HY2_TESTDIR/trace.log"
+if printf '%s' "$*" | grep -q '/releases/latest'; then
+  printf '%s\n' '{"tag_name":"v9.9.9"}'
+  exit 0
+fi
+if printf '%s' "$*" | grep -q '/commits/v9.9.9'; then
+  printf '%s\n' '{"sha":"0123456789abcdef0123456789abcdef01234567"}'
+  exit 0
+fi
+exit 1
 EOS
 chmod +x "$hy2_testdir/commands/curl"
 cat > "$hy2_testdir/commands/id" <<'EOS'
@@ -251,9 +262,68 @@ test ! -f "$hy2_testdir/seen.env"
 """
         )
         self.assertEqual(0, result.returncode, result.stderr or result.stdout)
-        self.assertIn("已是 v9.9.9，无需升级", result.stdout)
+        self.assertIn("已是 v9.9.9，提交未变化，无需升级", result.stdout)
         self.assertIn("上次哈希：aaaaaaaaaaaa（提交 0123456789ab）", result.stdout)
-        self.assertIn("本次哈希：未下载", result.stdout)
+        self.assertIn("本次哈希：aaaaaaaaaaaa（提交 0123456789ab）", result.stdout)
+
+    def test_cli_upgrade_same_version_still_pulls_when_commit_moved(self):
+        result = run_bash(
+            r"""
+set -Eeuo pipefail
+hy2_testdir="$(mktemp -d)"
+trap 'rm -rf "$hy2_testdir"' EXIT
+mkdir -p "$hy2_testdir/commands"
+printf '%s\n' 'AIO_VERSION=v9.9.9' \
+  'HY2_MODULES_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+  'HY2_REPO_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$hy2_testdir/config.env"
+cat > "$hy2_testdir/commands/curl" <<'EOS'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HY2_TESTDIR/trace.log"
+out=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-o" ]; then
+    out="$arg"
+  fi
+  prev="$arg"
+done
+if printf '%s' "$*" | grep -q '/releases/latest'; then
+  printf '%s\n' '{"tag_name":"v9.9.9"}'
+  [ -z "$out" ] && exit 0
+fi
+if printf '%s' "$*" | grep -q '/commits/v9.9.9'; then
+  printf '%s\n' '{"sha":"0123456789abcdef0123456789abcdef01234567"}'
+  [ -z "$out" ] && exit 0
+fi
+if [ -n "$out" ]; then
+  {
+    echo '#!/bin/sh'
+    echo 'echo pulled > "$HY2_TESTDIR/seen.env"'
+  } > "$out"
+  exit 0
+fi
+exit 1
+EOS
+chmod +x "$hy2_testdir/commands/curl"
+cat > "$hy2_testdir/commands/id" <<'EOS'
+#!/bin/sh
+printf '0\n'
+EOS
+chmod +x "$hy2_testdir/commands/id"
+export PATH="$hy2_testdir/commands:$PATH"
+export HY2_TESTDIR="$hy2_testdir"
+export HY2_REPO=alice/hy2-fork
+export HY2_ENV_FILE="$hy2_testdir/config.env"
+unset HY2_REPO_REF
+unset HY2_REPO_URL
+env PATH="$hy2_testdir/commands:/usr/bin:/bin" /bin/bash "$PWD/bin/hy2.sh" upgrade
+test -f "$hy2_testdir/seen.env"
+grep -q '0123456789abcdef0123456789abcdef01234567/hy2.sh' "$hy2_testdir/trace.log"
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        self.assertNotIn("无需升级", result.stdout)
+        self.assertIn("钉住提交：v9.9.9 → 0123456789ab", result.stdout)
 
     def test_upgrade_already_current_compares_normalized_versions(self):
         result = run_bash(
@@ -265,6 +335,12 @@ printf '%s\n' 'AIO_VERSION=1.3.24' > "$root/same.env"
 printf '%s\n' 'AIO_VERSION=v1.3.23' > "$root/other.env"
 source ./hy2.sh
 upgrade_already_current "$root/same.env" v1.3.24 && echo same-yes || echo same-no
+HY2_FETCH_COMMIT=0123456789abcdef0123456789abcdef01234567
+export HY2_FETCH_COMMIT
+printf '%s\n' 'AIO_VERSION=1.3.24' 'HY2_REPO_SHA=0123456789abcdef0123456789abcdef01234567' > "$root/hashed.env"
+upgrade_already_current "$root/hashed.env" v1.3.24 && echo hash-yes || echo hash-no
+printf '%s\n' 'AIO_VERSION=1.3.24' 'HY2_REPO_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' > "$root/moved.env"
+upgrade_already_current "$root/moved.env" v1.3.24 && echo moved-yes || echo moved-no
 upgrade_already_current "$root/other.env" v1.3.24 && echo other-yes || echo other-no
 upgrade_already_current "$root/same.env" main && echo main-yes || echo main-no
 upgrade_already_current "$root/same.env" abcdef0 && echo sha-yes || echo sha-no
@@ -273,7 +349,7 @@ upgrade_already_current "$root/same.env" 0568973f657caf864f4a8bdf88d36ddb9581af5
         )
         self.assertEqual(0, result.returncode, result.stderr or result.stdout)
         self.assertEqual(
-            ["same-yes", "other-no", "main-no", "sha-no", "digitsha-no"],
+            ["same-no", "hash-yes", "moved-no", "other-no", "main-no", "sha-no", "digitsha-no"],
             result.stdout.strip().splitlines(),
         )
 
@@ -311,14 +387,27 @@ HY2_REPO=alice/hy2-fork
 HY2_REPO_REF=v9.9.9
 unset HY2_REPO_URL
 unset HY2_UPGRADE_BANNER
+_bootstrap_curl() {
+  if printf '%s' "${1-}" | grep -q '/commits/v9.9.9'; then
+    printf '%s\n' '{"sha":"0123456789abcdef0123456789abcdef01234567"}'
+    return 0
+  fi
+  printf '%s\n' "unexpected curl: ${1-}" >&2
+  return 1
+}
 resolve_upgrade_source
 """
         )
         self.assertEqual(0, result.returncode, result.stderr or result.stdout)
         messages = log_messages(result.stdout)
-        self.assertEqual("升级 未知 → v9.9.9", messages[0])
-        self.assertEqual("模块来源：alice/hy2-fork @ v9.9.9", messages[1])
-        self.assertTrue(messages[2].startswith("模块地址："))
+        self.assertEqual("钉住提交：v9.9.9 → 0123456789ab", messages[0])
+        self.assertEqual("升级 未知 → v9.9.9", messages[1])
+        self.assertEqual("模块来源：alice/hy2-fork @ v9.9.9", messages[2])
+        self.assertTrue(messages[3].startswith("模块地址："))
+        self.assertIn(
+            "0123456789abcdef0123456789abcdef01234567",
+            messages[3],
+        )
 
     def test_saved_main_track_is_used_when_repo_ref_is_unset(self):
         script = r"""
@@ -455,6 +544,10 @@ if printf '%s' "$*" | grep -q '/releases/latest'; then
   printf '%s\n' '{"tag_name":"v9.9.9"}'
   [ -z "$out" ] && exit 0
 fi
+if printf '%s' "$*" | grep -q '/commits/v9.9.9'; then
+  printf '%s\n' '{"sha":"0123456789abcdef0123456789abcdef01234567"}'
+  [ -z "$out" ] && exit 0
+fi
 if [ -n "$out" ]; then
   {
     echo '#!/bin/sh'
@@ -483,7 +576,7 @@ test -f "$hy2_testdir/seen.env"
 grep -q 'HY2_REPO_REF=v9.9.9' "$hy2_testdir/seen.env"
 grep -q 'HY2_PERSIST_TRACK=latest' "$hy2_testdir/seen.env"
 grep -q 'releases/latest' "$hy2_testdir/trace.log"
-grep -q 'v9.9.9/hy2.sh' "$hy2_testdir/trace.log"
+grep -q '0123456789abcdef0123456789abcdef01234567/hy2.sh' "$hy2_testdir/trace.log"
 """
         )
         self.assertEqual(0, result.returncode, result.stderr or result.stdout)
