@@ -1,4 +1,4 @@
-# HY2 AIO v1.5.0
+# HY2 AIO v1.6.0
 
 一键部署 Hysteria 2 + VLESS+Reality + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -8,7 +8,7 @@
 ## 快速开始
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.5.0/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.6.0/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -129,12 +129,14 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_SNI` | 客户端 SNI | www.amazon.sg |
 | `HY2_OBFS` | Salamander 混淆 `0/1` | `1`（开） |
 | `HY2_PORT` | Hysteria UDP 端口 | 安装向导默认 `8443` |
+| `XRAY_PORT` | VLESS+Reality TCP 端口 | 默认与 `HY2_PORT` 相同 |
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.5.0` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.6.0` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
+| `XRAY_VERSION` | Xray-core 版本 | `v26.3.27` |
 | `CADDY_VERSION` | Caddy 回退安装版本 | `v2.11.4` |
 
 ## 目录结构
@@ -172,11 +174,14 @@ hy2-allin-one/
 
 ## 更新日志
 
-### 未发版（main）
-- VLESS+Reality（官方 Xray-core Vision）作为 TCP 兜底：一条 Clash 订阅两个节点手动选；复制直链为 HY2 + VLESS 两行
-- Reality 伪装站固定 `www.cloudflare.com:443`；默认与 HY2 同端口号（UDP + TCP）
-- `hy2 off` 只关 Hysteria，Xray 继续提供 VLESS
-- 单独升内核：`hy2 update` 升 Hysteria，`hy2 update-xray` 升 Xray（按当前 CPU 架构拉取钉死版本）
+### v1.6.0
+- 加入官方 Xray-core **VLESS+Reality+Vision** 作为 TCP 兜底；新装与升级都会自动拉对应 CPU 架构的内核
+- Clash 订阅里两个节点手动选：主节点仍是 `HY2-用户名`，备用固定叫 **hy2超时备用临时节点**（不是自动 fallback）
+- 复制直链一次两行：`hysteria2://` 和 `vless://`；Reality 伪装站固定 `www.cloudflare.com:443`
+- 默认与 HY2 同端口号：HY2 走 UDP，VLESS 走 TCP；面板仍占 443。`hy2 off` 只关 Hysteria，VLESS 继续可用
+- 单独升内核：`hy2 update` 升 Hysteria，`hy2 update-xray`（或 `hy2 update xray`）升 Xray
+- 修复：`hy2 restart` / 安装 / 回滚时 Xray 因 `/run/hy2-aio` 被清而 `226/NAMESPACE`
+- 改模块后补齐 `SHA256SUMS`，避免 `hy2 upgrade` 校验失败
 
 ### v1.5.0
 - 面板改成极简仪表盘风格，指标、服务、用户表回到同一页
