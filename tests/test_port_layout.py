@@ -71,7 +71,7 @@ port_layout_is_valid 443 9999
         install = (ROOT / "hy2.sh").read_text(encoding="utf-8")
         layout_check = 'validate_port_layout "$PANEL_PORT" "$STATS_PORT"'
         occupancy_check = (
-            'ensure_install_ports_available "$HY2_PORT" "$PANEL_PORT" "$STATS_PORT"'
+            'ensure_install_ports_available "$HY2_PORT" "$PANEL_PORT" "$STATS_PORT" "$XRAY_PORT"'
         )
         write_env = 'cat > "$ENV_FILE"'
 
@@ -97,6 +97,7 @@ ensure_install_ports_available 8443 443 9999
             ("port_is_used() { return 1; }\ntcp_port_is_used() { [ \"$1\" = 443 ]; }", "面板 TCP"),
             ("port_is_used() { return 1; }\ntcp_port_is_used() { [ \"$1\" = 9999 ]; }", "统计 TCP"),
             ("port_is_used() { return 1; }\ntcp_port_is_used() { [ \"$1\" = 18081 ]; }", "内部后端 TCP"),
+            ("port_is_used() { return 1; }\ntcp_port_is_used() { [ \"$1\" = 8443 ]; }", "VLESS TCP"),
         )
         for stubs, message in scenarios:
             with self.subTest(message=message):

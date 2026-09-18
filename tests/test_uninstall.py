@@ -30,8 +30,11 @@ class UninstallCleanupTests(unittest.TestCase):
         self.site_file = self.caddy_dir / "hy2-aio.caddy"
         self.service = self.systemd / "hy2-aio.service"
         self.hysteria_service = self.systemd / "hysteria-server.service"
+        self.xray_service = self.systemd / "hy2-xray.service"
         self.reload_path = self.systemd / "hy2-aio-reload-hysteria.path"
         self.reload_service = self.systemd / "hy2-aio-reload-hysteria.service"
+        self.xray_reload_path = self.systemd / "hy2-aio-reload-xray.path"
+        self.xray_reload_service = self.systemd / "hy2-aio-reload-xray.service"
         self.dropin_dir = self.systemd / "hysteria-server.service.d"
         self.dropin_file = self.dropin_dir / "hy2-switch.conf"
         self.cli = self.root / "usr/local/bin/hy2"
@@ -74,8 +77,11 @@ class UninstallCleanupTests(unittest.TestCase):
         for path in (
             self.service,
             self.hysteria_service,
+            self.xray_service,
             self.reload_path,
             self.reload_service,
+            self.xray_reload_path,
+            self.xray_reload_service,
             self.fail2ban_filter,
             self.fail2ban_jail,
             self.sysctl,
@@ -137,8 +143,11 @@ class UninstallCleanupTests(unittest.TestCase):
             "CADDY_SITE_FILE": self.site_file,
             "SERVICE_FILE": self.service,
             "HYSTERIA_SERVICE_FILE": self.hysteria_service,
+            "XRAY_SERVICE_FILE": self.xray_service,
             "RELOAD_PATH_FILE": self.reload_path,
             "RELOAD_SERVICE_FILE": self.reload_service,
+            "XRAY_RELOAD_PATH_FILE": self.xray_reload_path,
+            "XRAY_RELOAD_SERVICE_FILE": self.xray_reload_service,
             "HYSTERIA_DROPIN_DIR": self.dropin_dir,
             "SELF_INSTALL": self.cli,
             "SELF_INSTALL_SBIN": self.cli_sbin,
@@ -195,8 +204,11 @@ uninstall_cmd
         self.assertFalse(self.site_file.exists())
         self.assertFalse(self.service.exists())
         self.assertFalse(self.hysteria_service.exists())
+        self.assertFalse(self.xray_service.exists())
         self.assertFalse(self.reload_path.exists())
         self.assertFalse(self.reload_service.exists())
+        self.assertFalse(self.xray_reload_path.exists())
+        self.assertFalse(self.xray_reload_service.exists())
         self.assertFalse(self.dropin_dir.exists())
         self.assertFalse(self.fail2ban_filter.exists())
         self.assertFalse(self.fail2ban_jail.exists())
@@ -216,6 +228,7 @@ uninstall_cmd
 
         trace = self.trace.read_text(encoding="utf-8")
         self.assertIn("hy2-aio-reload-hysteria.path", trace)
+        self.assertIn("hy2-xray.service", trace)
         self.assertIn("caddy validate", trace)
 
     def test_purge_uninstall_also_removes_config_and_data(self):

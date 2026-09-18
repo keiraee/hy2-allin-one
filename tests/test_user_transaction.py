@@ -78,6 +78,8 @@ class BackendUserTransactionTests(unittest.TestCase):
                 "HYSTERIA_CONFIG": self.config_file,
                 "USER_MUTATION_LOCK": self.lock_file,
                 "REBUILD_FILE": self.rebuild_file,
+                "XRAY_REBUILD_FILE": self.root / "rebuild_xray.py",
+                "XRAY_CONFIG": self.root / "etc/hy2-aio/xray.json",
                 "HY2_OFF_FILE": self.root / "hy2.off",
                 "DATA_FILE": self.data_file,
                 "WEB_DIR": self.data_file.parent,
@@ -233,12 +235,40 @@ class BackendUserTransactionTests(unittest.TestCase):
         elapsed = time.perf_counter() - started_at
 
         self.assertLess(elapsed, 0.5)
-        self.assertIn("bob", json.loads(self.users_file.read_text(encoding="utf-8")))
+        users = json.loads(self.users_file.read_text(encoding="utf-8"))
+        self.assertIn("bob", users)
+        self.assertTrue(users["bob"]["vless_id"])
         panel = json.loads(self.data_file.read_text(encoding="utf-8"))
         self.assertTrue(any(item["username"] == "bob" for item in panel["users"]))
         self.assertTrue(result["server"]["hy2_enabled"])
         self.namespace["schedule_collect"].assert_called_once()
         self.namespace["restart_hysteria"].assert_called_once()
+
+    def test_disabling_last_user_also_stops_xray_when_rebuild_exists(self):
+        xray_rebuild = self.root / "rebuild_xray.py"
+        xray_config = self.root / "etc/hy2-aio/xray.json"
+        xray_rebuild.write_text("# fixture\n", encoding="utf-8")
+        xray_config.write_text("{}\n", encoding="utf-8")
+        self.namespace["XRAY_REBUILD_FILE"] = xray_rebuild
+        self.namespace["XRAY_CONFIG"] = xray_config
+
+        def successful_rebuild(*_args, **_kwargs):
+            return SimpleNamespace(returncode=0, stderr="")
+
+        self.namespace["subprocess"] = SimpleNamespace(
+            run=mock.Mock(side_effect=successful_rebuild), DEVNULL=subprocess.DEVNULL
+        )
+        self.namespace["request_hysteria"] = mock.Mock()
+        self.namespace["request_xray"] = mock.Mock()
+        self.namespace["restart_hysteria"] = mock.Mock()
+
+        self.namespace["mutate_users"](
+            lambda users: users["alice"].update({"disabled": True})
+        )
+
+        self.namespace["request_hysteria"].assert_called_once_with("stop")
+        self.namespace["request_xray"].assert_called_once_with("stop")
+        self.namespace["restart_hysteria"].assert_not_called()
 
 
 @unittest.skipIf(os.name == "nt", "CLI transaction harness requires bash and flock")

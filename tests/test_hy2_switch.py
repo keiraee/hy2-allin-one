@@ -44,6 +44,18 @@ class Hy2SwitchSourceTests(unittest.TestCase):
         self.assertIn("hy2 on", usage)
         self.assertIn("hy2 off", usage)
 
+    def test_hy2_off_does_not_stop_xray(self):
+        cli = (ROOT / "lib" / "cli.sh").read_text(encoding="utf-8")
+        off = cli[cli.index("hy2_off_cmd()") :]
+        off = off[: off.index("\n}\n", 1) + 3]
+        self.assertIn("systemctl stop hysteria-server.service", off)
+        self.assertNotIn("hy2-xray", off)
+        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        turn_off = backend[backend.index("def hy2_turn_off()") :]
+        turn_off = turn_off[: turn_off.index("\n\ndef ", 1)]
+        self.assertIn('request_hysteria("stop")', turn_off)
+        self.assertNotIn("request_xray", turn_off)
+
     def test_uninstall_removes_the_switch_drop_in(self):
         source = (ROOT / "lib" / "cli.sh").read_text(encoding="utf-8")
         self.assertIn("HYSTERIA_DROPIN_DIR", source)

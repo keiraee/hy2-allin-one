@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -52,11 +53,14 @@ class RebuildConfigTests(unittest.TestCase):
         env["HY2_ENV_FILE"] = str(self.env_file)
         env["HY2_USERS_FILE"] = str(self.users_file)
         env["HY2_HYSTERIA_CONFIG"] = str(self.out_file)
+        env["PYTHONUTF8"] = "1"
+        env["PYTHONIOENCODING"] = "utf-8"
         return subprocess.run(
-            ["python3", str(self.script)],
+            [sys.executable, str(self.script)],
             env=env,
             text=True,
             encoding="utf-8",
+            errors="replace",
             capture_output=True,
             check=False,
         )

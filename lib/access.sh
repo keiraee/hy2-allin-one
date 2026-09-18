@@ -53,7 +53,8 @@ lines = [
     "=" * 64,
     f"版本：{env.get('AIO_VERSION', '')}",
     f"服务器：{env['PUBLIC_IP']}",
-    f"端口：{env.get('HY2_PORT', '443')}/UDP",
+    f"HY2 端口：{env.get('HY2_PORT', '443')}/UDP",
+    f"VLESS 端口：{env.get('XRAY_PORT') or env.get('HY2_PORT', '443')}/TCP",
     f"混淆：{obfs_label}",
     f"面板：{base}/{env['PANEL_PATH']}/",
     f"面板用户名：{env['PANEL_USER']}",
@@ -87,19 +88,52 @@ for username, info in sorted(users.items()):
     query = urllib.parse.urlencode(query_items)
     node = urllib.parse.quote(f"HY2-{username}", safe="")
     direct = f"hysteria2://{auth}@{env['PUBLIC_IP']}:{env.get('HY2_PORT', '443')}/?{query}#{node}"
-    lines.extend(
-        [
-            f"【{username}】",
-            f"用户名：{username}",
-            f"状态：{'已禁用' if info.get('disabled') else '正常'}",
-            f"设备备注：{info.get('note', '') or '（无）'}",
-            f"密码：{password}",
-            f"速率模式：{mode_label(overrides.get(username, default_mode))}",
-            f"Clash 订阅：{subscription}",
-            f"HY2 基础直链（不含速率模式）：{direct}",
-            "",
-        ]
-    )
+    xray_port = str(env.get("XRAY_PORT") or "").strip()
+    if not xray_port:
+        hy2 = str(env.get("HY2_PORT") or "8443")
+        panel = str(env.get("PANEL_PORT") or "443")
+        if hy2 != panel:
+            xray_port = hy2
+        elif panel != "8443":
+            xray_port = "8443"
+        else:
+            xray_port = "443"
+    vless_id = str(info.get("vless_id") or "").strip()
+    public_key = str(env.get("REALITY_PUBLIC_KEY") or "").strip()
+    short_id = str(env.get("REALITY_SHORT_ID") or "").strip()
+    names = str(env.get("REALITY_SERVER_NAMES") or "").strip()
+    dest = str(env.get("REALITY_DEST") or "www.cloudflare.com:443").strip() or "www.cloudflare.com:443"
+    server_name = names.split(",")[0].strip() if names else dest.rsplit(":", 1)[0]
+    vless = ""
+    if vless_id and public_key and short_id:
+        vless_query = urllib.parse.urlencode(
+            {
+                "encryption": "none",
+                "flow": "xtls-rprx-vision",
+                "security": "reality",
+                "sni": server_name,
+                "fp": "chrome",
+                "pbk": public_key,
+                "sid": short_id,
+                "type": "tcp",
+            }
+        )
+        vless_name = urllib.parse.quote(f"VLESS-{username}", safe="")
+        vless = f"vless://{vless_id}@{env['PUBLIC_IP']}:{xray_port}?{vless_query}#{vless_name}"
+    access_lines = [
+        f"【{username}】",
+        f"用户名：{username}",
+        f"状态：{'已禁用' if info.get('disabled') else '正常'}",
+        f"设备备注：{info.get('note', '') or '（无）'}",
+        f"密码：{password}",
+        f"速率模式：{mode_label(overrides.get(username, default_mode))}",
+        f"Clash 订阅（含 HY2 + VLESS，手动选择）：{subscription}",
+        f"HY2 直链：{direct}",
+    ]
+    if vless:
+        access_lines.append(f"VLESS 直链：{vless}")
+    access_lines.append("")
+    lines.extend(access_lines)
 
 out_file.write_text("\n".join(lines), encoding="utf-8")
 PY

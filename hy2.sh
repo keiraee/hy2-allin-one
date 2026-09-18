@@ -365,7 +365,9 @@ install_stack() {
     || die "面板端口 ${PANEL_PORT} 无效或不安全；管理面板仅支持 HTTPS，禁止使用 80"
   STATS_PORT="${HY2_STATS_PORT:-$(prompt_stats_port)}"
   validate_port_layout "$PANEL_PORT" "$STATS_PORT"
-  ensure_install_ports_available "$HY2_PORT" "$PANEL_PORT" "$STATS_PORT"
+  XRAY_PORT="${XRAY_PORT:-$(resolve_xray_port "$HY2_PORT" "$PANEL_PORT")}"
+  validate_xray_port_layout "$XRAY_PORT" "$PANEL_PORT" "$STATS_PORT"
+  ensure_install_ports_available "$HY2_PORT" "$PANEL_PORT" "$STATS_PORT" "$XRAY_PORT"
 
   NETWORK_INTERFACE="${HY2_INTERFACE:-$(detect_iface)}"
   [ -n "$NETWORK_INTERFACE" ] || die "无法检测默认网卡"
@@ -470,6 +472,7 @@ PYV
   echo "  公网 IP     : $PUBLIC_IP"
   echo "  网卡        : $NETWORK_INTERFACE"
   echo "  代理 UDP    : $HY2_PORT"
+  echo "  VLESS TCP   : $XRAY_PORT"
   echo "  面板 HTTPS  : $PANEL_PORT"
   echo "  域名        : $DOMAIN"
   echo "  用户数量    : $users_count"
@@ -488,6 +491,7 @@ PYV
 
   configure_swap_and_kernel
   install_hysteria
+  install_xray
   install_caddy_v12
 
   getent group hysteria >/dev/null 2>&1 || groupadd --system hysteria
@@ -498,10 +502,13 @@ PYV
   install -d -o hy2-aio -g hy2-aio -m 0750 "$STATE_DIR" "$STATE_DIR/backups"
   install -d -o root -g root -m 0755 "$APP_DIR"
 
+  ensure_reality_env
+
   cat > "$ENV_FILE" <<EOF
 AIO_VERSION=$AIO_VERSION
 PUBLIC_IP=$PUBLIC_IP
 HY2_PORT=$HY2_PORT
+XRAY_PORT=$XRAY_PORT
 PANEL_PORT=$PANEL_PORT
 STATS_PORT=$STATS_PORT
 DOMAIN=$DOMAIN
@@ -522,6 +529,11 @@ QUIC_KEEP_ALIVE_PERIOD=$QUIC_KEEP_ALIVE_PERIOD
 QUIC_MAX_IDLE_TIMEOUT=$QUIC_MAX_IDLE_TIMEOUT
 SNI_GUARD=$SNI_GUARD
 CLIENT_INSECURE=$CLIENT_INSECURE
+REALITY_DEST=$REALITY_DEST
+REALITY_SERVER_NAMES=$REALITY_SERVER_NAMES
+REALITY_SHORT_ID=$REALITY_SHORT_ID
+REALITY_PRIVATE_KEY=$REALITY_PRIVATE_KEY
+REALITY_PUBLIC_KEY=$REALITY_PUBLIC_KEY
 EOF
   if [ -n "${HY2_FETCH_MODULES_SHA:-}" ]; then
     printf 'HY2_MODULES_SHA=%s\n' "$HY2_FETCH_MODULES_SHA" >> "$ENV_FILE"
@@ -537,9 +549,13 @@ EOF
   ensure_mode_file
   create_certificate
   write_rebuild_helper
+  write_xray_rebuild_helper
   "$REBUILD_FILE"
   chown hysteria:hysteria "$HYSTERIA_CONFIG"
   chmod 0660 "$HYSTERIA_CONFIG"
+  "$XRAY_REBUILD_FILE"
+  chown hy2-aio:hy2-aio "$XRAY_CONFIG"
+  chmod 0640 "$XRAY_CONFIG"
 
   write_backend
   write_panel
@@ -556,11 +572,13 @@ EOF
   cp -a "${SCRIPT_DIR}/bin/"* "$modules_dir/bin/"
 
   systemctl daemon-reload
-  systemctl enable hysteria-server.service hy2-aio.service hy2-aio-reload-hysteria.path caddy.service >/dev/null
+  systemctl enable hysteria-server.service hy2-xray.service hy2-aio.service hy2-aio-reload-hysteria.path hy2-aio-reload-xray.path caddy.service >/dev/null
   systemctl restart hysteria-server.service
   sleep 2
+  systemctl restart hy2-xray.service
   systemctl restart hy2-aio.service
   systemctl start hy2-aio-reload-hysteria.path
+  systemctl start hy2-aio-reload-xray.path
   systemctl restart caddy.service
   sleep 3
   wait_services
@@ -595,13 +613,13 @@ EOF
   echo "  hy2 obfs off  # 断线频繁时可关伪装"
   echo "  hy2 upgrade && hy2 restart  # 升级到最新版并重启"
   echo
-  echo "云控制台防火墙请放行：TCP 80、TCP ${PANEL_PORT}、UDP ${HY2_PORT}"
+  echo "云控制台防火墙请放行：TCP 80、TCP ${PANEL_PORT}、UDP ${HY2_PORT}、TCP ${XRAY_PORT}"
   echo "============================================================"
 }
 
 wait_services() {
   local service
-  for service in hysteria-server.service hy2-aio.service caddy.service; do
+  for service in hysteria-server.service hy2-xray.service hy2-aio.service caddy.service; do
     systemctl is-active --quiet "$service" || {
       journalctl -u "$service" --no-pager -n 80 >&2 || true
       die "服务启动失败：$service"
@@ -621,7 +639,7 @@ test_https() {
   done
 
   if [ "$code" != "200" ]; then
-    warn "面板 HTTPS 暂未成功。请确认云控制台已放行 TCP 80、TCP ${PANEL_PORT}、UDP ${HY2_PORT}。"
+    warn "面板 HTTPS 暂未成功。请确认云控制台已放行 TCP 80、TCP ${PANEL_PORT}、UDP ${HY2_PORT}、TCP ${XRAY_PORT}。"
     warn "Caddy 日志：journalctl -u caddy -n 100 --no-pager"
   else
     log "HTTPS 面板测试成功：HTTP 200"
@@ -691,7 +709,7 @@ HY2 AIO v${AIO_VERSION}
   hy2 backup                   # 备份
   hy2 rollback                 # 回滚最近快照
   hy2 logs [行数]              # 查看日志
-  hy2 restart                  # 重启 Hysteria + 面板后端 + Caddy
+  hy2 restart                  # 重启 Hysteria + Xray + 面板后端 + Caddy
   hy2 update                   # 更新 Hysteria
   hy2 upgrade                  # 升级 HY2 AIO 到最新 Release
   hy2 repair                   # 用当前已装模块修复
@@ -715,6 +733,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_PANEL_PATH      面板随机路径
   HY2_SNI             客户端 SNI，默认 www.amazon.sg
   HY2_PORT            Hysteria UDP 端口，安装向导默认 8443
+  XRAY_PORT           VLESS+Reality TCP 端口，默认与 HY2_PORT 相同
   HY2_OBFS            Salamander 混淆 0/1，默认 1（开）
   HY2_SPEED_TEST      开启 Hysteria speedTest（默认 false）
   HY2_SNI_GUARD       SNI 校验：disable|strict（真实域名默认 strict）
@@ -728,6 +747,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_YES             设为 1 跳过卸载确认
   HY2_PURGE           设为 1 时卸载并删除配置/数据
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
+  XRAY_VERSION        钉死的 Xray-core 版本，默认 v26.3.27
   CADDY_VERSION       钉死的 Caddy 版本（非 apt 回退），默认 v2.11.4
 EOF
 }

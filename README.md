@@ -1,6 +1,6 @@
 # HY2 AIO v1.5.0
 
-一键部署 Hysteria 2 + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
+一键部署 Hysteria 2 + VLESS+Reality + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
 **稳定版**见 [Releases](https://github.com/keiraee/hy2-allin-one/releases)（含版本说明与变更记录）。  
 想先试用仓库 `main` 上还没发版的功能，见下方 [试用 main 开发版](#试用-main-开发版)。
@@ -159,7 +159,9 @@ hy2-allin-one/
 
 ## 说明
 
-- **Clash 订阅**默认 `mode: rule`（国内直连、其余走 HY2）及 `keepalive: 5s`；服务端写入 QUIC `keepAlivePeriod: 5s`、`maxIdleTimeout: 120s`。
+- **Clash 订阅**默认 `mode: rule`（国内直连、其余走代理）及 `keepalive: 5s`；同一订阅里有 **HY2** 和 **VLESS+Reality** 两个节点，Clash 里手动选择（不是自动 fallback）。服务端写入 QUIC `keepAlivePeriod: 5s`、`maxIdleTimeout: 120s`。
+- **VLESS+Reality** 用官方 [Xray-core](https://github.com/XTLS/Xray-core)（Vision），伪装站固定 `www.cloudflare.com:443`。默认与 HY2 同端口号：HY2 走 UDP，VLESS 走 TCP。`hy2 off` 只关 Hysteria，Xray 继续跑。
+- **复制直链**一次给出两行：`hysteria2://` 和 `vless://`。
 - **混淆默认开启**；不稳时可 `sudo hy2 obfs off` 后让客户端更新订阅（关闭的是伪装，不是加密）。
 - **安装向导**默认代理 UDP `8443`（云上比 443 更稳）；仍可改成 `443`。
 - **整机流量**：面板顶部为网卡计数，尽量对齐云厂商套餐；Clash 订阅进度与此同源。
@@ -168,6 +170,11 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### 未发版（main）
+- VLESS+Reality（官方 Xray-core Vision）作为 TCP 兜底：一条 Clash 订阅两个节点手动选；复制直链为 HY2 + VLESS 两行
+- Reality 伪装站固定 `www.cloudflare.com:443`；默认与 HY2 同端口号（UDP + TCP）
+- `hy2 off` 只关 Hysteria，Xray 继续提供 VLESS
 
 ### v1.5.0
 - 面板改成极简仪表盘风格，指标、服务、用户表回到同一页

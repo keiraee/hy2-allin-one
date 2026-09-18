@@ -316,7 +316,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
       <span id="errorText"></span>
     </div>
     <div id="hy2OffBanner" class="notice" role="status">
-      HY2 已关闭。UDP 未监听，客户端无法连接。整机流量仍计入面板与 SSH。
+      HY2 已关闭。UDP 未监听，Hysteria 节点无法连接；VLESS+Reality 仍可用。整机流量仍计入面板与 SSH。
     </div>
     <div id="notice" class="notice" role="note">
       <button id="noticeClose" class="notice-close" type="button" aria-label="关闭"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg></button>
@@ -380,7 +380,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
       <div class="stack">
         <input id="newUser" class="input" type="text" maxlength="32" placeholder="新用户名（字母数字 _ -）" autocomplete="off">
         <button id="addBtn" class="btn primary" type="button">添加用户</button>
-        <p class="hint">添加后会重建配置；HY2 开启时会短暂重启 Hysteria。全员禁用会自动关闭 HY2。</p>
+        <p class="hint">添加后会重建配置；HY2 开启时会短暂重启 Hysteria 和 Xray。全员禁用会自动关闭两者。hy2 off 只关 Hysteria。</p>
       </div>
     </div>
     <div class="drawer-sec">
@@ -395,7 +395,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
           <option value="3d">最近 3 天</option>
         </select>
         <button id="exportLogs" class="btn" type="button">导出日志</button>
-        <p class="hint">与菜单 18 相同：Hysteria / 面板 / Caddy。超过 10000 行时只留最新部分。</p>
+        <p class="hint">与菜单 18 相同：Hysteria / Xray / 面板 / Caddy。超过 10000 行时只留最新部分。</p>
       </div>
     </div>
     <div class="drawer-sec">
@@ -1396,7 +1396,7 @@ async function copyCredential(username,kind){
   try{
     const result=await apiPost("api/user/credentials",{username,kind});
     await copyText(result.value);
-    toast("已复制");
+    toast(kind==="direct"?"已复制 HY2 和 VLESS 两条直链":kind==="subscription"?"已复制订阅链接":"已复制");
   }catch(error){toast("复制失败："+error.message)}
 }
 async function saveNote(){
@@ -1518,7 +1518,7 @@ function renderServices(services){
 }
 async function toggleHy2(){
   const enabled=window.__hy2Enabled!==false;
-  if(enabled&&!confirm("确认关闭 Hysteria？客户端将无法连接。"))return;
+  if(enabled&&!confirm("确认关闭 Hysteria？HY2 节点将无法连接，VLESS 仍可用。"))return;
   await runMutate($("hy2Toggle"),async()=>{
     try{
       await apiPost(enabled?"api/hy2/off":"api/hy2/on",{});

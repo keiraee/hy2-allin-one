@@ -4,7 +4,7 @@
 generate_users() {
   local count="$1"
   python3 - "$count" "$USERS_FILE" <<'PY'
-import json, os, secrets, sys, tempfile
+import json, os, secrets, sys, tempfile, uuid
 count = int(sys.argv[1])
 path = sys.argv[2]
 users = {}
@@ -12,6 +12,7 @@ for index in range(1, count + 1):
     users[f"user{index}"] = {
         "password": secrets.token_hex(16),
         "token": secrets.token_hex(24),
+        "vless_id": str(uuid.uuid4()),
         "note": "",
         "disabled": False,
     }
@@ -32,10 +33,51 @@ PY
   chown hy2-aio:hy2-aio "$USERS_FILE"
 }
 
+ensure_users_vless_ids() {
+  [ -f "$USERS_FILE" ] || return 0
+  python3 - "$USERS_FILE" <<'PY'
+import json, os, sys, tempfile, uuid
+from pathlib import Path
+
+path = Path(sys.argv[1])
+users = json.loads(path.read_text(encoding="utf-8"))
+if not isinstance(users, dict):
+    raise SystemExit("users.json 格式错误")
+changed = False
+for info in users.values():
+    if not isinstance(info, dict):
+        continue
+    value = str(info.get("vless_id") or "").strip()
+    try:
+        uuid.UUID(value)
+    except Exception:
+        info["vless_id"] = str(uuid.uuid4())
+        changed = True
+if not changed:
+    raise SystemExit(0)
+directory = str(path.parent)
+descriptor, temporary = tempfile.mkstemp(prefix=".users.json.", suffix=".tmp", dir=directory)
+try:
+    with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+        json.dump(users, file, ensure_ascii=False, indent=2)
+        file.flush()
+        os.fsync(file.fileno())
+    os.chmod(temporary, 0o640)
+    os.replace(temporary, path)
+finally:
+    try:
+        os.unlink(temporary)
+    except FileNotFoundError:
+        pass
+PY
+  chown hy2-aio:hy2-aio "$USERS_FILE" 2>/dev/null || true
+  chmod 0640 "$USERS_FILE" 2>/dev/null || true
+}
+
 mutate_user_json() {
   local action="$1" username="$2" value="${3:-}"
   python3 - "$USERS_FILE" "$action" "$username" "$value" <<'PY'
-import json, os, secrets, sys, tempfile
+import json, os, secrets, sys, tempfile, uuid
 
 path, action, username, value = sys.argv[1:]
 with open(path, "r", encoding="utf-8") as file:
@@ -47,6 +89,7 @@ if action == "add-user":
     users[username] = {
         "password": secrets.token_hex(16),
         "token": secrets.token_hex(24),
+        "vless_id": str(uuid.uuid4()),
         "note": "",
         "disabled": False,
     }
@@ -61,6 +104,7 @@ elif action == "rotate-user":
         raise SystemExit("用户不存在")
     users[username]["password"] = secrets.token_hex(16)
     users[username]["token"] = secrets.token_hex(24)
+    users[username]["vless_id"] = str(uuid.uuid4())
 elif action == "note":
     if len(value) > 100:
         raise SystemExit("备注最长 100 字符")
@@ -199,6 +243,14 @@ hy2_sync_service_to_users() {
   systemctl restart hysteria-server.service
 }
 
+hy2_sync_xray_to_users() {
+  if ! hy2_has_enabled_user; then
+    systemctl stop hy2-xray.service || true
+    return 0
+  fi
+  systemctl restart hy2-xray.service
+}
+
 hy2_restore_service_state() {
   if [ "${1:-0}" = "1" ]; then
     hy2_set_off_flag
@@ -207,11 +259,16 @@ hy2_restore_service_state() {
     hy2_clear_off_flag
     systemctl restart hysteria-server.service || true
   fi
+  if hy2_has_enabled_user; then
+    systemctl restart hy2-xray.service || true
+  else
+    systemctl stop hy2-xray.service || true
+  fi
 }
 
 modify_user() {
   local action="$1" username="${2:-}"
-  local value="${3:-}" user_lock_fd users_backup config_backup failure="" was_off=0
+  local value="${3:-}" user_lock_fd users_backup config_backup xray_backup="" failure="" was_off=0
   need_root "$action"
   read_env
   valid_name "$username" || die "用户名仅允许字母、数字、下划线、短横线，长度 1-32"
@@ -225,8 +282,13 @@ modify_user() {
   hy2_is_off && was_off=1
   users_backup="$(mktemp "${CONFIG_DIR}/.users.json.rollback.XXXXXX")"
   config_backup="$(mktemp "${HYSTERIA_DIR}/.config.yaml.rollback.XXXXXX")"
+  xray_backup=""
   cp -a "$USERS_FILE" "$users_backup"
   cp -a "$HYSTERIA_CONFIG" "$config_backup"
+  if [ -f "${XRAY_CONFIG:-}" ]; then
+    xray_backup="$(mktemp "${CONFIG_DIR}/.xray.json.rollback.XXXXXX")"
+    cp -a "$XRAY_CONFIG" "$xray_backup"
+  fi
 
   if ! mutate_user_json "$action" "$username" "$value"; then
     failure="用户数据修改失败"
@@ -236,21 +298,30 @@ modify_user() {
     failure="Hysteria 配置重建失败"
   elif [ "$action" != "note" ] && { ! chown hysteria:hysteria "$HYSTERIA_CONFIG" || ! chmod 0660 "$HYSTERIA_CONFIG"; }; then
     failure="Hysteria 配置权限设置失败"
+  elif [ "$action" != "note" ] && [ -x "${XRAY_REBUILD_FILE:-}" ] && ! "$XRAY_REBUILD_FILE"; then
+    failure="Xray 配置重建失败"
+  elif [ "$action" != "note" ] && [ -f "${XRAY_CONFIG:-}" ] && { ! chown hy2-aio:hy2-aio "$XRAY_CONFIG" || ! chmod 0640 "$XRAY_CONFIG"; }; then
+    failure="Xray 配置权限设置失败"
   elif [ "$action" != "note" ] && ! hy2_sync_service_to_users; then
     failure="Hysteria 服务切换失败"
+  elif [ "$action" != "note" ] && ! hy2_sync_xray_to_users; then
+    failure="Xray 服务切换失败"
   fi
 
   if [ -n "$failure" ]; then
     warn "${failure}，恢复修改前状态"
     mv -f "$users_backup" "$USERS_FILE"
     mv -f "$config_backup" "$HYSTERIA_CONFIG"
+    if [ -n "$xray_backup" ]; then
+      mv -f "$xray_backup" "$XRAY_CONFIG"
+    fi
     hy2_restore_service_state "$was_off"
     flock -u "$user_lock_fd"
     exec {user_lock_fd}>&-
     die "修改失败：$failure"
   fi
 
-  rm -f "$users_backup" "$config_backup"
+  rm -f "$users_backup" "$config_backup" ${xray_backup:+"$xray_backup"}
   flock -u "$user_lock_fd"
   exec {user_lock_fd}>&-
   if [ "$action" = "remove-user" ]; then

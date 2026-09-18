@@ -28,10 +28,15 @@ class RollbackSnapshotTests(unittest.TestCase):
             "SERVICE_FILE": self.root / "etc/systemd/system/hy2-aio.service",
             "HYSTERIA_SERVICE_FILE": self.root
             / "etc/systemd/system/hysteria-server.service",
+            "XRAY_SERVICE_FILE": self.root / "etc/systemd/system/hy2-xray.service",
             "RELOAD_PATH_FILE": self.root
             / "etc/systemd/system/hy2-aio-reload-hysteria.path",
             "RELOAD_SERVICE_FILE": self.root
             / "etc/systemd/system/hy2-aio-reload-hysteria.service",
+            "XRAY_RELOAD_PATH_FILE": self.root
+            / "etc/systemd/system/hy2-aio-reload-xray.path",
+            "XRAY_RELOAD_SERVICE_FILE": self.root
+            / "etc/systemd/system/hy2-aio-reload-xray.service",
             "HYSTERIA_DROPIN_DIR": self.root
             / "etc/systemd/system/hysteria-server.service.d",
             "SELF_INSTALL": self.root / "usr/local/bin/hy2",
@@ -245,8 +250,9 @@ die() {{ printf 'ERROR: %s\\n' "$*" >&2; exit 1; }}
         rollback = rollback[: rollback.index("\n}\n", 1) + 3]
 
         self.assertIn("systemctl daemon-reload", rollback)
-        self.assertIn("systemctl enable hy2-aio-reload-hysteria.path", rollback)
-        self.assertIn("systemctl restart hy2-aio-reload-hysteria.path", rollback)
+        self.assertIn("systemctl enable hy2-aio-reload-hysteria.path hy2-aio-reload-xray.path", rollback)
+        self.assertIn("systemctl restart hy2-aio-reload-hysteria.path hy2-aio-reload-xray.path", rollback)
+        self.assertIn("hy2-xray.service", rollback)
         self.assertLess(
             rollback.index('validate_rollback_snapshot "$snapshot"'),
             rollback.index('tar -xzf "$snapshot"'),

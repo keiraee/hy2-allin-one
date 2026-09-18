@@ -9,6 +9,7 @@ status_cmd() {
   echo "HY2 AIO v${AIO_VERSION:-unknown}"
   echo "面板：https://${DOMAIN}${port_suffix}/${PANEL_PATH}/"
   echo "Hysteria UDP：${HY2_PORT:-443}"
+  echo "VLESS TCP：${XRAY_PORT:-${HY2_PORT:-443}}"
   echo "统计 API：127.0.0.1:${STATS_PORT}"
   echo "面板后端：${BACKEND_HOST}:${BACKEND_PORT}"
   if command -v obfs_is_enabled >/dev/null 2>&1 && obfs_is_enabled; then
@@ -22,10 +23,13 @@ status_cmd() {
   fi
   echo
   systemctl --no-pager --full status \
-    hysteria-server.service hy2-aio.service caddy.service \
-    | sed -n '1,45p' || true
+    hysteria-server.service hy2-xray.service hy2-aio.service caddy.service \
+    | sed -n '1,60p' || true
   echo
   status_ports="${PANEL_PORT}|${STATS_PORT}|${BACKEND_PORT}|${HY2_PORT}"
+  if [ -n "${XRAY_PORT:-}" ] && [ "$XRAY_PORT" != "$HY2_PORT" ] && [ "$XRAY_PORT" != "$PANEL_PORT" ]; then
+    status_ports="${status_ports}|${XRAY_PORT}"
+  fi
   ss -lntup | grep -E ":(${status_ports})\\b" || true
 }
 
@@ -56,7 +60,7 @@ sync_cmd() {
 logs_cmd() {
   need_root logs
   local lines="${1:-120}"
-  journalctl -u hysteria-server.service -u hy2-aio.service -u caddy.service \
+  journalctl -u hysteria-server.service -u hy2-xray.service -u hy2-aio.service -u caddy.service \
     --no-pager -n "$lines"
 }
 
@@ -70,6 +74,9 @@ restart_cmd() {
   else
     systemctl restart hysteria-server.service
     wait_hysteria_stats_api
+  fi
+  if hy2_has_enabled_user 2>/dev/null; then
+    systemctl restart hy2-xray.service || true
   fi
   systemctl restart hy2-aio.service
   systemctl restart caddy.service
@@ -183,19 +190,26 @@ uninstall_cmd() {
   systemctl disable --now \
     hy2-aio.service \
     hy2-aio-reload-hysteria.path \
+    hy2-aio-reload-xray.path \
+    hy2-xray.service \
     hysteria-server.service \
     2>/dev/null || true
   systemctl stop hy2-aio-reload-hysteria.service 2>/dev/null || true
+  systemctl stop hy2-aio-reload-xray.service 2>/dev/null || true
 
   remove_hy2_cli
   rm -f \
     "$SERVICE_FILE" \
     "$HYSTERIA_SERVICE_FILE" \
+    "$XRAY_SERVICE_FILE" \
     "$RELOAD_PATH_FILE" \
-    "$RELOAD_SERVICE_FILE"
+    "$RELOAD_SERVICE_FILE" \
+    "$XRAY_RELOAD_PATH_FILE" \
+    "$XRAY_RELOAD_SERVICE_FILE"
   rm -rf "${HYSTERIA_DROPIN_DIR:-/etc/systemd/system/hysteria-server.service.d}"
   rm -rf "$APP_DIR" "$WEB_DIR"
-  rm -f /run/hy2-aio/reload-hysteria /run/hy2-aio/hysteria-cmd
+  rm -f /run/hy2-aio/reload-hysteria /run/hy2-aio/hysteria-cmd \
+    /run/hy2-aio/reload-xray /run/hy2-aio/xray-cmd
 
   if declare -F caddyfile_remove_hy2_site >/dev/null 2>&1; then
     caddyfile_remove_hy2_site "$CADDY_FILE" "$CADDY_SITE_FILE"
@@ -234,7 +248,7 @@ uninstall_cmd() {
     warn "已卸载服务与站点残留；保留配置与数据：$CONFIG_DIR、$STATE_DIR、$ROLLBACK_DIR、/etc/hysteria"
     warn "彻底删除数据：HY2_PURGE=1 hy2 uninstall"
   fi
-  warn "Caddy / Hysteria 二进制未卸载；防火墙 80/tcp（若曾放行）可能仍保留"
+  warn "Caddy / Hysteria / Xray 二进制未卸载；防火墙 80/tcp（若曾放行）可能仍保留"
 }
 
 menu_call() {

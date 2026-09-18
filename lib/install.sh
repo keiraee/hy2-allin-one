@@ -160,14 +160,22 @@ remove_hy2_sysctl() {
 
 remove_hy2_firewall_rules() {
   local panel_port="${PANEL_PORT:-443}" hy2_port="${HY2_PORT:-443}"
+  local xray_port="${XRAY_PORT:-}"
+  [ -n "$xray_port" ] || xray_port="$(resolve_xray_port "$hy2_port" "$panel_port" 2>/dev/null || true)"
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
     ufw delete allow "${panel_port}/tcp" >/dev/null 2>&1 || true
     ufw delete allow "${hy2_port}/udp" >/dev/null 2>&1 || true
+    if [ -n "$xray_port" ] && [ "$xray_port" != "$panel_port" ]; then
+      ufw delete allow "${xray_port}/tcp" >/dev/null 2>&1 || true
+    fi
     return 0
   fi
   if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
     firewall-cmd --permanent --remove-port="${panel_port}/tcp" >/dev/null 2>&1 || true
     firewall-cmd --permanent --remove-port="${hy2_port}/udp" >/dev/null 2>&1 || true
+    if [ -n "$xray_port" ] && [ "$xray_port" != "$panel_port" ]; then
+      firewall-cmd --permanent --remove-port="${xray_port}/tcp" >/dev/null 2>&1 || true
+    fi
     firewall-cmd --reload >/dev/null 2>&1 || true
   fi
 }
@@ -225,20 +233,90 @@ EOF
 configure_firewall_v12() {
   PANEL_PORT="${PANEL_PORT:-443}"
   HY2_PORT="${HY2_PORT:-443}"
+  XRAY_PORT="${XRAY_PORT:-$(resolve_xray_port)}"
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
     ufw allow 80/tcp >/dev/null
     ufw allow "$PANEL_PORT/tcp" >/dev/null
     ufw allow "$HY2_PORT/udp" >/dev/null
+    ufw allow "$XRAY_PORT/tcp" >/dev/null
     return
   fi
   if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
     firewall-cmd --permanent --add-port=80/tcp >/dev/null
     firewall-cmd --permanent --add-port="$PANEL_PORT/tcp" >/dev/null
     firewall-cmd --permanent --add-port="$HY2_PORT/udp" >/dev/null
+    firewall-cmd --permanent --add-port="$XRAY_PORT/tcp" >/dev/null
     firewall-cmd --reload >/dev/null
     return
   fi
-  warn "防火墙未修改；如需要请手动放行 TCP 80、$PANEL_PORT 和 UDP $HY2_PORT"
+  warn "防火墙未修改；如需要请手动放行 TCP 80、$PANEL_PORT、UDP $HY2_PORT 和 TCP $XRAY_PORT"
+}
+
+install_xray() {
+  local force="${1:-0}"
+  local version tag asset tmp zip dgst expected current
+  version="${XRAY_VERSION:-v26.3.27}"
+  version="${version#v}"
+  tag="v${version}"
+  case "$(uname -m)" in
+    x86_64) asset=Xray-linux-64.zip ;;
+    aarch64|arm64) asset=Xray-linux-arm64-v8a.zip ;;
+    *) die "不支持的 CPU 架构：$(uname -m)" ;;
+  esac
+
+  if [ "$force" != "1" ] && command -v xray >/dev/null 2>&1; then
+    current="$(xray version 2>/dev/null | head -1 || true)"
+    if printf '%s' "$current" | grep -q "$version"; then
+      log "Xray 已存在：${current}"
+      return
+    fi
+  fi
+
+  log "下载并校验 Xray-core ${tag}（${asset}）"
+  tmp="$(mktemp -d)"
+  zip="$tmp/$asset"
+  dgst="$tmp/${asset}.dgst"
+  curl -fsSL "https://github.com/XTLS/Xray-core/releases/download/${tag}/${asset}" -o "$zip" \
+    || { rm -rf "$tmp"; die "下载 Xray 失败"; }
+  curl -fsSL "https://github.com/XTLS/Xray-core/releases/download/${tag}/${asset}.dgst" -o "$dgst" \
+    || { rm -rf "$tmp"; die "下载 Xray 校验文件失败"; }
+  expected="$(python3 - "$dgst" <<'PY'
+import pathlib, re, sys
+text = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8", errors="replace")
+match = re.search(r"(?im)^(?:sha256|sha2-256)\s*[:=]\s*([0-9a-f]{64})", text)
+if not match:
+    match = re.search(r"(?i)sha256[^0-9a-f]*([0-9a-f]{64})", text)
+if not match:
+    raise SystemExit("dgst 中找不到 SHA256")
+print(match.group(1).lower())
+PY
+)" || { rm -rf "$tmp"; die "解析 Xray SHA256 失败"; }
+  python3 - "$zip" "$expected" <<'PY' || { rm -rf "$tmp"; die "Xray SHA256 校验失败"; }
+import hashlib, pathlib, sys
+path = pathlib.Path(sys.argv[1])
+expected = sys.argv[2].lower()
+digest = hashlib.sha256(path.read_bytes()).hexdigest()
+if digest != expected:
+    raise SystemExit(f"got {digest}, want {expected}")
+PY
+  python3 - "$zip" "$tmp" <<'PY' || { rm -rf "$tmp"; die "解压 Xray 失败"; }
+import pathlib, sys, zipfile
+archive = pathlib.Path(sys.argv[1])
+out_dir = pathlib.Path(sys.argv[2])
+with zipfile.ZipFile(archive) as bundle:
+    names = [name for name in bundle.namelist() if name.rstrip("/").endswith("xray")]
+    if not names:
+        raise SystemExit("zip 中找不到 xray")
+    bundle.extract(names[0], out_dir)
+    extracted = out_dir / names[0]
+    target = out_dir / "xray"
+    if extracted != target:
+        extracted.replace(target)
+PY
+  install -m 0755 "$tmp/xray" "$XRAY_BIN"
+  rm -rf "$tmp"
+  command -v xray >/dev/null 2>&1 || die "Xray 安装失败"
+  log "Xray 已安装：$(xray version 2>/dev/null | head -1 || true)"
 }
 
 install_hysteria() {

@@ -11,8 +11,11 @@ rollback_artifacts() {
     "$CADDY_SITE_FILE" \
     "$SERVICE_FILE" \
     "$HYSTERIA_SERVICE_FILE" \
+    "$XRAY_SERVICE_FILE" \
     "$RELOAD_PATH_FILE" \
     "$RELOAD_SERVICE_FILE" \
+    "$XRAY_RELOAD_PATH_FILE" \
+    "$XRAY_RELOAD_SERVICE_FILE" \
     "$HYSTERIA_DROPIN_DIR" \
     "$SELF_INSTALL" \
     "$SELF_INSTALL_SBIN"
@@ -171,9 +174,9 @@ rollback_cmd() {
   [ "$choice" = "0" ] || return 0
   tar -xzf "$snapshot" -C /
   systemctl daemon-reload
-  systemctl enable hy2-aio-reload-hysteria.path >/dev/null || true
-  systemctl restart hy2-aio-reload-hysteria.path || true
-  systemctl restart hysteria-server.service hy2-aio.service caddy.service || true
+  systemctl enable hy2-aio-reload-hysteria.path hy2-aio-reload-xray.path >/dev/null || true
+  systemctl restart hy2-aio-reload-hysteria.path hy2-aio-reload-xray.path || true
+  systemctl restart hysteria-server.service hy2-xray.service hy2-aio.service caddy.service || true
   log "回滚完成"
 }
 
@@ -270,10 +273,19 @@ PY
   chmod 0640 "$ENV_FILE"
   read_env
 
+  install_xray
+  ensure_reality_env
+  read_env
+  ensure_users_vless_ids
+
   write_rebuild_helper
+  write_xray_rebuild_helper
   "$REBUILD_FILE"
   chown hysteria:hysteria "$HYSTERIA_CONFIG" 2>/dev/null || true
   chmod 0660 "$HYSTERIA_CONFIG" 2>/dev/null || true
+  "$XRAY_REBUILD_FILE"
+  chown hy2-aio:hy2-aio "$XRAY_CONFIG" 2>/dev/null || true
+  chmod 0640 "$XRAY_CONFIG" 2>/dev/null || true
 
   write_backend
   write_panel
@@ -293,14 +305,24 @@ PY
   install_hy2_cli "${modules_dir}/bin/hy2.sh"
 
   systemctl daemon-reload
-  systemctl enable hy2-aio.service hy2-aio-reload-hysteria.path >/dev/null
+  systemctl enable hy2-aio.service hy2-aio-reload-hysteria.path hy2-xray.service hy2-aio-reload-xray.path >/dev/null
   systemctl start hy2-aio-reload-hysteria.path || true
+  systemctl start hy2-aio-reload-xray.path || true
 
   if ! systemctl restart hy2-aio.service; then
     journalctl -u hy2-aio.service --no-pager -n 100 >&2 || true
     die "HY2 AIO 后端升级失败"
   fi
   systemctl start hy2-aio-reload-hysteria.path || true
+  systemctl start hy2-aio-reload-xray.path || true
+  if hy2_has_enabled_user; then
+    if ! systemctl restart hy2-xray.service; then
+      journalctl -u hy2-xray.service --no-pager -n 80 >&2 || true
+      die "Xray 启动失败"
+    fi
+  else
+    systemctl stop hy2-xray.service || true
+  fi
 
   if ! systemctl reload caddy.service 2>/dev/null; then
     if ! systemctl restart caddy.service; then
@@ -329,7 +351,7 @@ PY
       log "模块哈希：${HY2_FETCH_MODULES_SHA:0:12}"
     fi
   fi
-  log "已写入 QUIC 保活与混淆开关到配置；Hysteria 未自动重启"
+  log "已写入 QUIC 保活、混淆开关与 VLESS+Reality；Hysteria 未自动重启"
   log "使配置生效：hy2 restart（或 hy2 obfs on|off）"
   echo "运行速率模式菜单：hy2 mode"
   echo "查看面板账号：hy2 panel"

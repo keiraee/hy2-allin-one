@@ -1,3 +1,4 @@
+import os
 import subprocess
 import unittest
 from pathlib import Path
@@ -56,6 +57,7 @@ panel_port_is_valid 8443
         host_idx = write_caddy.index('BACKEND_HOST="$BACKEND_HOST"')
         self.assertLess(env_idx, host_idx)
 
+    @unittest.skipIf(os.name == "nt", "MSYS converts 127.0.0.1 when spawning Windows processes")
     def test_readonly_backend_host_can_be_passed_to_child_via_env(self):
         result = run_bash(
             """

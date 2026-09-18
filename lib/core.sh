@@ -5,6 +5,7 @@ set -Eeuo pipefail
 
 SCRIPT_VERSION="1.5.0"
 AIO_VERSION="$SCRIPT_VERSION"
+XRAY_VERSION="v26.3.27"
 CONFIG_DIR="/etc/hy2-aio"
 HYSTERIA_DIR="/etc/hysteria"
 ENV_FILE="${CONFIG_DIR}/config.env"
@@ -15,12 +16,15 @@ MODE_FILE="${CONFIG_DIR}/client-mode.json"
 HYSTERIA_CONFIG="/etc/hysteria/config.yaml"
 HYSTERIA_CERT="/etc/hysteria/server.crt"
 HYSTERIA_KEY="/etc/hysteria/server.key"
+XRAY_BIN="/usr/local/bin/xray"
+XRAY_CONFIG="${CONFIG_DIR}/xray.json"
 BACKEND_HOST="127.0.0.1"
 BACKEND_PORT="18081"
 readonly BACKEND_HOST BACKEND_PORT
 APP_DIR="/usr/local/lib/hy2-aio"
 APP_FILE="${APP_DIR}/server.py"
 REBUILD_FILE="${APP_DIR}/rebuild_config.py"
+XRAY_REBUILD_FILE="${APP_DIR}/rebuild_xray.py"
 WEB_DIR="/var/www/hy2-aio"
 STATE_DIR="/var/lib/hy2-aio"
 ROLLBACK_DIR="/var/lib/hy2-aio-rollbacks"
@@ -30,14 +34,21 @@ CADDY_FILE="/etc/caddy/Caddyfile"
 CADDY_SITE_FILE="/etc/caddy/hy2-aio.caddy"
 SERVICE_FILE="/etc/systemd/system/hy2-aio.service"
 HYSTERIA_SERVICE_FILE="/etc/systemd/system/hysteria-server.service"
+XRAY_SERVICE_FILE="/etc/systemd/system/hy2-xray.service"
 RELOAD_PATH_FILE="/etc/systemd/system/hy2-aio-reload-hysteria.path"
 RELOAD_SERVICE_FILE="/etc/systemd/system/hy2-aio-reload-hysteria.service"
+XRAY_RELOAD_PATH_FILE="/etc/systemd/system/hy2-aio-reload-xray.path"
+XRAY_RELOAD_SERVICE_FILE="/etc/systemd/system/hy2-aio-reload-xray.service"
 HYSTERIA_CONTROL_FILE="${APP_DIR}/hysteria-control.sh"
+XRAY_CONTROL_FILE="${APP_DIR}/xray-control.sh"
 HYSTERIA_DROPIN_DIR="/etc/systemd/system/hysteria-server.service.d"
 HYSTERIA_DROPIN_FILE="${HYSTERIA_DROPIN_DIR}/hy2-switch.conf"
 HY2_OFF_FILE="${CONFIG_DIR}/hy2.off"
 HYSTERIA_CMD_FILE="/run/hy2-aio/hysteria-cmd"
 HYSTERIA_RELOAD_FLAG="/run/hy2-aio/reload-hysteria"
+XRAY_CMD_FILE="/run/hy2-aio/xray-cmd"
+XRAY_RELOAD_FLAG="/run/hy2-aio/reload-xray"
+REALITY_DEST_DEFAULT="www.cloudflare.com:443"
 SELF_INSTALL="/usr/local/bin/hy2"
 SELF_INSTALL_SBIN="/usr/local/sbin/hy2"
 
@@ -105,6 +116,10 @@ ensure_hysteria_config_perms() {
   if [ -f "$HYSTERIA_CONFIG" ]; then
     chown hysteria:hysteria "$HYSTERIA_CONFIG" 2>/dev/null || true
     chmod 0660 "$HYSTERIA_CONFIG" 2>/dev/null || true
+  fi
+  if [ -f "${XRAY_CONFIG:-}" ]; then
+    chown hy2-aio:hy2-aio "$XRAY_CONFIG" 2>/dev/null || true
+    chmod 0640 "$XRAY_CONFIG" 2>/dev/null || true
   fi
   if [ -f "${HYSTERIA_CERT:-}" ]; then
     chown hysteria:hysteria "$HYSTERIA_CERT" "$HYSTERIA_KEY" 2>/dev/null || true
@@ -178,6 +193,79 @@ validate_port_layout() {
     || die "端口冲突：统计端口不能使用内部后端端口 $BACKEND_PORT"
 }
 
+resolve_xray_port() {
+  local hy2="${1:-${HY2_PORT:-8443}}"
+  local panel="${2:-${PANEL_PORT:-443}}"
+  local xray="${3:-${XRAY_PORT:-}}"
+  if [ -n "$xray" ]; then
+    printf '%s' "$xray"
+    return 0
+  fi
+  if [ "$hy2" != "$panel" ]; then
+    printf '%s' "$hy2"
+    return 0
+  fi
+  if [ "$panel" != "8443" ]; then
+    printf '%s' "8443"
+    return 0
+  fi
+  printf '%s' "443"
+}
+
+validate_xray_port_layout() {
+  local xray_port="${1:-}" panel_port="${2:-}" stats_port="${3:-}"
+  port_number_is_valid "$xray_port" \
+    || die "VLESS TCP 端口 ${xray_port:-<empty>} 无效；必须是 1-65535 的整数"
+  [ "$xray_port" != "$panel_port" ] \
+    || die "端口冲突：VLESS TCP 不能与面板端口同为 $xray_port"
+  [ "$xray_port" != "$stats_port" ] \
+    || die "端口冲突：VLESS TCP 不能与统计端口同为 $xray_port"
+  [ "$xray_port" != "$BACKEND_PORT" ] \
+    || die "端口冲突：VLESS TCP 不能使用内部后端端口 $BACKEND_PORT"
+}
+
+append_env_kv() {
+  local key="$1" value="$2"
+  [ -f "$ENV_FILE" ] || return 0
+  grep -q "^${key}=" "$ENV_FILE" 2>/dev/null && return 0
+  printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
+}
+
+ensure_reality_env() {
+  REALITY_DEST="${REALITY_DEST:-$REALITY_DEST_DEFAULT}"
+  if [ -z "${REALITY_SERVER_NAMES:-}" ]; then
+    REALITY_SERVER_NAMES="${REALITY_DEST%%:*}"
+  fi
+  XRAY_PORT="${XRAY_PORT:-$(resolve_xray_port)}"
+  REALITY_SHORT_ID="${REALITY_SHORT_ID:-$(openssl rand -hex 4)}"
+  if [ -z "${REALITY_PRIVATE_KEY:-}" ] || [ -z "${REALITY_PUBLIC_KEY:-}" ]; then
+    local xray_bin out priv pub
+    if command -v xray >/dev/null 2>&1; then
+      xray_bin="$(command -v xray)"
+    elif [ -x "${XRAY_BIN:-/usr/local/bin/xray}" ]; then
+      xray_bin="${XRAY_BIN:-/usr/local/bin/xray}"
+    else
+      die "需要 Xray 以生成 Reality 密钥"
+    fi
+    out="$("$xray_bin" x25519)" || die "xray x25519 失败"
+    priv="$(printf '%s\n' "$out" | awk -F': ' '/^PrivateKey/{print $2; exit}' | tr -d '[:space:]')"
+    pub="$(printf '%s\n' "$out" | awk -F': ' '/^(Password|PublicKey)/{print $2; exit}' | tr -d '[:space:]')"
+    [ -n "$priv" ] && [ -n "$pub" ] || die "解析 Reality 密钥失败"
+    REALITY_PRIVATE_KEY="$priv"
+    REALITY_PUBLIC_KEY="$pub"
+  fi
+  if [ -f "$ENV_FILE" ]; then
+    append_env_kv XRAY_PORT "$XRAY_PORT"
+    append_env_kv REALITY_DEST "$REALITY_DEST"
+    append_env_kv REALITY_SERVER_NAMES "$REALITY_SERVER_NAMES"
+    append_env_kv REALITY_SHORT_ID "$REALITY_SHORT_ID"
+    append_env_kv REALITY_PRIVATE_KEY "$REALITY_PRIVATE_KEY"
+    append_env_kv REALITY_PUBLIC_KEY "$REALITY_PUBLIC_KEY"
+    chown root:hy2-aio "$ENV_FILE" 2>/dev/null || true
+    chmod 0640 "$ENV_FILE" 2>/dev/null || true
+  fi
+}
+
 read_env() {
   [ -f "$ENV_FILE" ] || die "尚未安装。请以 root 运行：bash hy2.sh install"
   local line key value
@@ -202,6 +290,10 @@ read_env() {
   PANEL_PORT="${PANEL_PORT:-443}"
   STATS_PORT="${STATS_PORT:-9999}"
   validate_port_layout "$PANEL_PORT" "$STATS_PORT"
+  XRAY_PORT="$(resolve_xray_port)"
+  validate_xray_port_layout "$XRAY_PORT" "$PANEL_PORT" "$STATS_PORT"
+  REALITY_DEST="${REALITY_DEST:-$REALITY_DEST_DEFAULT}"
+  REALITY_SERVER_NAMES="${REALITY_SERVER_NAMES:-${REALITY_DEST%%:*}}"
   OBFS_ENABLED="${OBFS_ENABLED:-true}"
   QUIC_KEEP_ALIVE_PERIOD="${QUIC_KEEP_ALIVE_PERIOD:-5s}"
   QUIC_MAX_IDLE_TIMEOUT="${QUIC_MAX_IDLE_TIMEOUT:-120s}"
@@ -260,8 +352,10 @@ tcp_port_is_used() {
 }
 
 ensure_install_ports_available() {
-  local hy2_port="$1" panel_port="$2" stats_port="$3"
+  local hy2_port="$1" panel_port="$2" stats_port="$3" xray_port="${4:-}"
   validate_port_layout "$panel_port" "$stats_port"
+  xray_port="$(resolve_xray_port "$hy2_port" "$panel_port" "$xray_port")"
+  validate_xray_port_layout "$xray_port" "$panel_port" "$stats_port"
   port_is_used "$hy2_port" \
     && die "代理 UDP 端口 $hy2_port 已被占用"
   tcp_port_is_used "$panel_port" \
@@ -270,6 +364,8 @@ ensure_install_ports_available() {
     && die "统计 TCP 端口 $stats_port 已被占用"
   tcp_port_is_used "$BACKEND_PORT" \
     && die "内部后端 TCP 端口 $BACKEND_PORT 已被占用"
+  tcp_port_is_used "$xray_port" \
+    && die "VLESS TCP 端口 $xray_port 已被占用"
   return 0
 }
 

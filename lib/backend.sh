@@ -20,6 +20,7 @@ import subprocess
 import tarfile
 import threading
 import time
+import uuid
 import urllib.parse
 import urllib.request
 from contextlib import contextmanager
@@ -47,26 +48,33 @@ BACKUP_REQUIRED_MEMBERS = (
     "etc/hy2-aio/config.env",
     "etc/hy2-aio/users.json",
     "etc/hy2-aio/client-mode.json",
+    "etc/hy2-aio/xray.json",
     "etc/hysteria/config.yaml",
     "etc/hysteria/server.crt",
     "etc/hysteria/server.key",
     "etc/caddy/Caddyfile",
     "usr/local/lib/hy2-aio/server.py",
     "usr/local/lib/hy2-aio/rebuild_config.py",
+    "usr/local/lib/hy2-aio/rebuild_xray.py",
 )
 BACKUP_OPTIONAL = (
     "etc/caddy/hy2-aio.caddy",
     "etc/hy2-aio/hy2.off",
     "etc/systemd/system/hysteria-server.service.d/hy2-switch.conf",
     "usr/local/lib/hy2-aio/hysteria-control.sh",
+    "usr/local/lib/hy2-aio/xray-control.sh",
     "var/lib/hy2-aio/state.json",
     "var/www/hy2-aio/history.csv",
     "var/www/hy2-aio/users.csv",
 )
 REBUILD_FILE = Path("/usr/local/lib/hy2-aio/rebuild_config.py")
+XRAY_REBUILD_FILE = Path("/usr/local/lib/hy2-aio/rebuild_xray.py")
+XRAY_CONFIG = Path("/etc/hy2-aio/xray.json")
 HY2_OFF_FILE = Path("/etc/hy2-aio/hy2.off")
 HYSTERIA_CMD_FILE = Path("/run/hy2-aio/hysteria-cmd")
 HYSTERIA_RELOAD_FLAG = Path("/run/hy2-aio/reload-hysteria")
+XRAY_CMD_FILE = Path("/run/hy2-aio/xray-cmd")
+XRAY_RELOAD_FLAG = Path("/run/hy2-aio/reload-xray")
 WEB_DIR = Path("/var/www/hy2-aio")
 DOWNLOAD_DIR = WEB_DIR / "downloads"
 DATA_FILE = WEB_DIR / "data.json"
@@ -421,7 +429,72 @@ def direct_link(env: dict[str, str], username: str, password: str) -> str:
     return f"hysteria2://{auth}@{env['PUBLIC_IP']}:{env.get('HY2_PORT', '443')}/?{query}#{name}"
 
 
-def subscription_yaml(env: dict[str, str], username: str, password: str) -> bytes:
+def xray_port(env: dict[str, str]) -> str:
+    raw = str(env.get("XRAY_PORT") or "").strip()
+    if raw:
+        return raw
+    hy2 = str(env.get("HY2_PORT") or "8443")
+    panel = str(env.get("PANEL_PORT") or "443")
+    if hy2 != panel:
+        return hy2
+    if panel != "8443":
+        return "8443"
+    return "443"
+
+
+def reality_dest(env: dict[str, str]) -> str:
+    return str(env.get("REALITY_DEST") or "www.cloudflare.com:443").strip() or "www.cloudflare.com:443"
+
+
+def reality_server_name(env: dict[str, str]) -> str:
+    names = str(env.get("REALITY_SERVER_NAMES") or "").strip()
+    if names:
+        return names.split(",")[0].strip()
+    dest = reality_dest(env)
+    return dest.rsplit(":", 1)[0]
+
+
+def new_vless_id() -> str:
+    return str(uuid.uuid4())
+
+
+def vless_link(env: dict[str, str], username: str, info: Optional[dict[str, Any]] = None) -> str:
+    payload = info if isinstance(info, dict) else {}
+    vless_id = str(payload.get("vless_id") or "").strip()
+    public_key = str(env.get("REALITY_PUBLIC_KEY") or "").strip()
+    short_id = str(env.get("REALITY_SHORT_ID") or "").strip()
+    if not (vless_id and public_key and short_id):
+        return ""
+    query = urllib.parse.urlencode(
+        {
+            "encryption": "none",
+            "flow": "xtls-rprx-vision",
+            "security": "reality",
+            "sni": reality_server_name(env),
+            "fp": "chrome",
+            "pbk": public_key,
+            "sid": short_id,
+            "type": "tcp",
+        }
+    )
+    name = urllib.parse.quote(f"VLESS-{username}", safe="")
+    return f"vless://{vless_id}@{env['PUBLIC_IP']}:{xray_port(env)}?{query}#{name}"
+
+
+def direct_links(env: dict[str, str], username: str, password: str, info: Optional[dict[str, Any]] = None) -> str:
+    lines = [direct_link(env, username, password)]
+    extra = vless_link(env, username, info)
+    if extra:
+        lines.append(extra)
+    return "\n".join(lines)
+
+
+def subscription_yaml(
+    env: dict[str, str],
+    username: str,
+    password: str,
+    info: Optional[dict[str, Any]] = None,
+) -> bytes:
     def q(value: str) -> str:
         return json.dumps(str(value), ensure_ascii=False)
 
@@ -441,6 +514,31 @@ def subscription_yaml(env: dict[str, str], username: str, password: str) -> byte
         )
 
     node = q("HY2-" + username)
+    vless_block = ""
+    vless_group = ""
+    payload = info if isinstance(info, dict) else {}
+    vless_id = str(payload.get("vless_id") or "").strip()
+    public_key = str(env.get("REALITY_PUBLIC_KEY") or "").strip()
+    short_id = str(env.get("REALITY_SHORT_ID") or "").strip()
+    if vless_id and public_key and short_id:
+        vless_name = q("VLESS-" + username)
+        vless_group = f"      - {vless_name}\n"
+        vless_block = (
+            f"  - name: {vless_name}\n"
+            "    type: vless\n"
+            f"    server: {q(env['PUBLIC_IP'])}\n"
+            f"    port: {xray_port(env)}\n"
+            f"    uuid: {q(vless_id)}\n"
+            "    network: tcp\n"
+            "    tls: true\n"
+            "    udp: true\n"
+            "    flow: xtls-rprx-vision\n"
+            f"    servername: {q(reality_server_name(env))}\n"
+            "    client-fingerprint: chrome\n"
+            "    reality-opts:\n"
+            f"      public-key: {q(public_key)}\n"
+            f"      short-id: {q(short_id)}\n"
+        )
     content = f"""mixed-port: 7890
 allow-lan: false
 mode: rule
@@ -477,13 +575,13 @@ proxies:
     skip-cert-verify: {"true" if client_insecure(env) else "false"}
     udp: true
     keepalive: 5s
-
+{vless_block}
 proxy-groups:
   - name: PROXY
     type: select
     proxies:
       - {node}
-      - DIRECT
+{vless_group}      - DIRECT
 
 rule-providers:
   china-domain:
@@ -667,6 +765,7 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
                     "Hysteria": (
                         "off" if not hy2_enabled else service_status("hysteria-server.service")
                     ),
+                    "Xray": service_status("hy2-xray.service"),
                     "HY2 AIO": service_status("hy2-aio.service"),
                     "Caddy": service_status("caddy.service"),
                 },
@@ -950,8 +1049,45 @@ def request_hysteria(action: str) -> None:
     raise RuntimeError("等待 Hysteria 操作超时")
 
 
+def request_xray(action: str) -> None:
+    """Ask root path unit to stop/start/restart hy2-xray (backend is unprivileged)."""
+    if action not in ("stop", "start", "restart"):
+        raise ValueError(f"未知 Xray 操作：{action}")
+    _unlink_quiet(XRAY_RELOAD_FLAG)
+    XRAY_CMD_FILE.write_text(action + "\n", encoding="utf-8")
+    XRAY_RELOAD_FLAG.write_text(str(time.time()), encoding="utf-8")
+    for _ in range(75):
+        time.sleep(0.2)
+        if not XRAY_RELOAD_FLAG.exists():
+            return
+    raise RuntimeError("等待 Xray 操作超时")
+
+
 def restart_hysteria() -> None:
     request_hysteria("restart")
+
+
+def xray_rebuild_available() -> bool:
+    return XRAY_REBUILD_FILE.exists()
+
+
+def rebuild_xray_config() -> None:
+    if not xray_rebuild_available():
+        return
+    result = subprocess.run(
+        [str(XRAY_REBUILD_FILE)], capture_output=True, text=True, timeout=30
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or "rebuild_xray.py 执行失败")
+
+
+def apply_xray_after_users(users: dict[str, Any]) -> None:
+    if not xray_rebuild_available():
+        return
+    if not has_enabled_users(users):
+        request_xray("stop")
+        return
+    request_xray("restart")
 
 
 def apply_hysteria_after_users(users: dict[str, Any]) -> None:
@@ -1865,7 +2001,7 @@ def schedule_collect() -> None:
 
 
 def mutate_users(mutator, apply_hysteria: bool = True) -> dict[str, Any]:
-    """修改 users.json；认证相关变更才重建 Hysteria。成功后立刻回面板，采集放到后台。"""
+    """修改 users.json；认证相关变更才重建 Hysteria/Xray。成功后立刻回面板，采集放到后台。"""
     need_collect = False
     with LOCK, user_mutation_lock():
         users = load_users()
@@ -1873,6 +2009,9 @@ def mutate_users(mutator, apply_hysteria: bool = True) -> dict[str, Any]:
         users_mode = USERS_FILE.stat().st_mode & 0o777
         config_backup = HYSTERIA_CONFIG.read_bytes()
         config_mode = HYSTERIA_CONFIG.stat().st_mode & 0o777
+        xray_existed = XRAY_CONFIG.exists()
+        xray_backup = XRAY_CONFIG.read_bytes() if xray_existed else None
+        xray_mode = XRAY_CONFIG.stat().st_mode & 0o777 if xray_existed else 0o640
         was_off = hy2_is_off()
         before = users_fingerprint(users)
         try:
@@ -1892,10 +2031,16 @@ def mutate_users(mutator, apply_hysteria: bool = True) -> dict[str, Any]:
                 if result.returncode != 0:
                     raise RuntimeError(result.stderr.strip() or "rebuild_config.py 执行失败")
                 apply_hysteria_after_users(users)
+                rebuild_xray_config()
+                apply_xray_after_users(users)
         except Exception:
             atomic_bytes(USERS_FILE, users_backup, users_mode)
             if apply_hysteria:
                 atomic_bytes(HYSTERIA_CONFIG, config_backup, config_mode)
+                if xray_existed and xray_backup is not None:
+                    atomic_bytes(XRAY_CONFIG, xray_backup, xray_mode)
+                elif XRAY_CONFIG.exists() and not xray_existed:
+                    _unlink_quiet(XRAY_CONFIG)
                 try:
                     if was_off:
                         set_hy2_off()
@@ -1903,6 +2048,14 @@ def mutate_users(mutator, apply_hysteria: bool = True) -> dict[str, Any]:
                     else:
                         set_hy2_on()
                         restart_hysteria()
+                except Exception:
+                    pass
+                try:
+                    if xray_rebuild_available():
+                        if has_enabled_users(json.loads(users_backup.decode("utf-8"))):
+                            request_xray("restart")
+                        else:
+                            request_xray("stop")
                 except Exception:
                     pass
             raise
@@ -1940,6 +2093,7 @@ def add_user(username: str) -> dict[str, Any]:
         users[username] = {
             "password": secrets.token_hex(16),
             "token": secrets.token_hex(24),
+            "vless_id": new_vless_id(),
             "note": "",
             "disabled": False,
         }
@@ -1972,6 +2126,7 @@ def rotate_user(username: str) -> dict[str, Any]:
             raise ValueError("用户不存在")
         users[username]["password"] = secrets.token_hex(16)
         users[username]["token"] = secrets.token_hex(24)
+        users[username]["vless_id"] = new_vless_id()
 
     return mutate_users(mutator)
 
@@ -1999,7 +2154,7 @@ def user_credential_value(username: str, kind: str) -> str:
         return password
     if kind == "subscription":
         return f"{public_base_url(env)}/s/{token}"
-    return direct_link(env, username, password)
+    return direct_links(env, username, password, info)
 
 
 RATE_BUCKETS: dict[str, list[float]] = {}
@@ -2044,6 +2199,7 @@ def rate_limit_allow(bucket: str, ip: str, limit: int, window: float) -> bool:
 
 LOG_EXPORT_UNITS = (
     "hysteria-server.service",
+    "hy2-xray.service",
     "hy2-aio.service",
     "caddy.service",
 )
@@ -2189,7 +2345,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             env = load_env()
-            body = subscription_yaml(env, username, str(info["password"]))
+            body = subscription_yaml(env, username, str(info["password"]), info)
             # Clash traffic bar must match panel "整机套餐" (NIC counters), not per-user HY2.
             cached = read_json(DATA_FILE, {})
             traffic = cached.get("server", {}).get("traffic", {})

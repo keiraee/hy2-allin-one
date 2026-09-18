@@ -31,12 +31,14 @@ class BackupTests(unittest.TestCase):
             "etc/hy2-aio/config.env": "BACKUP_RETENTION_DAYS=14\n",
             "etc/hy2-aio/users.json": "{}\n",
             "etc/hy2-aio/client-mode.json": '{"default": {"mode": "bbr"}}\n',
+            "etc/hy2-aio/xray.json": "{}\n",
             "etc/hysteria/config.yaml": "listen: :8443\n",
             "etc/hysteria/server.crt": "certificate\n",
             "etc/hysteria/server.key": "private-key\n",
             "etc/caddy/Caddyfile": "example.com {}\n",
             "usr/local/lib/hy2-aio/server.py": "# generated backend\n",
             "usr/local/lib/hy2-aio/rebuild_config.py": "# generated config builder\n",
+            "usr/local/lib/hy2-aio/rebuild_xray.py": "# generated xray builder\n",
         }
         for relative, content in files.items():
             path = self.root / relative
