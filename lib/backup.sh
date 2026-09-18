@@ -142,11 +142,11 @@ snapshot_before_change() {
     rm -f "$temporary"
     die "创建回滚快照失败"
   fi
-  chmod 600 "$temporary"
+  chmod 0600 "$temporary"
   validate_rollback_members "$temporary" || { rm -f "$temporary"; die "回滚快照成员校验失败"; }
   digest="$(sha256sum "$temporary" | awk '{print $1}')"
   printf '%s\n' "$digest" > "${sidecar}.tmp.$$"
-  chmod 600 "${sidecar}.tmp.$$"
+  chmod 0600 "${sidecar}.tmp.$$"
   mv -f "$temporary" "$snapshot"
   mv -f "${sidecar}.tmp.$$" "$sidecar"
   # Keep only the newest 10 rollback snapshots.
