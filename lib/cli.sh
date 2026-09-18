@@ -131,15 +131,39 @@ hy2_on_cmd() {
 }
 
 update_cmd() {
-  need_root update
-  log "升级 Hysteria 2（钉死版本 + SHA256）"
-  install_hysteria 1
-  if [ -f "${HY2_OFF_FILE:-/etc/hy2-aio/hy2.off}" ]; then
-    log "Hysteria 已关闭，内核已更新（开启：hy2 on）"
+  local target="${1:-hysteria}"
+  case "$target" in
+    ""|hysteria|hy2)
+      need_root update
+      log "升级 Hysteria 2（钉死版本 + SHA256）"
+      install_hysteria 1
+      if [ -f "${HY2_OFF_FILE:-/etc/hy2-aio/hy2.off}" ]; then
+        log "Hysteria 已关闭，内核已更新（开启：hy2 on）"
+      else
+        systemctl restart hysteria-server.service
+      fi
+      hysteria version || true
+      ;;
+    xray|vless|reality)
+      update_xray_cmd
+      ;;
+    *)
+      die "未知内核：${target}。请用：hy2 update  或  hy2 update-xray"
+      ;;
+  esac
+}
+
+update_xray_cmd() {
+  need_root update-xray
+  log "升级 Xray-core（钉死版本 + SHA256，按当前 CPU 架构拉取）"
+  install_xray 1
+  if hy2_has_enabled_user; then
+    systemctl restart hy2-xray.service
   else
-    systemctl restart hysteria-server.service
+    systemctl stop hy2-xray.service || true
+    log "当前无启用用户，Xray 内核已更新（启用用户后会自动拉起）"
   fi
-  hysteria version || true
+  xray version || true
 }
 
 soft_read_env_for_uninstall() {
@@ -397,6 +421,7 @@ EOF
   echo "  1) 升级 HY2 AIO（拉最新版，推荐）"
   echo "  2) 修复配置（repair）"
   echo "  3) 更新 Hysteria 内核"
+  echo " 24) 更新 Xray 内核"
   echo "  4) 重启服务"
   echo "  5) 状态"
   echo
@@ -432,11 +457,12 @@ menu_interactive() {
   refresh_update_hint
   while true; do
     show_menu
-    read -r -p "请选择 [1-23/99]: " choice
+    read -r -p "请选择 [1-24/99]: " choice
     case "$choice" in
       1)  menu_upgrade ;;
       2)  menu_call repair_cmd ;;
       3)  menu_call update_cmd ;;
+      24) menu_call update_xray_cmd ;;
       4)  menu_call restart_cmd ;;
       5)  menu_call status_cmd ;;
       6)  menu_call show_cmd ;;

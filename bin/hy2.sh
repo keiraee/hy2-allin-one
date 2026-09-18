@@ -150,8 +150,9 @@ HY2 AIO v${AIO_VERSION}
   hy2 backup              # 备份
   hy2 rollback            # 回滚最近快照
   hy2 logs [行数]         # 查看日志
-  hy2 restart             # 重启 Hysteria + 面板后端 + Caddy
-  hy2 update              # 更新 Hysteria
+  hy2 restart             # 重启 Hysteria + Xray + 面板后端 + Caddy
+  hy2 update              # 更新 Hysteria 内核
+  hy2 update-xray         # 更新 Xray 内核
   hy2 upgrade             # 升级 HY2 AIO 到 GitHub 最新版
   hy2 repair              # 用当前已装模块修复
   hy2 uninstall           # 卸载（保留配置；彻底删除用 HY2_PURGE=1）
@@ -185,7 +186,8 @@ case "$command" in
   enable)     modify_user "enable" "${2:-}" ;;
   on)         hy2_on_cmd ;;
   off)        hy2_off_cmd ;;
-  update)     update_cmd ;;
+  update)     update_cmd "${2:-}" ;;
+  update-xray) update_xray_cmd ;;
   uninstall)  uninstall_cmd ;;
   obfs)       obfs_cmd "${2:-show}" ;;
   help|-h|--help|-help) usage ;;

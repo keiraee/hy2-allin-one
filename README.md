@@ -100,7 +100,8 @@ sudo hy2 off                 # 关闭 Hysteria
 sudo hy2 backup              # 备份
 sudo hy2 logs [行数]         # 查看日志
 sudo hy2 restart             # 重启服务
-sudo hy2 update              # 更新 Hysteria
+sudo hy2 update              # 更新 Hysteria 内核
+sudo hy2 update-xray         # 更新 Xray 内核
 sudo hy2 uninstall           # 卸载
 sudo hy2 repair              # 修复/升级
 sudo hy2 obfs show           # 查看混淆状态
@@ -175,6 +176,7 @@ hy2-allin-one/
 - VLESS+Reality（官方 Xray-core Vision）作为 TCP 兜底：一条 Clash 订阅两个节点手动选；复制直链为 HY2 + VLESS 两行
 - Reality 伪装站固定 `www.cloudflare.com:443`；默认与 HY2 同端口号（UDP + TCP）
 - `hy2 off` 只关 Hysteria，Xray 继续提供 VLESS
+- 单独升内核：`hy2 update` 升 Hysteria，`hy2 update-xray` 升 Xray（按当前 CPU 架构拉取钉死版本）
 
 ### v1.5.0
 - 面板改成极简仪表盘风格，指标、服务、用户表回到同一页

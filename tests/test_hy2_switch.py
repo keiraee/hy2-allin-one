@@ -43,6 +43,11 @@ class Hy2SwitchSourceTests(unittest.TestCase):
         self.assertIn("请先启用至少一个用户", backend)
         self.assertIn("hy2 on", usage)
         self.assertIn("hy2 off", usage)
+        self.assertIn("hy2 update", cli)
+        self.assertIn("update_xray_cmd()", cli)
+        self.assertIn("install_xray 1", cli)
+        self.assertIn("24) menu_call update_xray_cmd", cli)
+        self.assertIn("hy2 update-xray", usage)
 
     def test_hy2_off_does_not_stop_xray(self):
         cli = (ROOT / "lib" / "cli.sh").read_text(encoding="utf-8")
