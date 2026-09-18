@@ -103,6 +103,9 @@ class XrayRebuildTests(unittest.TestCase):
         self.assertIn("ExecStart=/usr/local/bin/xray run -c /etc/hy2-aio/xray.json", config)
         self.assertIn("hy2-xray.service", config)
         self.assertIn("reload-xray", config)
+        unit = config[config.index("Description=HY2 AIO Xray VLESS+Reality") :]
+        unit = unit[: unit.index("[Install]")]
+        self.assertNotIn("ReadWritePaths=/run/hy2-aio", unit)
 
 
 if __name__ == "__main__":

@@ -251,6 +251,12 @@ class HysteriaApiRetryTests(unittest.TestCase):
         backend = source.index("systemctl restart hy2-aio.service")
         self.assertLess(hysteria, wait)
         self.assertLess(wait, backend)
+        restart = source[source.index("restart_cmd()") :]
+        restart = restart[: restart.index("\n}\n", 1) + 3]
+        self.assertLess(
+            restart.index("systemctl restart hy2-aio.service"),
+            restart.index("systemctl restart hy2-xray.service"),
+        )
 
     def test_restart_skips_hysteria_when_switched_off(self):
         source = (ROOT / "lib" / "cli.sh").read_text(encoding="utf-8")

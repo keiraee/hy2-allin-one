@@ -75,10 +75,10 @@ restart_cmd() {
     systemctl restart hysteria-server.service
     wait_hysteria_stats_api
   fi
+  systemctl restart hy2-aio.service
   if hy2_has_enabled_user 2>/dev/null; then
     systemctl restart hy2-xray.service || true
   fi
-  systemctl restart hy2-aio.service
   systemctl restart caddy.service
   sleep 2
   status_cmd

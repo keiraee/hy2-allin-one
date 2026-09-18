@@ -419,7 +419,8 @@ SystemCallArchitectures=native
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE
 ReadOnlyPaths=/etc/hy2-aio /usr/local/bin/xray
-ReadWritePaths=/run/hy2-aio
+# Do not bind /run/hy2-aio: that RuntimeDirectory belongs to hy2-aio.service
+# and disappears while it restarts, which makes Xray fail with NAMESPACE 226.
 
 [Install]
 WantedBy=multi-user.target
