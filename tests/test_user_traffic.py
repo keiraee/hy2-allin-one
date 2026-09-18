@@ -474,7 +474,21 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("function setBusyOverlay", panel)
         self.assertIn(".busy-scrim.open{display:flex}", panel)
         self.assertIn("正在添加用户…", panel)
-        self.assertIn("apply_hysteria=False", (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8"))
+        self.assertIn("function userInList", panel)
+        self.assertIn("async function syncUsersQuiet", panel)
+        self.assertIn("if(!userInList(username))", panel)
+        self.assertIn("if(userInList(username))", panel)
+        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        self.assertIn("apply_hysteria=False", backend)
+        self.assertIn("def schedule_apply_and_collect", backend)
+        self.assertIn("BrokenPipeError, ConnectionResetError, ConnectionAbortedError", backend)
+        handler = backend[
+            backend.index("def handle_user_change") : backend.index("def handle_user_credentials")
+        ]
+        self.assertLess(
+            handler.index("self.send_json(200, response)"),
+            handler.index("schedule_apply_and_collect()"),
+        )
 
     def test_empty_hour_and_week_charts_keep_placeholder_without_series(self):
         panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")

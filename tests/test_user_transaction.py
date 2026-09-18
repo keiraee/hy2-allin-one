@@ -83,8 +83,10 @@ class BackendUserTransactionTests(unittest.TestCase):
                 "HY2_OFF_FILE": self.root / "hy2.off",
                 "DATA_FILE": self.data_file,
                 "WEB_DIR": self.data_file.parent,
+                "APPLY_ERROR_FILE": self.root / "apply-error.txt",
                 "collect": lambda **_kwargs: {"ok": True, "slow": False},
                 "schedule_collect": mock.Mock(),
+                "schedule_apply_and_collect": mock.Mock(),
             }
         )
 
@@ -111,7 +113,7 @@ class BackendUserTransactionTests(unittest.TestCase):
         self.assertEqual(self.original_users, self.users_file.read_bytes())
         self.assertEqual(self.original_config, self.config_file.read_bytes())
 
-    def test_restart_failure_restores_users_and_generated_config(self):
+    def test_restart_happens_after_response_and_does_not_roll_back_users(self):
         def successful_rebuild(*_args, **_kwargs):
             self.config_file.write_text("new generated config\n", encoding="utf-8")
             return SimpleNamespace(returncode=0, stderr="")
@@ -120,18 +122,25 @@ class BackendUserTransactionTests(unittest.TestCase):
             run=mock.Mock(side_effect=successful_rebuild), DEVNULL=subprocess.DEVNULL
         )
         self.namespace["restart_hysteria"] = mock.Mock(
-            side_effect=[RuntimeError("injected restart failure"), None]
+            side_effect=RuntimeError("injected restart failure")
+        )
+        self.namespace["request_hysteria"] = mock.Mock(
+            side_effect=RuntimeError("injected restart failure")
         )
 
-        with self.assertRaisesRegex(RuntimeError, "injected restart failure"):
-            self.namespace["mutate_users"](
-                lambda users: users.update(
-                    {"bob": {"password": "new", "disabled": False}}
-                )
+        result = self.namespace["mutate_users"](
+            lambda users: users.update(
+                {"bob": {"password": "new", "disabled": False}}
             )
+        )
 
-        self.assertEqual(self.original_users, self.users_file.read_bytes())
-        self.assertEqual(self.original_config, self.config_file.read_bytes())
+        users = json.loads(self.users_file.read_text(encoding="utf-8"))
+        self.assertIn("bob", users)
+        self.assertTrue(result["server"]["hy2_enabled"])
+        self.assertTrue(result["apply_pending"])
+        self.namespace["schedule_apply_and_collect"].assert_not_called()
+        self.namespace["restart_hysteria"].assert_not_called()
+        self.namespace["request_hysteria"].assert_not_called()
 
     def test_disabling_last_user_stops_hysteria_instead_of_restart(self):
         def successful_rebuild(*_args, **_kwargs):
@@ -144,11 +153,16 @@ class BackendUserTransactionTests(unittest.TestCase):
         self.namespace["request_hysteria"] = mock.Mock()
         self.namespace["restart_hysteria"] = mock.Mock()
 
-        self.namespace["mutate_users"](
+        result = self.namespace["mutate_users"](
             lambda users: users["alice"].update({"disabled": True})
         )
 
         self.assertTrue(self.namespace["HY2_OFF_FILE"].exists())
+        self.assertTrue(result["apply_pending"])
+        self.namespace["schedule_apply_and_collect"].assert_not_called()
+        self.namespace["request_hysteria"].assert_not_called()
+        self.namespace["restart_hysteria"].assert_not_called()
+        self.namespace["_apply_and_collect"]()
         self.namespace["request_hysteria"].assert_called_once_with("stop")
         self.namespace["restart_hysteria"].assert_not_called()
 
@@ -170,11 +184,14 @@ class BackendUserTransactionTests(unittest.TestCase):
         self.namespace["request_hysteria"] = mock.Mock()
         self.namespace["restart_hysteria"] = mock.Mock()
 
-        self.namespace["mutate_users"](
+        result = self.namespace["mutate_users"](
             lambda users: users["alice"].update({"disabled": False})
         )
 
         self.assertTrue(self.namespace["HY2_OFF_FILE"].exists())
+        self.assertTrue(result["apply_pending"])
+        self.namespace["schedule_apply_and_collect"].assert_not_called()
+        self.namespace["_apply_and_collect"]()
         self.namespace["request_hysteria"].assert_not_called()
         self.namespace["restart_hysteria"].assert_not_called()
 
@@ -200,6 +217,7 @@ class BackendUserTransactionTests(unittest.TestCase):
         self.namespace["restart_hysteria"].assert_not_called()
         self.namespace["request_hysteria"].assert_not_called()
         self.namespace["schedule_collect"].assert_not_called()
+        self.namespace["schedule_apply_and_collect"].assert_not_called()
 
     def test_add_existing_user_is_idempotent(self):
         self.namespace["subprocess"] = SimpleNamespace(
@@ -210,10 +228,19 @@ class BackendUserTransactionTests(unittest.TestCase):
         result = self.namespace["add_user"]("alice")
 
         self.assertTrue(result["server"]["hy2_enabled"])
+        self.assertNotIn("apply_pending", result)
         self.assertEqual(self.original_users, self.users_file.read_bytes())
         self.namespace["subprocess"].run.assert_not_called()
         self.namespace["restart_hysteria"].assert_not_called()
         self.namespace["schedule_collect"].assert_not_called()
+        self.namespace["schedule_apply_and_collect"].assert_not_called()
+
+    def test_remove_missing_user_is_idempotent(self):
+        result = self.namespace["remove_user"]("ghost")
+        self.assertTrue(result["server"]["hy2_enabled"])
+        self.assertNotIn("apply_pending", result)
+        self.assertEqual(self.original_users, self.users_file.read_bytes())
+        self.namespace["schedule_apply_and_collect"].assert_not_called()
 
     def test_add_user_returns_before_collect_finishes(self):
         def successful_rebuild(*_args, **_kwargs):
@@ -227,7 +254,10 @@ class BackendUserTransactionTests(unittest.TestCase):
         self.namespace["subprocess"] = SimpleNamespace(
             run=mock.Mock(side_effect=successful_rebuild), DEVNULL=subprocess.DEVNULL
         )
-        self.namespace["restart_hysteria"] = mock.Mock()
+        self.namespace["restart_hysteria"] = mock.Mock(side_effect=lambda: time.sleep(2))
+        self.namespace["request_hysteria"] = mock.Mock(
+            side_effect=lambda *_args, **_kwargs: time.sleep(2)
+        )
         self.namespace["collect"] = slow_collect
 
         started_at = time.perf_counter()
@@ -241,8 +271,11 @@ class BackendUserTransactionTests(unittest.TestCase):
         panel = json.loads(self.data_file.read_text(encoding="utf-8"))
         self.assertTrue(any(item["username"] == "bob" for item in panel["users"]))
         self.assertTrue(result["server"]["hy2_enabled"])
-        self.namespace["schedule_collect"].assert_called_once()
-        self.namespace["restart_hysteria"].assert_called_once()
+        self.assertTrue(result["apply_pending"])
+        self.namespace["schedule_apply_and_collect"].assert_not_called()
+        self.namespace["schedule_collect"].assert_not_called()
+        self.namespace["restart_hysteria"].assert_not_called()
+        self.namespace["request_hysteria"].assert_not_called()
 
     def test_disabling_last_user_also_stops_xray_when_rebuild_exists(self):
         xray_rebuild = self.root / "rebuild_xray.py"
@@ -262,13 +295,56 @@ class BackendUserTransactionTests(unittest.TestCase):
         self.namespace["request_xray"] = mock.Mock()
         self.namespace["restart_hysteria"] = mock.Mock()
 
-        self.namespace["mutate_users"](
+        result = self.namespace["mutate_users"](
             lambda users: users["alice"].update({"disabled": True})
         )
 
+        self.assertTrue(result["apply_pending"])
+        self.namespace["schedule_apply_and_collect"].assert_not_called()
+        self.namespace["request_hysteria"].assert_not_called()
+        self.namespace["request_xray"].assert_not_called()
+        self.namespace["_apply_and_collect"]()
         self.namespace["request_hysteria"].assert_called_once_with("stop")
         self.namespace["request_xray"].assert_called_once_with("stop")
         self.namespace["restart_hysteria"].assert_not_called()
+        self.assertFalse(self.namespace["APPLY_ERROR_FILE"].exists())
+
+    def test_apply_retries_then_records_panel_error_without_rolling_back_users(self):
+        self.users_file.write_text(
+            json.dumps(
+                {
+                    "alice": {"password": "old", "disabled": False},
+                    "bob": {"password": "new", "disabled": False},
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        self.namespace["request_hysteria"] = mock.Mock(
+            side_effect=RuntimeError("injected restart timeout")
+        )
+        self.namespace["restart_hysteria"] = self.namespace["request_hysteria"]
+        self.namespace["request_xray"] = mock.Mock()
+        self.namespace["time"] = SimpleNamespace(sleep=mock.Mock(), time=time.time)
+
+        self.namespace["_apply_and_collect"]()
+
+        users = json.loads(self.users_file.read_text(encoding="utf-8"))
+        self.assertIn("bob", users)
+        self.assertEqual(3, self.namespace["request_hysteria"].call_count)
+        self.assertEqual(2, self.namespace["time"].sleep.call_count)
+        message = self.namespace["APPLY_ERROR_FILE"].read_text(encoding="utf-8")
+        self.assertIn("用户已保存", message)
+        self.assertIn("injected restart timeout", message)
+
+    def test_collect_includes_sticky_apply_error(self):
+        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        self.assertIn("read_apply_error()", backend)
+        self.assertIn("用户已保存，但内核未加载最新配置", backend)
+        self.assertIn("for attempt in range(1, 4)", backend)
+        collect = backend[backend.index("def collect(") : backend.index("def _collect_after_mutation")]
+        self.assertIn("read_apply_error()", collect)
 
 
 @unittest.skipIf(os.name == "nt", "CLI transaction harness requires bash and flock")

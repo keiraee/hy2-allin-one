@@ -1391,6 +1391,12 @@ async function apiPost(path,payload){
   if(!response.ok||!result.ok)throw new Error(result.error||("HTTP "+response.status));
   return result;
 }
+function userInList(username){
+  return (userList||[]).some(user=>user.username===username);
+}
+async function syncUsersQuiet(){
+  try{await load()}catch(e){}
+}
 async function copyCredential(username,kind){
   closeMenus();
   try{
@@ -1421,7 +1427,10 @@ async function toggleUser(username,disabled){
       const result=await apiPost(disabled?"api/user/enable":"api/user/disable",{username});
       toast(result.message||(disabled?"已启用 "+username:"已禁用 "+username));
       await load();
-    }catch(error){toast("操作失败："+error.message)}
+    }catch(error){
+      await syncUsersQuiet();
+      toast("操作失败："+error.message);
+    }
   },disabled?"正在启用用户…":"正在禁用用户…");
 }
 async function removeUser(username){
@@ -1432,7 +1441,14 @@ async function removeUser(username){
       await apiPost("api/user/remove",{username});
       toast("已删除 "+username);
       await load();
-    }catch(error){toast("删除失败："+error.message)}
+    }catch(error){
+      await syncUsersQuiet();
+      if(!userInList(username)){
+        toast("已删除 "+username);
+        return;
+      }
+      toast("删除失败："+error.message);
+    }
   },"正在删除用户…");
 }
 async function rotateUser(username){
@@ -1443,7 +1459,10 @@ async function rotateUser(username){
       await apiPost("api/user/rotate",{username});
       toast("已轮换 "+username+" 的密钥");
       await load();
-    }catch(error){toast("轮换失败："+error.message)}
+    }catch(error){
+      await syncUsersQuiet();
+      toast("轮换失败："+error.message);
+    }
   },"正在轮换密钥…");
 }
 async function addUser(){
@@ -1458,17 +1477,14 @@ async function addUser(){
       setDrawer(false);
       await load();
     }catch(error){
-      const message=String(error&&error.message||"");
-      if(/用户已存在/.test(message)){
-        await load();
-        if((userList||[]).some(user=>user.username===username)){
-          input.value="";
-          toast("已添加 "+username);
-          setDrawer(false);
-          return;
-        }
+      await syncUsersQuiet();
+      if(userInList(username)){
+        input.value="";
+        toast("已添加 "+username);
+        setDrawer(false);
+        return;
       }
-      toast("添加失败："+message);
+      toast("添加失败："+error.message);
     }
   },"正在添加用户…");
 }

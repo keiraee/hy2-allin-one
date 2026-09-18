@@ -42,6 +42,7 @@ MODE_FILE = Path("/etc/hy2-aio/client-mode.json")
 HYSTERIA_CONFIG = Path("/etc/hysteria/config.yaml")
 STATE_DIR = Path("/var/lib/hy2-aio")
 STATE_FILE = STATE_DIR / "state.json"
+APPLY_ERROR_FILE = STATE_DIR / "apply-error.txt"
 BACKUP_DIR = STATE_DIR / "backups"
 BACKUP_ROOT = Path("/")
 BACKUP_REQUIRED_MEMBERS = (
@@ -731,6 +732,10 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
 
         for stale in [name for name in list(state_users) if name not in users]:
             state_users.pop(stale, None)
+
+        apply_error = read_apply_error()
+        if apply_error:
+            errors.append(apply_error)
 
         stored_modes = read_json(MODE_FILE, {})
         if isinstance(stored_modes, dict) and isinstance(stored_modes.get("users"), dict):
@@ -2003,9 +2008,69 @@ def schedule_collect() -> None:
     ).start()
 
 
+def read_apply_error() -> str:
+    try:
+        return APPLY_ERROR_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def set_apply_error(message: str = "") -> None:
+    try:
+        APPLY_ERROR_FILE.parent.mkdir(parents=True, exist_ok=True)
+        if message:
+            APPLY_ERROR_FILE.write_text(message.strip() + "\n", encoding="utf-8")
+            return
+        if APPLY_ERROR_FILE.exists():
+            APPLY_ERROR_FILE.unlink()
+    except OSError as error:
+        print(f"[hy2-aio] apply error file failed: {error}", flush=True)
+
+
+APPLY_LOCK = threading.Lock()
+
+
+def _apply_services() -> None:
+    last_error: Optional[BaseException] = None
+    for attempt in range(1, 4):
+        try:
+            current = load_users()
+            apply_hysteria_after_users(current)
+            apply_xray_after_users(current)
+            set_apply_error("")
+            return
+        except Exception as error:
+            last_error = error
+            print(
+                f"[hy2-aio] post-mutation service apply failed ({attempt}/3): {error}",
+                flush=True,
+            )
+            if attempt < 3:
+                time.sleep(1)
+    raise RuntimeError(str(last_error) if last_error else "内核重启失败")
+
+
+def _apply_and_collect() -> None:
+    """按磁盘上的最新用户表重启内核，再采集。不回滚已提交的 users.json。"""
+    with APPLY_LOCK:
+        try:
+            _apply_services()
+        except Exception as error:
+            set_apply_error(f"用户已保存，但内核未加载最新配置：{error}")
+            print(f"[hy2-aio] post-mutation service apply gave up: {error}", flush=True)
+        _collect_after_mutation()
+
+
+def schedule_apply_and_collect() -> None:
+    threading.Thread(
+        target=_apply_and_collect,
+        daemon=True,
+        name="hy2-aio-apply",
+    ).start()
+
+
 def mutate_users(mutator, apply_hysteria: bool = True) -> dict[str, Any]:
-    """修改 users.json；认证相关变更才重建 Hysteria/Xray。成功后立刻回面板，采集放到后台。"""
-    need_collect = False
+    """修改 users.json；认证相关变更才重建配置。立刻回面板，内核重启由调用方在 HTTP 200 之后调度。"""
     with LOCK, user_mutation_lock():
         users = load_users()
         users_backup = USERS_FILE.read_bytes()
@@ -2033,9 +2098,9 @@ def mutate_users(mutator, apply_hysteria: bool = True) -> dict[str, Any]:
                 )
                 if result.returncode != 0:
                     raise RuntimeError(result.stderr.strip() or "rebuild_config.py 执行失败")
-                apply_hysteria_after_users(users)
                 rebuild_xray_config()
-                apply_xray_after_users(users)
+                if not has_enabled_users(users):
+                    set_hy2_off()
         except Exception:
             atomic_bytes(USERS_FILE, users_backup, users_mode)
             if apply_hysteria:
@@ -2047,18 +2112,8 @@ def mutate_users(mutator, apply_hysteria: bool = True) -> dict[str, Any]:
                 try:
                     if was_off:
                         set_hy2_off()
-                        request_hysteria("stop")
                     else:
                         set_hy2_on()
-                        restart_hysteria()
-                except Exception:
-                    pass
-                try:
-                    if xray_rebuild_available():
-                        if has_enabled_users(json.loads(users_backup.decode("utf-8"))):
-                            request_xray("restart")
-                        else:
-                            request_xray("stop")
                 except Exception:
                     pass
             raise
@@ -2068,9 +2123,8 @@ def mutate_users(mutator, apply_hysteria: bool = True) -> dict[str, Any]:
         except Exception:
             pass
         snapshot = mutation_snapshot(users)
-        need_collect = apply_hysteria
-    if need_collect:
-        schedule_collect()
+        if apply_hysteria:
+            snapshot["apply_pending"] = True
     return snapshot
 
 
@@ -2110,7 +2164,7 @@ def remove_user(username: str) -> dict[str, Any]:
 
     def mutator(users: dict[str, Any]) -> None:
         if username not in users:
-            raise ValueError("用户不存在")
+            return
         if len(users) <= 1:
             raise ValueError("不能删除最后一个用户")
         del users[username]
@@ -2318,13 +2372,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        if self.command != "HEAD":
-            self.wfile.write(body)
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return
 
     def send_text_download(self, body: bytes, filename: str) -> None:
         self.send_response(200)
@@ -2447,6 +2504,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(500, {"ok": False, "error": str(error)})
             print(f"[hy2-aio] runtime error: {error}", flush=True)
             return
+        apply_pending = bool(data.pop("apply_pending", False))
         response: dict[str, Any] = {
             "ok": True,
             "generated_at": data["generated_at"],
@@ -2455,6 +2513,8 @@ class Handler(BaseHTTPRequestHandler):
         if action in ("disable", "remove") and not response["hy2_enabled"]:
             response["message"] = "已无启用用户，HY2 已关闭"
         self.send_json(200, response)
+        if apply_pending:
+            schedule_apply_and_collect()
 
     def handle_user_credentials(self, payload: dict[str, Any]) -> None:
         username = str(payload.get("username", ""))
@@ -2561,8 +2621,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(500, {"ok": False, "error": str(error)})
             print(f"[hy2-aio] api runtime error: {error}", flush=True)
             return
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return
         except Exception as error:
-            self.send_json(500, {"ok": False, "error": "内部错误"})
+            try:
+                self.send_json(500, {"ok": False, "error": "内部错误"})
+            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                return
             print(f"[hy2-aio] api error: {error}", flush=True)
             return
         self.send_error(404)
