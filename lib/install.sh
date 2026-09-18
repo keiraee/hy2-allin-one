@@ -377,7 +377,7 @@ ensure_low_memory_swap() {
     return 0
   fi
   if [ -f /swapfile ]; then
-    chmod 600 /swapfile
+    chmod 0600 /swapfile
     if swapon /swapfile 2>/dev/null; then
       grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
     else
@@ -396,7 +396,7 @@ ensure_low_memory_swap() {
     rm -f /swapfile
     return 0
   fi
-  chmod 600 /swapfile
+  chmod 0600 /swapfile
   if mkswap /swapfile >/dev/null && swapon /swapfile; then
     grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
   else
