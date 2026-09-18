@@ -118,7 +118,7 @@ for username, info in sorted(users.items()):
                 "type": "tcp",
             }
         )
-        vless_name = urllib.parse.quote(f"VLESS-{username}", safe="")
+        vless_name = urllib.parse.quote("hy2超时备用临时节点", safe="")
         vless = f"vless://{vless_id}@{env['PUBLIC_IP']}:{xray_port}?{vless_query}#{vless_name}"
     access_lines = [
         f"【{username}】",

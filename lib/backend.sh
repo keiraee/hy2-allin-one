@@ -458,6 +458,9 @@ def new_vless_id() -> str:
     return str(uuid.uuid4())
 
 
+VLESS_NODE_NAME = "hy2超时备用临时节点"
+
+
 def vless_link(env: dict[str, str], username: str, info: Optional[dict[str, Any]] = None) -> str:
     payload = info if isinstance(info, dict) else {}
     vless_id = str(payload.get("vless_id") or "").strip()
@@ -477,7 +480,7 @@ def vless_link(env: dict[str, str], username: str, info: Optional[dict[str, Any]
             "type": "tcp",
         }
     )
-    name = urllib.parse.quote(f"VLESS-{username}", safe="")
+    name = urllib.parse.quote(VLESS_NODE_NAME, safe="")
     return f"vless://{vless_id}@{env['PUBLIC_IP']}:{xray_port(env)}?{query}#{name}"
 
 
@@ -521,7 +524,7 @@ def subscription_yaml(
     public_key = str(env.get("REALITY_PUBLIC_KEY") or "").strip()
     short_id = str(env.get("REALITY_SHORT_ID") or "").strip()
     if vless_id and public_key and short_id:
-        vless_name = q("VLESS-" + username)
+        vless_name = q(VLESS_NODE_NAME)
         vless_group = f"      - {vless_name}\n"
         vless_block = (
             f"  - name: {vless_name}\n"

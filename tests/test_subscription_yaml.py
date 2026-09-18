@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+import urllib.parse
 from pathlib import Path
 
 
@@ -62,7 +63,7 @@ class SubscriptionYamlTests(unittest.TestCase):
         text = self.yaml_text()
         self.assertIn("name: PROXY", text)
         self.assertIn('"HY2-alice"', text)
-        self.assertIn('"VLESS-alice"', text)
+        self.assertIn('"hy2超时备用临时节点"', text)
         self.assertIn("type: vless", text)
         self.assertIn("flow: xtls-rprx-vision", text)
         self.assertIn("reality-opts:", text)
@@ -109,7 +110,7 @@ class SubscriptionYamlTests(unittest.TestCase):
         self.assertIn("sni=www.cloudflare.com", link)
         self.assertIn("pbk=public-key-fixture", link)
         self.assertIn("sid=abcd1234", link)
-        self.assertIn("#VLESS-alice", link)
+        self.assertIn("#" + urllib.parse.quote("hy2超时备用临时节点", safe=""), link)
 
     def test_direct_links_are_two_lines(self):
         text = self.namespace["direct_links"](
