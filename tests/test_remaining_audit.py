@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 import os
@@ -273,6 +274,24 @@ class HysteriaApiRetryTests(unittest.TestCase):
         restart = restart[: restart.index("\n}\n", 1) + 3]
         self.assertIn("HY2_OFF_FILE", restart)
         self.assertIn("跳过重启", restart)
+
+
+class Sha256SumsTests(unittest.TestCase):
+    def test_listed_shell_modules_match_sha256sums(self):
+        listed = {}
+        for line in (ROOT / "SHA256SUMS").read_text(encoding="ascii").splitlines():
+            if not line.strip():
+                continue
+            digest, name = line.split("  ", 1)
+            listed[name] = digest
+        expected = []
+        for path in sorted((ROOT / "bin").glob("*.sh")) + sorted((ROOT / "lib").glob("*.sh")):
+            expected.append(path.relative_to(ROOT).as_posix())
+        self.assertEqual(expected, list(listed))
+        for rel in expected:
+            data = (ROOT / rel).read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+            digest = hashlib.sha256(data).hexdigest()
+            self.assertEqual(listed[rel], digest, rel)
 
 
 if __name__ == "__main__":
