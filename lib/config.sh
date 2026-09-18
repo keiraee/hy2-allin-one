@@ -480,7 +480,7 @@ ensure_hy2_aio_user() {
   getent group hy2-aio >/dev/null 2>&1 || groupadd --system hy2-aio
   getent group hysteria >/dev/null 2>&1 || groupadd --system hysteria
   getent group caddy >/dev/null 2>&1 || groupadd --system caddy
-  extra_groups="hysteria,caddy"
+  local extra_groups="hysteria,caddy"
   getent group systemd-journal >/dev/null 2>&1 && extra_groups="${extra_groups},systemd-journal"
   if ! id hy2-aio >/dev/null 2>&1; then
     useradd --system --gid hy2-aio --groups "$extra_groups" \
