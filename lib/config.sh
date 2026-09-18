@@ -512,9 +512,11 @@ ensure_hy2_aio_user() {
 
 caddy_auth_directive() {
   local version major minor
+  # 解析 Caddy 版本号，处理 v 前缀（如 "v2.8.4" → "2 8"）
   version="$(caddy version 2>/dev/null | sed -E 's/^v?([0-9]+)\.([0-9]+).*/\1 \2/' || true)"
   major="$(awk '{print $1}' <<<"$version")"
   minor="$(awk '{print $2}' <<<"$version")"
+  # Caddy 2.8+ 将 basicauth 更名为 basic_auth；默认假设 2.6+ 使用新指令
   if [ "${major:-2}" -gt 2 ] || { [ "${major:-2}" -eq 2 ] && [ "${minor:-6}" -ge 8 ]; }; then
     echo basic_auth
   else
