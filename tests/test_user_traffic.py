@@ -798,5 +798,34 @@ class ClientIpAndSortTests(unittest.TestCase):
         self.assertIn("alice", state["client_ips"])
 
 
+class UsernameCaseFoldTests(unittest.TestCase):
+    def setUp(self):
+        self.namespace = load_backend_namespace()
+
+    def test_traffic_key_ignores_case_when_username_unique(self):
+        traffic = {"jp-lsq": {"tx": 10, "rx": 20}}
+        users = {"JP-LSQ": {}}
+        self.assertEqual(
+            {"tx": 10, "rx": 20},
+            self.namespace["mapping_get_ci"](traffic, "JP-LSQ", users),
+        )
+
+    def test_does_not_steal_when_both_cases_registered(self):
+        traffic = {"jp-lsq": {"tx": 10, "rx": 20}}
+        users = {"JP-LSQ": {}, "jp-lsq": {}}
+        self.assertIsNone(self.namespace["mapping_get_ci"](traffic, "JP-LSQ", users))
+        self.assertEqual(
+            {"tx": 10, "rx": 20},
+            self.namespace["mapping_get_ci"](traffic, "jp-lsq", users),
+        )
+
+    def test_canonical_maps_log_id_to_registered_name(self):
+        users = {"JP-LSQ": {}}
+        self.assertEqual(
+            "JP-LSQ",
+            self.namespace["canonical_username"]("jp-lsq", users),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

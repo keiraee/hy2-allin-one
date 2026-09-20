@@ -1,4 +1,4 @@
-# HY2 AIO v1.6.0
+# HY2 AIO v1.6.1
 
 一键部署 Hysteria 2 + VLESS+Reality + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -8,7 +8,7 @@
 ## 快速开始
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.6.0/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.6.1/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -30,7 +30,7 @@ hy2 upgrade && hy2 restart
 已经装过同一版本、但 tag 后来又补了提交：新入口会对比哈希并继续升级。若本机 `hy2` 仍提示「无需升级」且本次哈希显示「未下载」，用仓库里的新引导脚本跑一次：
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.6.0/hy2.sh?nocache=$(date +%s)" -o hy2.sh
+curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.6.1/hy2.sh?nocache=$(date +%s)" -o hy2.sh
 sudo bash hy2.sh upgrade && hy2 restart
 ```
 
@@ -142,7 +142,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.6.0` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.6.1` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
 | `XRAY_VERSION` | Xray-core 版本 | `v26.3.27` |
@@ -182,6 +182,9 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v1.6.1
+- 修复：Hysteria 统计用户名与面板大小写不一致时，用户流量一直显示 0
 
 ### v1.6.0
 - 加入官方 Xray-core **VLESS+Reality+Vision** 作为 TCP 兜底；新装与升级都会自动拉对应 CPU 架构的内核

@@ -702,13 +702,17 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
                     "last_active": "从未",
                 },
             )
-            raw = traffic.get(username)
+            raw = mapping_get_ci(traffic, username, users)
             raw = raw if isinstance(raw, dict) else None
             if raw is not None:
                 tx, rx = accumulate_user_traffic(user_state, raw)
             else:
                 tx = rx = 0
-            devices = int(online.get(username, 0) or 0)
+            devices_raw = mapping_get_ci(online, username, users)
+            try:
+                devices = int(devices_raw or 0)
+            except (TypeError, ValueError):
+                devices = 0
             if tx or rx or devices:
                 user_state["last_active"] = timestamp
 
@@ -1142,6 +1146,73 @@ LOG_ISO_RE = re.compile(
 )
 
 
+def registered_usernames() -> dict[str, Any]:
+    try:
+        users = load_users()
+    except Exception:
+        return {}
+    return users if isinstance(users, dict) else {}
+
+
+def canonical_username(name: str, users: Optional[dict[str, Any]] = None) -> str:
+    text = str(name or "").strip()
+    if not text:
+        return text
+    roster = users if isinstance(users, dict) else registered_usernames()
+    if text in roster:
+        return text
+    lowered = text.casefold()
+    aliases = [key for key in roster if str(key).casefold() == lowered]
+    if len(aliases) == 1:
+        return str(aliases[0])
+    return text
+
+
+def mapping_get_ci(
+    mapping: Any, username: str, users: Optional[dict[str, Any]] = None
+) -> Any:
+    if not isinstance(mapping, dict):
+        return None
+    if username in mapping:
+        return mapping[username]
+    roster = users if isinstance(users, dict) else registered_usernames()
+    lowered = str(username).casefold()
+    aliases = [key for key in roster if str(key).casefold() == lowered]
+    if len(aliases) != 1:
+        return None
+    found = None
+    hits = 0
+    for key, value in mapping.items():
+        if str(key).casefold() == lowered:
+            found = value
+            hits += 1
+    return found if hits == 1 else None
+
+
+def nested_bucket_ci(
+    mapping: Any, username: str, users: Optional[dict[str, Any]] = None
+) -> dict[str, Any]:
+    if not isinstance(mapping, dict):
+        return {}
+    roster = users if isinstance(users, dict) else registered_usernames()
+    lowered = str(username).casefold()
+    aliases = [key for key in roster if str(key).casefold() == lowered]
+    keys = [username] if username in mapping else []
+    if len(aliases) == 1:
+        keys = [key for key in mapping if str(key).casefold() == lowered]
+        if username in keys:
+            keys = [username] + [key for key in keys if key != username]
+    merged: dict[str, Any] = {}
+    for key in keys:
+        value = mapping.get(key)
+        if not isinstance(value, dict):
+            continue
+        for inner_key, inner_value in value.items():
+            if inner_key not in merged:
+                merged[inner_key] = inner_value
+    return merged
+
+
 def split_host_port(addr: str) -> tuple[str, str]:
     text = str(addr or "").strip()
     if not text:
@@ -1259,7 +1330,7 @@ def session_stats_from_logs(log_lines: list[str], username: str) -> dict[str, An
         if "tcp error" in lowered and "client connected" not in lowered:
             continue
         parsed = parse_hysteria_connect_line(text)
-        if not parsed or parsed[0] != username:
+        if not parsed or canonical_username(parsed[0]) != username:
             continue
         stamp = parse_history_time(stamp_from_log_line(text, ""))
         if stamp is None:
@@ -1413,7 +1484,7 @@ def remember_log_destinations(
             obj = None
         if not isinstance(obj, dict):
             continue
-        user = str(obj.get("id") or "").strip()
+        user = canonical_username(str(obj.get("id") or "").strip())
         req = str(obj.get("reqAddr") or obj.get("req_addr") or "").strip()
         if not user or not req or not USERNAME_PATTERN.fullmatch(user):
             continue
@@ -1477,7 +1548,7 @@ def remember_client_ips(
     for stream in streams:
         if not isinstance(stream, dict):
             continue
-        user = str(stream.get("auth") or "").strip()
+        user = canonical_username(str(stream.get("auth") or "").strip())
         addr = stream_client_addr(stream)
         if user and addr:
             record_client_ip(state, user, addr, timestamp)
@@ -1485,7 +1556,7 @@ def remember_client_ips(
         parsed = parse_hysteria_connect_line(str(line))
         if not parsed:
             continue
-        record_client_ip(state, parsed[0], parsed[1], timestamp)
+        record_client_ip(state, canonical_username(parsed[0]), parsed[1], timestamp)
     prune_client_ips(state)
 
 
@@ -1494,8 +1565,7 @@ def client_ips_for_user(state: Any, username: str) -> list[dict[str, str]]:
     bucket: dict[str, Any] = {}
     if isinstance(state, dict):
         stored = state.get("client_ips")
-        if isinstance(stored, dict) and isinstance(stored.get(username), dict):
-            bucket = stored[username]
+        bucket = nested_bucket_ci(stored, username)
     for ip, info in bucket.items():
         if not isinstance(info, dict):
             continue
@@ -1580,7 +1650,7 @@ def remember_user_streams(
     for stream in streams:
         if not isinstance(stream, dict):
             continue
-        user = str(stream.get("auth") or "").strip()
+        user = canonical_username(str(stream.get("auth") or "").strip())
         if not user:
             continue
         key = f"{user}:{stream.get('connection')}:{stream.get('stream')}"
@@ -1664,7 +1734,7 @@ def live_streams_for_user(username: str) -> list[dict[str, Any]]:
         return []
     rows: list[dict[str, Any]] = []
     for stream in normalize_streams_payload(payload):
-        if str(stream.get("auth") or "").strip() != username:
+        if canonical_username(str(stream.get("auth") or "").strip()) != username:
             continue
         target = stream_target(stream)
         client_raw = stream_client_addr(stream)
@@ -1696,8 +1766,7 @@ def sites_for_user(username: str) -> list[dict[str, Any]]:
     bucket: dict[str, Any] = {}
     if isinstance(state, dict):
         dest = state.get("destinations")
-        if isinstance(dest, dict) and isinstance(dest.get(username), dict):
-            bucket = dest[username]
+        bucket = nested_bucket_ci(dest, username)
     cutoff = datetime.now(timezone.utc) - timedelta(days=TRAFFIC_HISTORY_DAYS)
     rows: list[dict[str, Any]] = []
     for host, item in bucket.items():
