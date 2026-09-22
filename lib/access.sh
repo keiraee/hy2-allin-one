@@ -15,6 +15,20 @@ for raw in env_file.read_text(encoding="utf-8").splitlines():
         env[key] = value
 
 users = json.loads(users_file.read_text(encoding="utf-8"))
+
+
+def is_disabled(info):
+    # 与后端 user_is_disabled 同语义："false"/"0" 是启用，True/"true"/1 才是禁用。
+    value = (info or {}).get("disabled", False)
+    if value is True:
+        return True
+    if value is False or value is None:
+        return False
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value != 0
+    if isinstance(value, str):
+        return value.strip().lower() in ("1", "true", "yes", "on")
+    return bool(value)
 try:
     modes = json.loads(mode_file.read_text(encoding="utf-8"))
 except Exception:
@@ -123,7 +137,7 @@ for username, info in sorted(users.items()):
     access_lines = [
         f"【{username}】",
         f"用户名：{username}",
-        f"状态：{'已禁用' if info.get('disabled') else '正常'}",
+        f"状态：{'已禁用' if is_disabled(info) else '正常'}",
         f"设备备注：{info.get('note', '') or '（无）'}",
         f"密码：{password}",
         f"速率模式：{mode_label(overrides.get(username, default_mode))}",

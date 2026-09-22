@@ -297,7 +297,14 @@ path, name = sys.argv[1], sys.argv[2]
 users = json.load(open(path, encoding="utf-8"))
 if name not in users:
     raise SystemExit(f"用户不存在：{name}")
-print("enable" if users[name].get("disabled") else "disable")
+value = users[name].get("disabled", False)
+if isinstance(value, str):
+    disabled = value.strip().lower() in ("1", "true", "yes", "on")
+elif isinstance(value, (int, float)) and not isinstance(value, bool):
+    disabled = value != 0
+else:
+    disabled = bool(value)
+print("enable" if disabled else "disable")
 PY
 )" || return 1
   modify_user "$state" "$username"

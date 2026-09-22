@@ -751,7 +751,7 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
                 {
                     "username": username,
                     "note": str(info.get("note", "")),
-                    "disabled": bool(info.get("disabled", False)),
+                    "disabled": user_is_disabled(info),
                     "online": devices,
                     "upload": user_state["month_tx"],
                     "download": user_state["month_rx"],
@@ -2057,7 +2057,7 @@ def publish_users_to_panel(users: dict[str, Any], timestamp: str) -> None:
             {
                 "username": username,
                 "note": str(info.get("note", "") or ""),
-                "disabled": bool(info.get("disabled", False)),
+                "disabled": user_is_disabled(info),
                 "online": int(prev.get("online") or 0) if kept else 0,
                 "upload": upload,
                 "download": download,
@@ -2513,7 +2513,7 @@ class Handler(BaseHTTPRequestHandler):
         if username is None or info is None:
             self.send_error(404)
             return
-        if info.get("disabled"):
+        if user_is_disabled(info):
             self.send_json(403, {"ok": False, "error": "账号已被禁用"})
             return
         try:
