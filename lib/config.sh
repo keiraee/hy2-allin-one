@@ -604,11 +604,13 @@ write_caddy() {
     cp "$CADDY_FILE" "${CADDY_FILE}.before-hy2-aio-$(date +%Y%m%d-%H%M%S)"
   fi
 
-  env \
-    DOMAIN="$DOMAIN" PANEL_PORT="$PANEL_PORT" PANEL_PATH="$PANEL_PATH" \
-    PANEL_USER="$PANEL_USER" PANEL_PASS="$PANEL_PASS" API_SECRET="$API_SECRET" \
-    WEB_DIR="$WEB_DIR" AUTH_DIRECTIVE="$auth" SITE_FILE="$site_file" \
-    BACKEND_HOST="$BACKEND_HOST" BACKEND_PORT="$BACKEND_PORT" \
+  # 密码只走进程环境（environ 仅属主可读）；不进 env/子进程 argv（argv 全员可见）。
+  # BACKEND_HOST/PORT 是 readonly 常量且非密钥，沿用 env 传给子进程（v1.3.22 同款约束）。
+  (
+    export DOMAIN="$DOMAIN" PANEL_PORT="$PANEL_PORT" PANEL_PATH="$PANEL_PATH"
+    export PANEL_USER="$PANEL_USER" PANEL_PASS="$PANEL_PASS" API_SECRET="$API_SECRET"
+    export WEB_DIR="$WEB_DIR" AUTH_DIRECTIVE="$auth" SITE_FILE="$site_file"
+    env BACKEND_HOST="$BACKEND_HOST" BACKEND_PORT="$BACKEND_PORT" \
     python3 <<'PY'
 import os
 import subprocess
@@ -627,7 +629,8 @@ backend_host = os.environ["BACKEND_HOST"]
 backend_port = os.environ["BACKEND_PORT"]
 
 password_hash = subprocess.check_output(
-    ["caddy", "hash-password", "--plaintext", panel_pass],
+    ["caddy", "hash-password"],
+    input=panel_pass,
     text=True,
 ).strip()
 
@@ -714,6 +717,7 @@ content = f"""{site_addr} {{
 """
 site_file.write_text(content, encoding="utf-8")
 PY
+  )
   [ -f "$site_file" ] || die "写入 ${site_file} 失败"
   # Caddy runs as user `caddy`; umask 077 would otherwise leave 0600 and break import.
   chmod 0755 /etc/caddy

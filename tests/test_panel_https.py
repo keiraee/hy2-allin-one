@@ -53,7 +53,7 @@ panel_port_is_valid 8443
         )
         write_caddy = config[config.index("write_caddy()") :]
         self.assertLess(write_caddy.index(config_check), write_caddy.index("install -d"))
-        env_idx = write_caddy.index("\n  env \\\n")
+        env_idx = write_caddy.index("export DOMAIN=")
         host_idx = write_caddy.index('BACKEND_HOST="$BACKEND_HOST"')
         self.assertLess(env_idx, host_idx)
 
