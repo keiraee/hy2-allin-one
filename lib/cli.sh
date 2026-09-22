@@ -124,7 +124,7 @@ hy2_on_cmd() {
   "$REBUILD_FILE"
   chown hysteria:hysteria "$HYSTERIA_CONFIG" 2>/dev/null || true
   chmod 0660 "$HYSTERIA_CONFIG" 2>/dev/null || true
-  systemctl start hysteria-server.service
+  systemctl restart hysteria-server.service
   wait_hysteria_stats_api
   systemctl restart hy2-aio.service || true
   log "Hysteria 已开启"

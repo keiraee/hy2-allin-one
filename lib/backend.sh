@@ -1161,7 +1161,7 @@ def hy2_turn_on() -> dict[str, Any]:
     except Exception:
         set_hy2_off()
         raise
-    request_hysteria("start")
+    request_hysteria("restart")
     return collect()
 
 

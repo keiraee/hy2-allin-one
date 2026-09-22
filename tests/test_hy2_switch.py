@@ -106,7 +106,7 @@ class Hy2SwitchBackendTests(unittest.TestCase):
             self.namespace["hy2_turn_on"]()
         self.assertFalse(self.off_file.exists())
 
-    def test_turn_on_starts_after_rebuild(self):
+    def test_turn_on_restarts_after_rebuild(self):
         self.users_file.write_text(
             json.dumps({"alice": {"password": "x", "disabled": False}}) + "\n",
             encoding="utf-8",
@@ -124,7 +124,7 @@ class Hy2SwitchBackendTests(unittest.TestCase):
         data = self.namespace["hy2_turn_on"]()
 
         self.assertFalse(self.off_file.exists())
-        self.namespace["request_hysteria"].assert_called_once_with("start")
+        self.namespace["request_hysteria"].assert_called_once_with("restart")
         self.assertEqual("now", data["generated_at"])
 
     def test_collect_skips_hysteria_api_when_off(self):
