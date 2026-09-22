@@ -2409,16 +2409,22 @@ class Handler(BaseHTTPRequestHandler):
         def host_ok(url: str) -> bool:
             try:
                 parsed = urllib.parse.urlparse(url)
+                url_port = parsed.port
             except Exception:
                 return False
             host = (parsed.hostname or "").lower()
             if host != domain:
                 return False
-            url_port = parsed.port
             if url_port is None:
-                # Scheme default port: accept when panel uses standard ports,
-                # or when Host already matched domain (custom-port pages still send :port).
-                return True
+                # 端口缺省时按协议补默认端口；面板不在默认端口时，
+                # 隐含 443/80 的同域页面仍属跨端口，不能当同源。
+                scheme = (parsed.scheme or "").lower()
+                if scheme == "https":
+                    url_port = 443
+                elif scheme == "http":
+                    url_port = 80
+                else:
+                    return False
             return str(url_port) == port
 
         # Origin: null（沙箱 iframe / data: / file://）视为跨站拒绝，

@@ -57,6 +57,18 @@ class SameOriginTests(unittest.TestCase):
         allowed, _ = self.check({"Origin": "https://panel.example.com:8443"})
         self.assertTrue(allowed)
 
+    def test_implicit_default_port_origin_is_not_enough_for_custom_panel_port(self):
+        # 面板在 8443 时，来源 https://panel.example.com（隐含 443）是另一个端口的应用，
+        # 不能因为"域名对上"就当同源。
+        allowed, responses = self.check({"Origin": "https://panel.example.com"})
+        self.assertFalse(allowed)
+        self.assertEqual(403, responses[0][0])
+
+    def test_implicit_default_port_origin_allowed_when_panel_uses_443(self):
+        self.panel_port = "443"
+        allowed, _ = self.check({"Origin": "https://panel.example.com"})
+        self.assertTrue(allowed)
+
     def test_missing_origin_and_referer_is_allowed_for_cli(self):
         # hy2 sync / 安装脚本经 api_post 直连后端，不带 Origin/Referer。
         allowed, _ = self.check({})
