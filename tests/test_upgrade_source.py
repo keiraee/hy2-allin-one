@@ -266,6 +266,69 @@ test ! -f "$hy2_testdir/seen.env"
         self.assertIn("上次哈希：aaaaaaaaaaaa（提交 0123456789ab）", result.stdout)
         self.assertIn("本次哈希：aaaaaaaaaaaa（提交 0123456789ab）", result.stdout)
 
+    def test_cli_upgrade_skips_main_track_when_commit_unchanged(self):
+        result = run_bash(
+            r"""
+set -Eeuo pipefail
+hy2_testdir="$(mktemp -d)"
+trap 'rm -rf "$hy2_testdir"' EXIT
+mkdir -p "$hy2_testdir/commands"
+printf '%s\n' 'AIO_VERSION=v9.9.9' \
+  'HY2_MODULES_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+  'HY2_REPO_SHA=0123456789abcdef0123456789abcdef01234567' > "$hy2_testdir/config.env"
+cat > "$hy2_testdir/commands/curl" <<'EOS'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HY2_TESTDIR/trace.log"
+if printf '%s' "$*" | grep -q '/commits/main'; then
+  printf '%s\n' '{"sha":"0123456789abcdef0123456789abcdef01234567"}'
+  exit 0
+fi
+exit 1
+EOS
+chmod +x "$hy2_testdir/commands/curl"
+cat > "$hy2_testdir/commands/id" <<'EOS'
+#!/bin/sh
+printf '0\n'
+EOS
+chmod +x "$hy2_testdir/commands/id"
+export HY2_TESTDIR="$hy2_testdir"
+export HY2_REPO_REF=main
+export HY2_ENV_FILE="$hy2_testdir/config.env"
+env PATH="$hy2_testdir/commands:/usr/bin:/bin" /bin/bash "$PWD/bin/hy2.sh" upgrade
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        self.assertIn("提交未变化，无需升级", result.stdout)
+
+    def test_upgrade_already_current_skips_branch_track_on_commit_match(self):
+        result = run_bash(
+            r"""
+set -Eeuo pipefail
+source ./hy2.sh
+hy2_testdir="$(mktemp -d)"
+trap 'rm -rf "$hy2_testdir"' EXIT
+printf '%s\n' 'AIO_VERSION=v9.9.9' \
+  'HY2_REPO_SHA=0123456789abcdef0123456789abcdef01234567' > "$hy2_testdir/config.env"
+HY2_FETCH_COMMIT=0123456789abcdef0123456789abcdef01234567
+export HY2_FETCH_COMMIT
+if upgrade_already_current "$hy2_testdir/config.env" main; then
+  printf 'SKIP\n'
+else
+  printf 'PULL\n'
+fi
+HY2_FETCH_COMMIT=ffffffffffffffffffffffffffffffffffffffff
+export HY2_FETCH_COMMIT
+if upgrade_already_current "$hy2_testdir/config.env" main; then
+  printf 'SKIP2\n'
+else
+  printf 'PULL2\n'
+fi
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        self.assertIn("SKIP\n", result.stdout)
+        self.assertIn("PULL2\n", result.stdout)
+
     def test_cli_upgrade_same_version_still_pulls_when_commit_moved(self):
         result = run_bash(
             r"""

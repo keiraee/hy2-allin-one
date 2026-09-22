@@ -92,6 +92,14 @@ if [ "${1:-}" = "upgrade" ]; then
         skip=1
       fi
       ;;
+    *)
+      # 分支轨道（如 main）版本号不变，提交相同即可跳过，避免每次白打快照重启。
+      if printf '%s' "$saved_commit" | grep -qiE '^[0-9a-f]{40}$' \
+        && printf '%s' "$remote_commit" | grep -qiE '^[0-9a-f]{40}$' \
+        && [ "$saved_commit" = "$remote_commit" ]; then
+        skip=1
+      fi
+      ;;
   esac
   remote_label="未下载"
   if printf '%s' "$remote_commit" | grep -qiE '^[0-9a-f]{40}$'; then

@@ -51,10 +51,14 @@ upgrade_already_current() {
   from="$(read_installed_aio_version "${1:-}")"
   to="$(normalize_aio_version "${2:-}")"
   case "$to" in
-    v[0-9]*|[0-9]*) ;;
-    *) return 1 ;;
+    v[0-9]*|[0-9]*)
+      [ "$from" != "未知" ] && [ -n "$to" ] && [ "$from" = "$to" ] || return 1
+      ;;
+    *)
+      # 分支轨道（如 main）版本号不变，只认提交。
+      [ -n "$to" ] && [ "$to" != "未知" ] || return 1
+      ;;
   esac
-  [ "$from" != "未知" ] && [ -n "$to" ] && [ "$from" = "$to" ] || return 1
   # 版本相同仍要比远程提交：正式版 tag 可能原地移动。
   saved_commit="$(read_env_value HY2_REPO_SHA "${1:-}")"
   is_commit_sha "${HY2_FETCH_COMMIT:-}" || return 1
