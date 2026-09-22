@@ -2421,7 +2421,9 @@ class Handler(BaseHTTPRequestHandler):
                 return True
             return str(url_port) == port
 
-        if origin and origin.lower() != "null" and not host_ok(origin):
+        # Origin: null（沙箱 iframe / data: / file://）视为跨站拒绝，
+        # 否则配合浏览器缓存的 Basic Auth 可伪造 POST 改用户。
+        if origin and not host_ok(origin):
             print(f"[hy2-aio] forbidden origin got={origin!r} domain={domain!r} port={port!r}", flush=True)
             self.send_json(403, {"ok": False, "error": "forbidden origin"})
             return False
