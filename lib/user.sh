@@ -176,9 +176,29 @@ if state_path.is_file():
         state = json.loads(state_path.read_text(encoding="utf-8"))
     except Exception:
         state = {}
-    users_state = state.get("users") if isinstance(state, dict) else None
+    if not isinstance(state, dict):
+        state = {}
+    changed = False
+    users_state = state.get("users")
     if isinstance(users_state, dict) and username in users_state:
         users_state.pop(username, None)
+        changed = True
+    destinations = state.get("destinations")
+    if isinstance(destinations, dict) and username in destinations:
+        destinations.pop(username, None)
+        changed = True
+    client_ips = state.get("client_ips")
+    if isinstance(client_ips, dict) and username in client_ips:
+        client_ips.pop(username, None)
+        changed = True
+    stream_bytes = state.get("stream_bytes")
+    if isinstance(stream_bytes, dict):
+        stale = [key for key in list(stream_bytes) if str(key).startswith(username + ":")]
+        if stale:
+            for key in stale:
+                stream_bytes.pop(key, None)
+            changed = True
+    if changed:
         atomic_write(state_path, state)
 PY
   chown hy2-aio:hy2-aio "$MODE_FILE" 2>/dev/null || true

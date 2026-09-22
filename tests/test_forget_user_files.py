@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import unittest
@@ -34,7 +35,14 @@ MODE_FILE="$base/client-mode.json"
 STATE_DIR="$base/state"
 mkdir -p "$STATE_DIR"
 printf '%s\\n' '{"default":{"mode":"bbr"},"users":{"bob":{}}}' > "$MODE_FILE"
-printf '%s\\n' '{"users":{"bob":{"month_tx":1},"alice":{"month_tx":2}}}' > "$STATE_DIR/state.json"
+cat > "$STATE_DIR/state.json" <<'JSON'
+{
+  "users": {"bob": {"month_tx": 1}, "alice": {"month_tx": 2}},
+  "destinations": {"bob": {"bob.example": {}}, "alice": {"alice.example": {}}},
+  "client_ips": {"bob": {"198.51.100.7": {}}, "alice": {"203.0.113.9": {}}},
+  "stream_bytes": {"bob:1:2": {"tx": 1}, "alice:3:4": {"tx": 2}}
+}
+JSON
 CALL_LOG="$base/calls.log"
 chown() { printf 'chown %s\\n' "$*" >> "$CALL_LOG"; }
 chmod() { printf 'chmod %s\\n' "$*" >> "$CALL_LOG"; }
@@ -67,6 +75,22 @@ class ForgetUserFilesPermissionTests(unittest.TestCase):
             any("state.json" in line for line in chmod_lines),
             f"chmod 未覆盖 state.json：{chmod_lines}",
         )
+
+    def test_state_residue_for_deleted_user_is_fully_purged(self):
+        # 面板侧 forget_user_side_state 会清站点/客户端 IP/流字节，
+        # CLI 删用户也必须清干净，否则删除用户的访问痕迹还留在 state.json。
+        out = self.run_forget()
+        state = json.loads(out.split("--- state ---", 1)[1])
+        self.assertNotIn("bob", state.get("users", {}))
+        self.assertNotIn("bob", state.get("destinations", {}))
+        self.assertNotIn("bob", state.get("client_ips", {}))
+        self.assertFalse(
+            [key for key in state.get("stream_bytes", {}) if str(key).startswith("bob:")],
+            f"stream_bytes 仍有 bob 残留：{state.get('stream_bytes')}",
+        )
+        self.assertIn("alice", state.get("users", {}))
+        self.assertIn("alice", state.get("destinations", {}))
+        self.assertIn("alice:3:4", state.get("stream_bytes", {}))
 
 
 if __name__ == "__main__":
