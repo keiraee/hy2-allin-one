@@ -183,6 +183,11 @@ if state_path.is_file():
 PY
   chown hy2-aio:hy2-aio "$MODE_FILE" 2>/dev/null || true
   chmod 0640 "$MODE_FILE" 2>/dev/null || true
+  # state.json 同样被 root 重写过；不纠权限后端（hy2-aio）读不到，流量统计会被清零。
+  if [ -f "${STATE_DIR}/state.json" ]; then
+    chown hy2-aio:hy2-aio "${STATE_DIR}/state.json" 2>/dev/null || true
+    chmod 0640 "${STATE_DIR}/state.json" 2>/dev/null || true
+  fi
 }
 
 hy2_off_path() {
