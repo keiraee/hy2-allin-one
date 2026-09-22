@@ -171,6 +171,7 @@ class BackupTests(unittest.TestCase):
 
         class FakeRequest:
             path = "/backup"
+            headers = {"Content-Type": "application/json"}
 
             def require_api_secret(self):
                 return True

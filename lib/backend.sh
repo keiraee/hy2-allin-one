@@ -2608,6 +2608,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not self.require_same_origin():
             return
+        # 只收 application/json：text/plain 简单请求可绕过 CORS 预检，
+        # 是 CSRF 的载体；JSON 类型会触发预检，浏览器侧直接挡住。
+        content_type = str(self.headers.get("Content-Type", "") or "")
+        content_type = content_type.split(";", 1)[0].strip().lower()
+        if content_type != "application/json":
+            self.send_json(415, {"ok": False, "error": "需要 Content-Type: application/json"})
+            return
         if not self.require_rate_limit("api", "RATE_LIMIT_API", 120):
             return
         path = self.path.split("?", 1)[0]

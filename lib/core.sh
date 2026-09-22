@@ -304,6 +304,7 @@ api_post() {
   : "${API_SECRET:?API_SECRET 未设置，请先 read_env}"
   curl -fsS --connect-timeout 5 --max-time 60 \
     -H "X-API-Secret: ${API_SECRET}" \
+    -H "Content-Type: application/json" \
     -X POST "http://${BACKEND_HOST}:${BACKEND_PORT}/$1"
 }
 
