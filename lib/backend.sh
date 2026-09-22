@@ -2560,9 +2560,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "text/yaml; charset=utf-8")
         self.send_header("Content-Disposition", f'attachment; filename="HY2-{username}.yaml"')
+        # 整机取网卡计数（rx/tx 为网卡收发），上下行无法真实拆分，仅和值有意义；
+        # 命名沿用全站约定 upload≙tx。Hysteria 口径经上游 core/server 核对：
+        # tx=客户端上行、rx=客户端下行。
         self.send_header(
             "Subscription-Userinfo",
-            f"upload={rx}; download={tx}; total={limit}; expire=0",
+            f"upload={tx}; download={rx}; total={limit}; expire=0",
         )
         self.send_header("Profile-Update-Interval", "1")
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")

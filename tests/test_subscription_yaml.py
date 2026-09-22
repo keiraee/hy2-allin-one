@@ -1,3 +1,4 @@
+import io
 import json
 import tempfile
 import unittest
@@ -133,6 +134,74 @@ class SubscriptionYamlTests(unittest.TestCase):
         self.assertIn('up: "80 Mbps"', text)
         self.assertIn('down: "300 Mbps"', text)
         self.assertRegex(text, r"(?m)^mode: rule$")
+
+
+class SubscriptionUserinfoTests(unittest.TestCase):
+    """订阅头命名与全站约定对齐：upload 对应 tx（Hysteria 口径 tx=客户端上行）。"""
+
+    class StubHandler:
+        def __init__(self):
+            self.command = "GET"
+            self.headers = {}
+            self.status = None
+            self.header_pairs = []
+            self.wfile = io.BytesIO()
+
+        def require_rate_limit(self, *_args):
+            return True
+
+        def send_response(self, status, *_args):
+            self.status = status
+
+        def send_header(self, key, value):
+            self.header_pairs.append((key, value))
+
+        def end_headers(self):
+            pass
+
+        def send_error(self, status, *_args):
+            self.status = status
+
+        def send_json(self, status, payload):
+            self.status = status
+
+    def setUp(self):
+        self.namespace = load_backend_namespace()
+        self.temporary = tempfile.TemporaryDirectory()
+        root = Path(self.temporary.name)
+        self.namespace["MODE_FILE"] = root / "client-mode.json"
+        self.namespace["DATA_FILE"] = root / "data.json"
+        self.env = {
+            "PUBLIC_IP": "203.0.113.10",
+            "HY2_PORT": "8443",
+            "OBFS_ENABLED": "false",
+            "SNI": "www.amazon.sg",
+            "DOMAIN": "panel.example.com",
+            "PANEL_PORT": "443",
+        }
+        self.namespace["load_env"] = lambda: dict(self.env)
+        self.namespace["load_users"] = lambda: {
+            "alice": {"password": "pw", "token": "tok", "disabled": False}
+        }
+
+        def fake_read_json(path, default):
+            if path == self.namespace["DATA_FILE"]:
+                return {"server": {"traffic": {"rx": 111, "tx": 222, "limit": 999}}}
+            return default
+
+        self.namespace["read_json"] = fake_read_json
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_userinfo_upload_column_follows_tx_convention(self):
+        stub = self.StubHandler()
+        self.namespace["Handler"].send_subscription(stub, "tok")
+        self.assertEqual(200, stub.status)
+        userinfo = [value for key, value in stub.header_pairs if key == "Subscription-Userinfo"]
+        self.assertEqual(1, len(userinfo))
+        self.assertIn("upload=222; download=111", userinfo[0])
+        self.assertIn("total=999", userinfo[0])
 
 
 if __name__ == "__main__":
