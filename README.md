@@ -12,8 +12,8 @@ curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.6.1/hy2.sh
 sudo bash hy2.sh install
 ```
 
-按中文提示一步步回车即可（公网 IP → 端口 → 面板端口 → 用户数 → 流量 → 域名/伪装）。  
-一路回车使用推荐默认值；高级用户也可用环境变量无人值守安装（见下方）。
+按中文提示一步步回车即可（公网 IP → 端口 → 面板端口 → 用户数 → 流量单位+数值 → 域名/伪装）。  
+一路回车使用推荐默认值（流量默认 1 TB）；套餐流量可选 **MB / GB / TB / 无限流量**，选好单位再填数值。高级用户也可用环境变量无人值守安装（见下方）。
 
 ## 已安装 · 升级
 
@@ -131,7 +131,10 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_INTERFACE` | 手动指定网卡 | 自动检测 |
 | `HY2_DOMAIN` | 自定义域名 | `{ip}.sslip.io` |
 | `HY2_USERS` | 用户数量 | 5 |
-| `HY2_TOTAL_TB` | 套餐流量 TB | 1 |
+| `HY2_TOTAL_UNIT` | 流量单位 `mb/gb/tb/unlimited` | 向导选择（回车=tb） |
+| `HY2_TOTAL_VALUE` | 流量数值（配合 UNIT，可小数） | 1 |
+| `HY2_TOTAL_TB` | 兼容旧变量：十进制 TB | 1 |
+| `HY2_TOTAL_BYTES` | 直接指定字节数；`0` = 无限流量 | 按单位换算 |
 | `HY2_PANEL_USER` | 面板用户名 | admin |
 | `HY2_PANEL_PASS` | 面板密码 | 随机生成 |
 | `HY2_PANEL_PATH` | 面板路径 | 随机生成 |

@@ -73,7 +73,7 @@ lines = [
     f"面板：{base}/{env['PANEL_PATH']}/",
     f"面板用户名：{env['PANEL_USER']}",
     f"面板密码：{env['PANEL_PASS']}",
-    f"套餐总量（字节）：{env['TOTAL_BYTES']}",
+    f"套餐总量：{'无限流量' if env.get('TOTAL_BYTES') == '0' else str(env.get('TOTAL_BYTES', '')) + ' 字节'}",
     "",
 ]
 

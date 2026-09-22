@@ -440,3 +440,110 @@ prompt_hysteria_port() {
     return
   done
 }
+
+# 套餐流量字节数：0 = 无限流量
+validate_total_bytes() {
+  local value="${1:-}"
+  [[ "$value" =~ ^0$|^[1-9][0-9]*$ ]] \
+    || die "套餐流量字节数无效：${value:-<empty>}（0 = 无限流量）"
+}
+
+# 流量单位换算：mb/gb/tb + 数值 → 字节（十进制 1000 进制）
+traffic_plan_to_bytes() {
+  python3 - "$1" "$2" <<'PY'
+from decimal import Decimal
+import sys
+
+factors = {"mb": 1_000_000, "gb": 1_000_000_000, "tb": 1_000_000_000_000}
+unit = sys.argv[1]
+try:
+    value = Decimal(sys.argv[2])
+    assert value > 0
+    factor = factors[unit]
+except Exception:
+    raise SystemExit(1)
+print(int(value * factor))
+PY
+}
+
+# 安装向导流量单位菜单映射：1=MB 2=GB 3=TB（默认） 4=无限流量
+traffic_unit_from_choice() {
+  case "${1:-}" in
+    1) printf '%s' "mb" ;;
+    2) printf '%s' "gb" ;;
+    4) printf '%s' "unlimited" ;;
+    ""|3) printf '%s' "tb" ;;
+    *) return 1 ;;
+  esac
+}
+
+# 解析套餐流量：设置 TOTAL_BYTES（0=无限）与 TRAFFIC_PLAN_LABEL，不产生 stdout。
+# 优先级：HY2_TOTAL_BYTES > HY2_TOTAL_UNIT(+HY2_TOTAL_VALUE) > HY2_TOTAL_TB > 交互向导。
+prompt_traffic_plan() {
+  local unit value bytes factor_label choice
+  TRAFFIC_PLAN_LABEL=""
+  if [ -n "${HY2_TOTAL_BYTES:-}" ]; then
+    validate_total_bytes "$HY2_TOTAL_BYTES"
+    TOTAL_BYTES="$HY2_TOTAL_BYTES"
+    if [ "$TOTAL_BYTES" = "0" ]; then
+      TRAFFIC_PLAN_LABEL="无限流量"
+    else
+      TRAFFIC_PLAN_LABEL="${TOTAL_BYTES} 字节"
+    fi
+    return 0
+  fi
+  unit="$(printf '%s' "${HY2_TOTAL_UNIT:-}" | tr '[:upper:]' '[:lower:]')"
+  value="${HY2_TOTAL_VALUE:-}"
+  if [ -z "$unit" ] && [ -n "${HY2_TOTAL_TB:-}" ]; then
+    unit="tb"
+    value="$HY2_TOTAL_TB"
+  fi
+  case "$unit" in
+    unlimited|none|inf|infinite|u)
+      TOTAL_BYTES=0
+      TRAFFIC_PLAN_LABEL="无限流量"
+      return 0
+      ;;
+    mb|gb|tb) ;;
+    "")
+      if [ "${HY2_NONINTERACTIVE:-0}" = "1" ] || [ ! -t 0 ]; then
+        unit="tb"
+      else
+        echo "  流量单位：1) MB   2) GB   3) TB   4) 无限流量" >&2
+        read -r -p "选择流量单位 [1-4]（回车=3）: " choice || choice="3"
+        unit="$(traffic_unit_from_choice "$choice")" || {
+          warn "无效输入，已默认 TB"
+          unit="tb"
+        }
+        if [ "$unit" = "unlimited" ]; then
+          TOTAL_BYTES=0
+          TRAFFIC_PLAN_LABEL="无限流量"
+          return 0
+        fi
+      fi
+      ;;
+    *)
+      die "HY2_TOTAL_UNIT 须为 mb/gb/tb/unlimited"
+      ;;
+  esac
+  if [ -z "$value" ]; then
+    case "$unit" in
+      mb) factor_label="MB" ;;
+      gb) factor_label="GB" ;;
+      *) factor_label="TB" ;;
+    esac
+    value="$(prompt_value "套餐流量（${factor_label}）" '1')"
+  fi
+  bytes="$(traffic_plan_to_bytes "$unit" "$value")" || {
+    warn "套餐流量格式错误：${value}"
+    return 1
+  }
+  TOTAL_BYTES="$bytes"
+  case "$unit" in
+    mb) factor_label="MB" ;;
+    gb) factor_label="GB" ;;
+    *) factor_label="TB" ;;
+  esac
+  TRAFFIC_PLAN_LABEL="${value} ${factor_label}"
+  return 0
+}

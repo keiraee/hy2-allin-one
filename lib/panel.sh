@@ -1617,9 +1617,10 @@ async function load(){
     const data=await response.json(),t=data.server.traffic;
     const ver=String(data.version||"").replace(/^v/i,"").trim();
     $("time").textContent=(ver&&ver!=="unknown"?("v"+ver+" · "):"")+"更新 "+data.generated_at+" · "+data.server.ip+" · "+data.server.domain;
-    $("traffic").textContent=bytes(t.used)+" / "+bytes(t.limit);
-    $("remain").textContent="入 "+bytes(t.rx)+" · 出 "+bytes(t.tx)+" · 剩余 "+bytes(t.remain);
-    const pctVal=Math.min(100,Number(t.percent)||0);
+    const unlimited=!(Number(t.limit)>0);
+    $("traffic").textContent=bytes(t.used)+(unlimited?" / 无限":" / "+bytes(t.limit));
+    $("remain").textContent="入 "+bytes(t.rx)+" · 出 "+bytes(t.tx)+(unlimited?" · 不限量":" · 剩余 "+bytes(t.remain));
+    const pctVal=unlimited?0:Math.min(100,Number(t.percent)||0);
     $("trafficBar").style.width=pctVal+"%";
     $("trafficBar").style.background=pctVal>=90?"var(--bad)":"var(--accent)";
     $("cpu").textContent=data.server.cpu+"%";$("load").textContent="负载 "+data.server.load.join(" / ");

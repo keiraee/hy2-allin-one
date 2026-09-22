@@ -381,7 +381,7 @@ install_stack() {
   [ -n "$NETWORK_INTERFACE" ] || die "无法检测默认网卡"
 
   local default_domain="${PUBLIC_IP//./-}.sslip.io"
-  local users_count total_tb custom_domain confirm=""
+  local users_count custom_domain confirm=""
   echo
   echo "[4/6] 账号数量"
   users_count="${HY2_USERS:-$(prompt_value '要创建几个用户' '5')}"
@@ -389,22 +389,7 @@ install_stack() {
 
   echo
   echo "[5/6] 套餐流量"
-  total_tb="${HY2_TOTAL_TB:-$(prompt_value '套餐总流量（TB）' '1')}"
-  if [ -n "${HY2_TOTAL_BYTES:-}" ]; then
-    TOTAL_BYTES="$HY2_TOTAL_BYTES"
-  else
-    TOTAL_BYTES="$(python3 - "$total_tb" <<'PY'
-from decimal import Decimal
-import sys
-try:
-    value = Decimal(sys.argv[1])
-    assert value > 0
-except Exception:
-    raise SystemExit(1)
-print(int(value * Decimal(1_000_000_000_000)))
-PY
-)" || die "套餐流量格式错误"
-  fi
+  prompt_traffic_plan
 
   echo
   echo "[6/6] 域名与伪装"
@@ -460,7 +445,7 @@ PYV
     *$'\n'*|*$'\r'*|*=*) die "面板密码不能包含换行或等号" ;;
   esac
   [[ "$SNI" =~ ^[A-Za-z0-9.-]+$ ]] || die "SNI 格式错误"
-  [[ "$TOTAL_BYTES" =~ ^[1-9][0-9]*$ ]] || die "TOTAL_BYTES 必须是正整数"
+  validate_total_bytes "$TOTAL_BYTES"
   [[ "$BACKUP_RETENTION_DAYS" =~ ^[1-9][0-9]{0,3}$ ]] \
     && [ "$BACKUP_RETENTION_DAYS" -le 3650 ] \
     || die "备份保留天数必须是 1-3650 的整数"
@@ -484,7 +469,7 @@ PYV
   echo "  面板 HTTPS  : $PANEL_PORT"
   echo "  域名        : $DOMAIN"
   echo "  用户数量    : $users_count"
-  echo "  套餐流量    : $total_tb TB"
+  echo "  套餐流量    : ${TRAFFIC_PLAN_LABEL}"
   echo "  流量伪装    : $OBFS_ENABLED"
   echo "------------------------------------------------------------"
   if [ -t 0 ] && [ "${HY2_NONINTERACTIVE:-0}" != "1" ]; then
@@ -735,8 +720,10 @@ HY2 AIO v${AIO_VERSION}
   HY2_INTERFACE       手动指定网卡
   HY2_DOMAIN          自定义域名（必须已解析到服务器）
   HY2_USERS           用户数量，默认 5
-  HY2_TOTAL_TB        十进制 TB，默认 1
-  HY2_TOTAL_BYTES     直接指定字节数
+  HY2_TOTAL_UNIT      流量单位：mb|gb|tb|unlimited（默认交互选择，回车=tb）
+  HY2_TOTAL_VALUE     流量数值（配合 HY2_TOTAL_UNIT，可小数），默认 1
+  HY2_TOTAL_TB        兼容旧变量：十进制 TB
+  HY2_TOTAL_BYTES     直接指定字节数；0 = 无限流量
   HY2_PANEL_USER      面板用户名，默认 admin
   HY2_PANEL_PASS      面板密码
   HY2_PANEL_PATH      面板随机路径
