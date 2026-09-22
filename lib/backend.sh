@@ -655,6 +655,30 @@ def load_state(iface: str) -> tuple[dict[str, Any], str]:
     return blank_state(iface), f"{reason}；流量统计从零开始{suffix}"
 
 
+def drop_stale_user_state(state: dict[str, Any], users: dict[str, Any]) -> None:
+    """回收不在 users.json 里的用户残留。
+
+    删用户清理与周期采集是跨进程读改写，残留可能被并发写"复活"；
+    采集统一回收后，竞态最长存活一个采集周期，无需跨进程锁。
+    """
+    users_state = state.get("users")
+    if isinstance(users_state, dict):
+        for name in [key for key in users_state if key not in users]:
+            users_state.pop(name, None)
+    destinations = state.get("destinations")
+    if isinstance(destinations, dict):
+        for name in [key for key in destinations if key not in users]:
+            destinations.pop(name, None)
+    client_ips = state.get("client_ips")
+    if isinstance(client_ips, dict):
+        for name in [key for key in client_ips if key not in users]:
+            client_ips.pop(name, None)
+    stream_bytes = state.get("stream_bytes")
+    if isinstance(stream_bytes, dict):
+        for key in [key for key in stream_bytes if str(key).split(":", 1)[0] not in users]:
+            stream_bytes.pop(key, None)
+
+
 def collect(run_backup: bool = True) -> dict[str, Any]:
     global LAST_BACKUP_ERROR, BACKUP_RETRY_AFTER
     with LOCK:
@@ -763,8 +787,7 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
                 }
             )
 
-        for stale in [name for name in list(state_users) if name not in users]:
-            state_users.pop(stale, None)
+        drop_stale_user_state(state, users)
 
         apply_error = read_apply_error()
         if apply_error:

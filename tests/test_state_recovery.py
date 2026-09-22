@@ -69,5 +69,33 @@ class LoadStateTests(unittest.TestCase):
         self.assertEqual("{bad", backup.read_text(encoding="utf-8"))
 
 
+class StaleUserStateGcTests(unittest.TestCase):
+    def setUp(self):
+        self.ns = load_backend_namespace()
+
+    def test_drop_stale_user_state_removes_all_buckets(self):
+        # 删用户清理与周期采集存在读改写竞态，残留可能被写“复活”；
+        # 采集统一回收不在 users.json 的用户残留，竞态最长存活一个采集周期。
+        state = {
+            "users": {"bob": {"month_tx": 1}, "alice": {"month_tx": 2}},
+            "destinations": {"bob": {"b.example": {}}, "alice": {"a.example": {}}},
+            "client_ips": {"bob": {"198.51.100.7": {}}, "alice": {"203.0.113.9": {}}},
+            "stream_bytes": {"bob:1:2": {"tx": 1}, "alice:3:4": {"tx": 2}},
+        }
+        self.ns["drop_stale_user_state"](state, {"alice": {}})
+        self.assertNotIn("bob", state["users"])
+        self.assertNotIn("bob", state["destinations"])
+        self.assertNotIn("bob", state["client_ips"])
+        self.assertNotIn("bob:1:2", state["stream_bytes"])
+        self.assertIn("alice", state["users"])
+        self.assertIn("alice", state["destinations"])
+        self.assertIn("alice", state["client_ips"])
+        self.assertIn("alice:3:4", state["stream_bytes"])
+
+    def test_collect_calls_the_gc(self):
+        source = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        self.assertIn("drop_stale_user_state(state, users)", source)
+
+
 if __name__ == "__main__":
     unittest.main()
