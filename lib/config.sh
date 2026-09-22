@@ -298,7 +298,13 @@ PY
 }
 
 write_systemd() {
-  cat > "$SERVICE_FILE" <<'EOF'
+  # systemd-journal 组并非处处存在；缺组时写死会让 hy2-aio 起不来，
+  # 有该组才授予，日志解析/导出降级但服务必须能启动。
+  local supplementary="hysteria caddy"
+  if getent group systemd-journal >/dev/null 2>&1; then
+    supplementary="${supplementary} systemd-journal"
+  fi
+  cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=HY2 AIO subscription, statistics and dashboard backend
 After=network-online.target hysteria-server.service
@@ -310,7 +316,7 @@ Wants=network-online.target hysteria-server.service
 Type=simple
 User=hy2-aio
 Group=hy2-aio
-SupplementaryGroups=hysteria caddy systemd-journal
+SupplementaryGroups=${supplementary}
 ExecStart=/usr/bin/python3 /usr/local/lib/hy2-aio/server.py
 Restart=always
 RestartSec=3

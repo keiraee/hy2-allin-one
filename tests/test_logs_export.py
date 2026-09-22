@@ -72,7 +72,8 @@ class LogsExportTests(unittest.TestCase):
         self.assertIn("导出日志", panel)
         self.assertIn('path == "/logs/export"', backend)
         self.assertIn("systemd-journal", config)
-        self.assertIn("SupplementaryGroups=hysteria caddy systemd-journal", config)
+        self.assertIn("getent group systemd-journal", config)
+        self.assertIn("SupplementaryGroups=${supplementary}", config)
 
 
 if __name__ == "__main__":
