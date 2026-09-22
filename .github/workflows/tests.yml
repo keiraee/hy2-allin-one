@@ -1,0 +1,15 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 与部署环境同为 Linux：bash/flock 齐备，Windows 开发机上跳过的
+      # CLI 事务用例（tests/test_user_transaction.py 等）在这里全部执行。
+      - name: 运行单元测试
+        run: python3 -m unittest discover -s tests -v
