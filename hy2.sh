@@ -92,10 +92,6 @@ is_commit_sha() {
   printf '%s' "${1:-}" | grep -qiE '^[0-9a-f]{40}$'
 }
 
-is_release_tag() {
-  printf '%s' "${1:-}" | grep -qE '^v?[0-9]+(\.[0-9]+)*([.-][0-9A-Za-z]+)*$'
-}
-
 read_env_value() {
   local key="$1" env_file="${2:-${HY2_ENV_FILE:-/etc/hy2-aio/config.env}}"
   [ -f "$env_file" ] || return 0
