@@ -626,6 +626,35 @@ def blank_state(iface: str) -> dict[str, Any]:
     }
 
 
+def backup_corrupt_state() -> str:
+    backup = STATE_FILE.with_name("state.json.corrupt")
+    try:
+        shutil.copy2(STATE_FILE, backup)
+        return str(backup)
+    except Exception as error:
+        print(f"[hy2-aio] corrupt state backup failed: {error}", flush=True)
+        return ""
+
+
+def load_state(iface: str) -> tuple[dict[str, Any], str]:
+    """读取统计状态；损坏时保留副本并返回错误文案，不静默清零。"""
+    if not STATE_FILE.exists():
+        return blank_state(iface), ""
+    reason = ""
+    try:
+        data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            reason = "state.json 结构异常（不是对象）"
+    except Exception as error:
+        data = None
+        reason = f"state.json 无法解析（{error}）"
+    if not reason:
+        return data, ""
+    backup = backup_corrupt_state()
+    suffix = f"，已保留副本 {backup}" if backup else "，且副本备份失败"
+    return blank_state(iface), f"{reason}；流量统计从零开始{suffix}"
+
+
 def collect(run_backup: bool = True) -> dict[str, Any]:
     global LAST_BACKUP_ERROR, BACKUP_RETRY_AFTER
     with LOCK:
@@ -634,7 +663,7 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
         modes = load_modes()
         iface = env["NETWORK_INTERFACE"]
         total_limit = int(env["TOTAL_BYTES"])
-        state = read_json(STATE_FILE, blank_state(iface))
+        state, state_error = load_state(iface)
 
         now_month = current_month()
         raw_rx, raw_tx = net_counters(iface)
@@ -655,7 +684,7 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
         network["last_rx"] = raw_rx
         network["last_tx"] = raw_tx
 
-        errors: list[str] = []
+        errors: list[str] = [state_error] if state_error else []
         hy2_enabled = not hy2_is_off()
         traffic: dict[str, Any] = {}
         online: dict[str, Any] = {}
@@ -1971,7 +2000,14 @@ def forget_user_side_state(username: str) -> None:
             except OSError:
                 pass
     if STATE_FILE.exists():
-        state = read_json(STATE_FILE, {})
+        try:
+            state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+            if not isinstance(state, dict):
+                raise ValueError("state.json 结构异常")
+        except Exception:
+            # 损坏文件先留副本再覆盖，别让删用户顺手把现场毁了。
+            backup_corrupt_state()
+            state = {}
         users_state = state.get("users")
         if isinstance(users_state, dict) and username in users_state:
             users_state.pop(username, None)
