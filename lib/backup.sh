@@ -161,7 +161,11 @@ snapshot_before_change() {
 rollback_cmd() {
   need_root rollback
   read_env
-  local snapshot
+  local snapshot choice=""
+  # 非交互下不能静默“取消成功”——调用方会误以为已回滚；脚本请显式 HY2_YES=1。
+  if [ ! -t 0 ] && [ "${HY2_YES:-}" != "1" ]; then
+    die "回滚需要交互确认；脚本请用：HY2_YES=1 hy2 rollback"
+  fi
   ensure_rollback_dir
   snapshot="$(find "$ROLLBACK_DIR" -maxdepth 1 -type f -name 'hy2-before-*.tar.gz' -printf '%T@ %p\n' 2>/dev/null | sort -nr | sed -n '1s/^[^ ]* //p')"
   [ -n "$snapshot" ] || die "未找到回滚快照"
@@ -169,9 +173,12 @@ rollback_cmd() {
   echo "最新快照：$snapshot"
   echo "0. 恢复"
   echo "1. 取消"
-  local choice
-  read -r -p "请选择 [0/1]: " choice
-  [ "$choice" = "0" ] || return 0
+  if [ "${HY2_YES:-}" = "1" ]; then
+    choice="0"
+  else
+    read -r -p "请选择 [0/1]: " choice || choice="1"
+  fi
+  [ "$choice" = "0" ] || { log "已取消回滚"; return 0; }
   tar -xzf "$snapshot" -C /
   systemctl daemon-reload
   systemctl enable hy2-aio-reload-hysteria.path hy2-aio-reload-xray.path >/dev/null || true

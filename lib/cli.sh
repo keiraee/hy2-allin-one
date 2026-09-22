@@ -60,6 +60,7 @@ sync_cmd() {
 logs_cmd() {
   need_root logs
   local lines="${1:-120}"
+  [[ "$lines" =~ ^[0-9]+$ ]] || die "行数必须是非负整数，例如：hy2 logs 200"
   journalctl -u hysteria-server.service -u hy2-xray.service -u hy2-aio.service -u caddy.service \
     --no-pager -n "$lines"
 }
