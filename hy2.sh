@@ -78,8 +78,10 @@ apply_repo_url
 _bootstrap_log() { printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "$*"; }
 _bootstrap_die() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
 # GitHub raw CDN can keep serving the previous main tree for a few minutes after push.
+# --retry 只对瞬时错误（超时/429/5xx）生效，404 等仍立即失败。
 _bootstrap_curl() {
-  curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$@"
+  curl -fsSL --retry 3 --retry-delay 2 \
+    -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$@"
 }
 
 is_commit_sha() {

@@ -664,6 +664,52 @@ printf '%s\n' "$HY2_FETCH_COMMIT"
             result.stdout.strip().splitlines()[-1],
         )
 
+    def test_bootstrap_curl_uses_retry_policy(self):
+        # 共享代理出口下 GitHub API/CDN 易 429/瞬断；拉取必须带重试。
+        result = run_bash(
+            """
+set -Eeuo pipefail
+source ./hy2.sh
+base="$(mktemp -d)"
+trap 'rm -rf "$base"' EXIT
+curl() { printf '%s\\n' "$*" >> "$base/calls.log"; printf 'payload\\n'; }
+_bootstrap_curl "https://example.invalid/api" >/dev/null
+cat "$base/calls.log"
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        self.assertIn("--retry", result.stdout)
+        self.assertIn("--retry-delay", result.stdout)
+
+    def test_cli_upgrade_curls_use_retry_policy(self):
+        result = run_bash(
+            r"""
+set -Eeuo pipefail
+hy2_testdir="$(mktemp -d)"
+trap 'rm -rf "$hy2_testdir"' EXIT
+mkdir -p "$hy2_testdir/commands"
+cat > "$hy2_testdir/commands/curl" <<'EOS'
+#!/bin/sh
+printf '%s\n' "$*" >> "$HY2_TESTDIR/trace.log"
+exit 1
+EOS
+chmod +x "$hy2_testdir/commands/curl"
+cat > "$hy2_testdir/commands/id" <<'EOS'
+#!/bin/sh
+printf '0\n'
+EOS
+chmod +x "$hy2_testdir/commands/id"
+export HY2_TESTDIR="$hy2_testdir"
+export HY2_REPO_REF=main
+export HY2_ENV_FILE="$hy2_testdir/config.env"
+printf 'AIO_VERSION=v9.9.9\n' > "$hy2_testdir/config.env"
+env PATH="$hy2_testdir/commands:/usr/bin:/bin" /bin/bash "$PWD/bin/hy2.sh" upgrade || true
+cat "$hy2_testdir/trace.log"
+"""
+        )
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        self.assertIn("--retry", result.stdout)
+
     def test_repair_persist_updates_module_hashes(self):
         persist_py = persist_env_script()
         with tempfile.TemporaryDirectory() as tmp:

@@ -20,7 +20,7 @@ if [ "${1:-}" = "upgrade" ]; then
   fi
   if [ -z "$ref" ] || [ "$ref" = "latest" ]; then
     persist="latest"
-    ref="$(curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+    ref="$(curl -fsSL --retry 3 --retry-delay 2 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
       "https://api.github.com/repos/${REPO_SLUG}/releases/latest" \
       | python3 -c 'import sys, json; print(json.load(sys.stdin)["tag_name"])')" \
       || { printf '%s\n' "无法获取 latest release（${REPO_SLUG}）" >&2; exit 1; }
@@ -69,7 +69,7 @@ if [ "${1:-}" = "upgrade" ]; then
       fetch_ref="$ref"
       remote_commit="$ref"
     else
-      sha="$(curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+      sha="$(curl -fsSL --retry 3 --retry-delay 2 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
         "https://api.github.com/repos/${REPO_SLUG}/commits/${ref}" \
         | python3 -c 'import sys, json; print(json.load(sys.stdin).get("sha") or "")')" \
         || { printf '%s\n' "无法解析 Git 引用 ${REPO_SLUG}@${ref}" >&2; exit 1; }
@@ -114,7 +114,7 @@ if [ "${1:-}" = "upgrade" ]; then
   tmp="$(mktemp -d)"
   # shellcheck disable=SC2064
   trap 'rm -rf "$tmp"' EXIT
-  curl -fsSL -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
+  curl -fsSL --retry 3 --retry-delay 2 -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' \
     "${bootstrap_url}?nocache=$(date +%s)" -o "$tmp/hy2.sh" \
     || { printf '%s\n' "下载 hy2.sh 失败" >&2; exit 1; }
   fetch_commit=""
