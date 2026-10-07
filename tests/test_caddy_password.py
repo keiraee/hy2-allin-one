@@ -47,7 +47,10 @@ cat > "$base/bin/caddy" <<'EOS'
 printf '%s\\n' "caddy $*" >> "$HY2_CALL_LOG"
 case "$1" in
   version) printf 'v2.11.4\\n' ;;
-  hash-password) cat > /dev/null; printf 'hashed-stub\\n' ;;
+  hash-password)
+    # 复刻真实 caddy 非 TTY 行为：ReadBytes('\\n') 无尾部换行会返回 EOF 错误。
+    if IFS= read -r line; then printf 'hashed-stub\\n'; else printf 'Error: EOF\\n' >&2; exit 1; fi
+    ;;
 esac
 exit 0
 EOS

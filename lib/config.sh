@@ -642,7 +642,8 @@ backend_port = os.environ["BACKEND_PORT"]
 
 password_hash = subprocess.check_output(
     ["caddy", "hash-password"],
-    input=panel_pass,
+    # caddy 非 TTY 分支按行读（ReadBytes('\n')），无尾部换行会报 "Error: EOF"。
+    input=panel_pass + "\n",
     text=True,
 ).strip()
 
