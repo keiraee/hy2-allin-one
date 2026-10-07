@@ -64,6 +64,7 @@ BACKUP_OPTIONAL = (
     "etc/systemd/system/hysteria-server.service.d/hy2-switch.conf",
     "usr/local/lib/hy2-aio/hysteria-control.sh",
     "usr/local/lib/hy2-aio/xray-control.sh",
+    "usr/local/lib/hy2-aio/xray-prestart.sh",
     "var/lib/hy2-aio/state.json",
     "var/www/hy2-aio/history.csv",
     "var/www/hy2-aio/users.csv",

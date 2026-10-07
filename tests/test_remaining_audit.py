@@ -256,8 +256,9 @@ class HysteriaApiRetryTests(unittest.TestCase):
         restart = restart[: restart.index("\n}\n", 1) + 3]
         self.assertLess(
             restart.index("systemctl restart hy2-aio.service"),
-            restart.index("systemctl restart hy2-xray.service"),
+            restart.index("restart_hy2_xray_or_die"),
         )
+        self.assertNotIn("systemctl restart hy2-xray.service || true", restart)
 
     def test_install_starts_backend_before_xray(self):
         source = (ROOT / "hy2.sh").read_text(encoding="utf-8")
@@ -265,7 +266,7 @@ class HysteriaApiRetryTests(unittest.TestCase):
         install = install[: install.index("\nwait_services()") + 1]
         self.assertLess(
             install.index("systemctl restart hy2-aio.service"),
-            install.index("systemctl restart hy2-xray.service"),
+            install.index("restart_hy2_xray_or_die"),
         )
 
     def test_restart_skips_hysteria_when_switched_off(self):

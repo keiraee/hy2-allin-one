@@ -326,10 +326,7 @@ PY
   systemctl start hy2-aio-reload-hysteria.path || true
   systemctl start hy2-aio-reload-xray.path || true
   if hy2_has_enabled_user; then
-    if ! systemctl restart hy2-xray.service; then
-      journalctl -u hy2-xray.service --no-pager -n 80 >&2 || true
-      die "Xray 启动失败"
-    fi
+    restart_hy2_xray_or_die
   else
     systemctl stop hy2-xray.service || true
   fi

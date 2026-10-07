@@ -41,6 +41,7 @@ XRAY_RELOAD_PATH_FILE="/etc/systemd/system/hy2-aio-reload-xray.path"
 XRAY_RELOAD_SERVICE_FILE="/etc/systemd/system/hy2-aio-reload-xray.service"
 HYSTERIA_CONTROL_FILE="${APP_DIR}/hysteria-control.sh"
 XRAY_CONTROL_FILE="${APP_DIR}/xray-control.sh"
+XRAY_PRESTART_FILE="${APP_DIR}/xray-prestart.sh"
 HYSTERIA_DROPIN_DIR="/etc/systemd/system/hysteria-server.service.d"
 HYSTERIA_DROPIN_FILE="${HYSTERIA_DROPIN_DIR}/hy2-switch.conf"
 HY2_OFF_FILE="${CONFIG_DIR}/hy2.off"
@@ -353,6 +354,80 @@ tcp_port_is_used() {
   ss -Hlntp 2>/dev/null | awk -v p=":$port" '$4 ~ p"$" || $4 ~ p" " {found=1} END {exit !found}'
 }
 
+tcp_listen_pids() {
+  local port="$1"
+  ss -Hlntp 2>/dev/null | awk -v p=":$port" '
+    ($4 ~ p"$" || $4 ~ p" ") {
+      while (match($0, /pid=[0-9]+/)) {
+        print substr($0, RSTART+4, RLENGTH-4)
+        $0 = substr($0, RSTART+RLENGTH)
+      }
+    }' | sort -u
+}
+
+pid_cgroup() {
+  cat "/proc/$1/cgroup" 2>/dev/null || true
+}
+
+# systemctl show 把数字参数当 job ID，不能用来查 PID 归属；从 cgroup 路径取服务名。
+pid_service_name() {
+  pid_cgroup "$1" | awk -F: '{n = split($NF, a, "/"); if (a[n] ~ /\.service$/) {print a[n]; exit}}'
+}
+
+disable_official_xray_units() {
+  command -v systemctl >/dev/null 2>&1 || return 0
+  local unit
+  while read -r unit; do
+    [ -n "$unit" ] || continue
+    case "$unit" in
+      xray.service|xray@*.service) ;;
+      *) continue ;;
+    esac
+    log "停用官方 ${unit}，避免与 HY2 VLESS 抢 TCP 端口"
+    systemctl disable --now "$unit" >/dev/null 2>&1 || systemctl stop "$unit" >/dev/null 2>&1 || true
+  done < <(
+    {
+      systemctl list-unit-files --type=service --no-legend --no-pager 2>/dev/null || true
+      systemctl list-units --all --type=service --plain --no-legend --no-pager 'xray*' 2>/dev/null || true
+    } | awk '{print $1}'
+  )
+}
+
+reclaim_vless_tcp_port() {
+  local port="${1:-${XRAY_PORT:-}}" pid unit comm args
+  [ -n "$port" ] || port="$(resolve_xray_port)"
+  disable_official_xray_units
+  for pid in $(tcp_listen_pids "$port"); do
+    [ -n "$pid" ] || continue
+    unit="$(pid_service_name "$pid")"
+    [ "$unit" = "hy2-xray.service" ] && continue
+    comm="$(ps -o comm= -p "$pid" 2>/dev/null | awk '{print $1}')" || true
+    args="$(ps -ww -o args= -p "$pid" 2>/dev/null || true)"
+    [ -n "$comm" ] || continue # ss 快照后进程已消失，端口已释放
+    if [ "$comm" = "xray" ] && printf '%s' "$args" | grep -q '/usr/local/etc/xray/config.json'; then
+      log "结束残留官方 Xray PID ${pid}"
+      if [ -n "$unit" ] && [ "$unit" != "hy2-xray.service" ]; then
+        systemctl stop "$unit" >/dev/null 2>&1 || true
+      fi
+      kill "$pid" 2>/dev/null || true
+      sleep 1
+      continue
+    fi
+    ss -Hlntp 2>/dev/null | awk -v p=":$port" '$4 ~ p"$" || $4 ~ p" "' >&2 || true
+    die "VLESS TCP 端口 $port 已被占用（PID ${pid} ${comm:-?}）"
+  done
+}
+
+restart_hy2_xray_or_die() {
+  reclaim_vless_tcp_port "${XRAY_PORT:-}"
+  systemctl restart hy2-xray.service || true
+  sleep 1
+  if ! systemctl is-active --quiet hy2-xray.service; then
+    journalctl -u hy2-xray.service --no-pager -n 80 >&2 || true
+    die "Xray 启动失败"
+  fi
+}
+
 ensure_install_ports_available() {
   local hy2_port="$1" panel_port="$2" stats_port="$3" xray_port="${4:-}"
   validate_port_layout "$panel_port" "$stats_port"
@@ -366,6 +441,9 @@ ensure_install_ports_available() {
     && die "统计 TCP 端口 $stats_port 已被占用"
   tcp_port_is_used "$BACKEND_PORT" \
     && die "内部后端 TCP 端口 $BACKEND_PORT 已被占用"
+  if tcp_port_is_used "$xray_port"; then
+    reclaim_vless_tcp_port "$xray_port"
+  fi
   tcp_port_is_used "$xray_port" \
     && die "VLESS TCP 端口 $xray_port 已被占用"
   return 0

@@ -396,17 +396,29 @@ EOF
 ConditionPathExists=!${HY2_OFF_FILE}
 EOF
 
+  cat > "$XRAY_PRESTART_FILE" <<EOF
+#!/bin/bash
+set -Eeuo pipefail
+# hy2-xray 启动前回收 VLESS TCP 端口：清掉残留官方 Xray，防止 bind 冲突导致无限重启。
+. ${APP_DIR}/modules/lib/core.sh
+read_env
+reclaim_vless_tcp_port
+EOF
+  chmod 0755 "$XRAY_PRESTART_FILE"
+
   cat > "$XRAY_SERVICE_FILE" <<'EOF'
 [Unit]
 Description=HY2 AIO Xray VLESS+Reality
 Documentation=https://github.com/XTLS/Xray-core
-After=network-online.target
+After=network-online.target xray.service xray@.service
 Wants=network-online.target
+Conflicts=xray.service xray@.service
 
 [Service]
 Type=simple
 User=hy2-aio
 Group=hy2-aio
+ExecStartPre=+/usr/local/lib/hy2-aio/xray-prestart.sh
 ExecStart=/usr/local/bin/xray run -c /etc/hy2-aio/xray.json
 Restart=always
 RestartSec=3

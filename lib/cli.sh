@@ -78,7 +78,7 @@ restart_cmd() {
   fi
   systemctl restart hy2-aio.service
   if hy2_has_enabled_user 2>/dev/null; then
-    systemctl restart hy2-xray.service || true
+    restart_hy2_xray_or_die
   fi
   systemctl restart caddy.service
   sleep 2
@@ -159,7 +159,7 @@ update_xray_cmd() {
   log "升级 Xray-core（钉死版本 + SHA256，按当前 CPU 架构拉取）"
   install_xray 1
   if hy2_has_enabled_user; then
-    systemctl restart hy2-xray.service
+    restart_hy2_xray_or_die
   else
     systemctl stop hy2-xray.service || true
     log "当前无启用用户，Xray 内核已更新（启用用户后会自动拉起）"

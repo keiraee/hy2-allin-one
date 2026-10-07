@@ -569,7 +569,7 @@ EOF
   systemctl restart hysteria-server.service
   sleep 2
   systemctl restart hy2-aio.service
-  systemctl restart hy2-xray.service
+  restart_hy2_xray_or_die
   systemctl start hy2-aio-reload-hysteria.path
   systemctl start hy2-aio-reload-xray.path
   systemctl restart caddy.service
