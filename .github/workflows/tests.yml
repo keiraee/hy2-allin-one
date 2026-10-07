@@ -12,4 +12,6 @@ jobs:
       # 与部署环境同为 Linux：bash/flock 齐备，Windows 开发机上跳过的
       # CLI 事务用例（tests/test_user_transaction.py 等）在这里全部执行。
       - name: 运行单元测试
-        run: python3 -m unittest discover -s tests -v
+        # 以 root 运行：回滚快照用例校验 root:root 0700 权限语义
+        # （install -o root / stat uid=0），非 root 的 runner 用户无法设置属主。
+        run: sudo python3 -m unittest discover -s tests -v
