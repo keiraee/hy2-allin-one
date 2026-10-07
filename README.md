@@ -1,4 +1,4 @@
-# HY2 AIO v1.6.1
+# HY2 AIO v1.7.0
 
 一键部署 Hysteria 2 + VLESS+Reality + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -8,7 +8,7 @@
 ## 快速开始
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.6.1/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.7.0/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -30,7 +30,7 @@ hy2 upgrade && hy2 restart
 已经装过同一版本、但 tag 后来又补了提交：新入口会对比哈希并继续升级。若本机 `hy2` 仍提示「无需升级」且本次哈希显示「未下载」，用仓库里的新引导脚本跑一次：
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.6.1/hy2.sh?nocache=$(date +%s)" -o hy2.sh
+curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.7.0/hy2.sh?nocache=$(date +%s)" -o hy2.sh
 sudo bash hy2.sh upgrade && hy2 restart
 ```
 
@@ -145,7 +145,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.6.1` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.7.0` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
 | `XRAY_VERSION` | Xray-core 版本 | `v26.3.27` |
@@ -185,6 +185,18 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v1.7.0
+- 安装向导套餐流量支持 MB/GB/TB/无限流量，先选单位再填数值；无限套餐显示「无限 · 不限量」
+- 订阅导入名不再带引号反斜杠和 `.yaml` 后缀（Clash Verge Rev），订阅头上行/下行与面板方向对齐
+- 面板 API 只收 application/json、拒绝 `Origin: null`，同源校验补上默认端口比较（CSRF 纵深防御）
+- 面板密码不再进进程参数，hash-password 改走 stdin；修复升级时 caddy 报 "Error: EOF"
+- CLI 删用户后保住 state.json 归属权限并清掉站点/IP/流字节残留，不再连带清零全员流量统计
+- state.json 损坏先留副本并在面板报错，不再静默清零统计；删用户的统计残留不再被采集「复活」
+- hy2-xray 启动前回收被残留官方 Xray 占用的端口，不再端口冲突无限重启
+- `hy2 on` / 面板开启改用 restart，已运行时新配置立即生效
+- `hy2 rollback` 非交互不再静默取消（脚本用 `HY2_YES=1`）；disabled 字段为字符串时状态不再分裂
+- 升级遇 GitHub 429/瞬断自动重试；main 轨道提交未变时跳过，不再白打快照重启
 
 ### v1.6.1
 - 修复：Hysteria 统计用户名与面板大小写不一致时，用户流量一直显示 0
