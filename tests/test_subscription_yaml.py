@@ -203,6 +203,13 @@ class SubscriptionUserinfoTests(unittest.TestCase):
         self.assertIn("upload=222; download=111", userinfo[0])
         self.assertIn("total=999", userinfo[0])
 
+    def test_content_disposition_no_quotes_no_extension(self):
+        stub = self.StubHandler()
+        self.namespace["Handler"].send_subscription(stub, "tok")
+        disposition = [v for k, v in stub.header_pairs if k == "Content-Disposition"]
+        self.assertEqual(1, len(disposition))
+        self.assertEqual("attachment; filename=HY2-alice", disposition[0])
+
 
 if __name__ == "__main__":
     unittest.main()
