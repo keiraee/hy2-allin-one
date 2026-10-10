@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
 DEFAULT_REPO_SLUG="keiraee/hy2-allin-one"
 REPO_SLUG="${HY2_REPO:-$DEFAULT_REPO_SLUG}"
-REPO_REF="${HY2_REPO_REF:-v1.7.1}"
+REPO_REF="${HY2_REPO_REF:-v1.7.2}"
 
 apply_repo_url() {
   if [ -n "${HY2_REPO_URL:-}" ]; then
@@ -703,7 +703,7 @@ HY2 AIO v${AIO_VERSION}
   hy2 update-xray              # 更新 Xray 内核
   hy2 upgrade                  # 升级 HY2 AIO 到最新 Release
   hy2 repair                   # 用当前已装模块修复
-  hy2 uninstall                # 卸载（保留配置；彻底删除用 HY2_PURGE=1）
+  hy2 uninstall                # 完全卸载（服务、组件、配置、数据全清，可直接重装）
   hy2 obfs show                # 查看混淆状态
   hy2 obfs on|off              # 开启/关闭 Salamander 混淆
   hy2 help|-h|--help|-help
@@ -737,7 +737,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_REPO_URL        模块下载地址（覆盖 raw 默认；fork 请优先用 HY2_REPO）
   HY2_REPO_REF        Git 分支/tag/commit；upgrade 空值=已记住的轨道或 latest
   HY2_YES             设为 1 跳过卸载确认
-  HY2_PURGE           设为 1 时卸载并删除配置/数据
+  HY2_PURGE           已废弃（卸载默认即完全删除，保留此变量仅为兼容）
   HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
   XRAY_VERSION        钉死的 Xray-core 版本，默认 v26.3.27
   CADDY_VERSION       钉死的 Caddy 版本（非 apt 回退），默认 v2.11.4

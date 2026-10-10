@@ -3,7 +3,7 @@
 
 set -Eeuo pipefail
 
-SCRIPT_VERSION="1.7.1"
+SCRIPT_VERSION="1.7.2"
 AIO_VERSION="$SCRIPT_VERSION"
 XRAY_VERSION="v26.3.27"
 CONFIG_DIR="/etc/hy2-aio"
@@ -17,6 +17,14 @@ HYSTERIA_CONFIG="/etc/hysteria/config.yaml"
 HYSTERIA_CERT="/etc/hysteria/server.crt"
 HYSTERIA_KEY="/etc/hysteria/server.key"
 XRAY_BIN="/usr/local/bin/xray"
+HYSTERIA_BIN="/usr/local/bin/hysteria"
+CADDY_BIN="/usr/local/bin/caddy"
+CADDY_SERVICE_FILE="/etc/systemd/system/caddy.service"
+CADDY_APT_LIST="/etc/apt/sources.list.d/caddy-stable.list"
+CADDY_APT_KEYRING="/usr/share/keyrings/caddy-stable-archive-keyring.gpg"
+CADDY_DIR="/etc/caddy"
+CADDY_DATA_DIR="/var/lib/caddy"
+CADDY_LOG_DIR="/var/log/caddy"
 XRAY_CONFIG="${CONFIG_DIR}/xray.json"
 BACKEND_HOST="127.0.0.1"
 BACKEND_PORT="18081"

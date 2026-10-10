@@ -150,6 +150,7 @@ EOF
 HY2_FAIL2BAN_FILTER="/etc/fail2ban/filter.d/hy2-caddy-auth.conf"
 HY2_FAIL2BAN_JAIL="/etc/fail2ban/jail.d/hy2-caddy-auth.conf"
 HY2_SYSCTL_FILE="/etc/sysctl.d/99-hy2-aio.conf"
+HY2_BBR_MODULES_FILE="/etc/modules-load.d/tcp_bbr.conf"
 
 remove_fail2ban_panel() {
   local filter_file="${HY2_FAIL2BAN_FILTER}" jail_file="${HY2_FAIL2BAN_JAIL}"
@@ -161,7 +162,7 @@ remove_fail2ban_panel() {
 }
 
 remove_hy2_sysctl() {
-  rm -f "${HY2_SYSCTL_FILE}"
+  rm -f "${HY2_SYSCTL_FILE}" "${HY2_BBR_MODULES_FILE}"
   /usr/sbin/sysctl --system >/dev/null 2>&1 || true
 }
 
@@ -170,6 +171,7 @@ remove_hy2_firewall_rules() {
   local xray_port="${XRAY_PORT:-}"
   [ -n "$xray_port" ] || xray_port="$(resolve_xray_port "$hy2_port" "$panel_port" 2>/dev/null || true)"
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
+    ufw delete allow "80/tcp" >/dev/null 2>&1 || true
     ufw delete allow "${panel_port}/tcp" >/dev/null 2>&1 || true
     ufw delete allow "${hy2_port}/udp" >/dev/null 2>&1 || true
     if [ -n "$xray_port" ] && [ "$xray_port" != "$panel_port" ]; then
@@ -178,6 +180,7 @@ remove_hy2_firewall_rules() {
     return 0
   fi
   if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    firewall-cmd --permanent --remove-port="80/tcp" >/dev/null 2>&1 || true
     firewall-cmd --permanent --remove-port="${panel_port}/tcp" >/dev/null 2>&1 || true
     firewall-cmd --permanent --remove-port="${hy2_port}/udp" >/dev/null 2>&1 || true
     if [ -n "$xray_port" ] && [ "$xray_port" != "$panel_port" ]; then

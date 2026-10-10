@@ -19,6 +19,7 @@ class UninstallCleanupTests(unittest.TestCase):
         self.fail2ban_filter = self.root / "etc/fail2ban/filter.d/hy2-caddy-auth.conf"
         self.fail2ban_jail = self.root / "etc/fail2ban/jail.d/hy2-caddy-auth.conf"
         self.sysctl = self.root / "etc/sysctl.d/99-hy2-aio.conf"
+        self.bbr_modules = self.root / "etc/modules-load.d/tcp_bbr.conf"
         self.config_dir = self.root / "etc/hy2-aio"
         self.state_dir = self.root / "var/lib/hy2-aio"
         self.rollback_dir = self.root / "var/lib/hy2-aio-rollbacks"
@@ -35,10 +36,18 @@ class UninstallCleanupTests(unittest.TestCase):
         self.reload_service = self.systemd / "hy2-aio-reload-hysteria.service"
         self.xray_reload_path = self.systemd / "hy2-aio-reload-xray.path"
         self.xray_reload_service = self.systemd / "hy2-aio-reload-xray.service"
+        self.caddy_service = self.systemd / "caddy.service"
         self.dropin_dir = self.systemd / "hysteria-server.service.d"
         self.dropin_file = self.dropin_dir / "hy2-switch.conf"
         self.cli = self.root / "usr/local/bin/hy2"
         self.cli_sbin = self.root / "usr/local/sbin/hy2"
+        self.hysteria_bin = self.root / "usr/local/bin/hysteria"
+        self.xray_bin = self.root / "usr/local/bin/xray"
+        self.caddy_bin = self.root / "usr/local/bin/caddy"
+        self.apt_list = self.root / "etc/apt/sources.list.d/caddy-stable.list"
+        self.keyring = self.root / "usr/share/keyrings/caddy-stable-archive-keyring.gpg"
+        self.caddy_data = self.root / "var/lib/caddy"
+        self.caddy_log = self.root / "var/log/caddy"
         self.trace = self.root / "trace.log"
 
         for path in (
@@ -47,6 +56,7 @@ class UninstallCleanupTests(unittest.TestCase):
             self.fail2ban_filter.parent,
             self.fail2ban_jail.parent,
             self.sysctl.parent,
+            self.bbr_modules.parent,
             self.config_dir,
             self.state_dir,
             self.rollback_dir,
@@ -56,22 +66,15 @@ class UninstallCleanupTests(unittest.TestCase):
             self.access.parent,
             self.cli.parent,
             self.cli_sbin.parent,
+            self.apt_list.parent,
+            self.keyring.parent,
+            self.caddy_data,
+            self.caddy_log,
         ):
             path.mkdir(parents=True, exist_ok=True)
 
         self.caddyfile.write_text(
-            "{\n"
-            "    servers {\n"
-            "        protocols h1 h2\n"
-            "    }\n"
-            "}\n"
-            "\n"
-            f"import {self.site_file.as_posix()}\n"
-            "\n"
-            "other.example.com {\n"
-            "    respond \"keep\"\n"
-            "}\n",
-            encoding="utf-8",
+            "other.example.com {\n    respond \"keep\"\n}\n", encoding="utf-8"
         )
         self.site_file.write_text("panel.example.com {\n}\n", encoding="utf-8")
         for path in (
@@ -82,11 +85,18 @@ class UninstallCleanupTests(unittest.TestCase):
             self.reload_service,
             self.xray_reload_path,
             self.xray_reload_service,
+            self.caddy_service,
             self.fail2ban_filter,
             self.fail2ban_jail,
             self.sysctl,
+            self.bbr_modules,
             self.access,
             self.cli,
+            self.hysteria_bin,
+            self.xray_bin,
+            self.caddy_bin,
+            self.apt_list,
+            self.keyring,
         ):
             path.write_text("fixture\n", encoding="utf-8")
         self.dropin_dir.mkdir(parents=True, exist_ok=True)
@@ -104,14 +114,25 @@ class UninstallCleanupTests(unittest.TestCase):
         commands = self.root / "commands"
         commands.mkdir()
         for name, body in {
-            "systemctl": f'printf "systemctl %s\\n" "$*" >> "{self.trace.as_posix()}"\n',
-            "caddy": (
-                f'printf "caddy %s\\n" "$*" >> "{self.trace.as_posix()}"\n'
-                'if [ "${1:-}" = "validate" ]; then exit 0; fi\n'
+            "systemctl": (
+                f'printf "systemctl %s\\n" "$*" >> "{self.trace.as_posix()}"\n'
+                'case "$*" in *is-active*) exit 1 ;; esac\n'
             ),
+            "caddy": f'printf "caddy %s\\n" "$*" >> "{self.trace.as_posix()}"\n',
             "fail2ban-client": f'printf "fail2ban-client %s\\n" "$*" >> "{self.trace.as_posix()}"\n',
-            "ufw": 'exit 1\n',
-            "firewall-cmd": 'exit 1\n',
+            "ufw": "exit 1\n",
+            "firewall-cmd": "exit 1\n",
+            "apt-get": f'printf "apt-get %s\\n" "$*" >> "{self.trace.as_posix()}"\n',
+            "rpm": "exit 1\n",
+            "dpkg": (
+                f'printf "dpkg %s\\n" "$*" >> "{self.trace.as_posix()}"\n'
+                'if [ "${MOCK_DPKG_OWNS:-0}" = "1" ]; then exit 0; fi\n'
+                "exit 1\n"
+            ),
+            "id": "exit 0\n",
+            "getent": "exit 0\n",
+            "userdel": f'printf "userdel %s\\n" "$*" >> "{self.trace.as_posix()}"\n',
+            "groupdel": f'printf "groupdel %s\\n" "$*" >> "{self.trace.as_posix()}"\n',
         }.items():
             path = commands / name
             path.write_text(f"#!/bin/sh\n{body}", encoding="utf-8")
@@ -141,6 +162,15 @@ class UninstallCleanupTests(unittest.TestCase):
             "ACCESS_FILE": self.access,
             "CADDY_FILE": self.caddyfile,
             "CADDY_SITE_FILE": self.site_file,
+            "CADDY_DIR": self.caddy_dir,
+            "CADDY_DATA_DIR": self.caddy_data,
+            "CADDY_LOG_DIR": self.caddy_log,
+            "CADDY_BIN": self.caddy_bin,
+            "CADDY_APT_LIST": self.apt_list,
+            "CADDY_APT_KEYRING": self.keyring,
+            "CADDY_SERVICE_FILE": self.caddy_service,
+            "HYSTERIA_BIN": self.hysteria_bin,
+            "XRAY_BIN": self.xray_bin,
             "SERVICE_FILE": self.service,
             "HYSTERIA_SERVICE_FILE": self.hysteria_service,
             "XRAY_SERVICE_FILE": self.xray_service,
@@ -154,10 +184,11 @@ class UninstallCleanupTests(unittest.TestCase):
             "HY2_FAIL2BAN_FILTER": self.fail2ban_filter,
             "HY2_FAIL2BAN_JAIL": self.fail2ban_jail,
             "HY2_SYSCTL_FILE": self.sysctl,
+            "HY2_BBR_MODULES_FILE": self.bbr_modules,
         }
         return "\n".join(f'{name}={shlex.quote(str(path))}' for name, path in values.items())
 
-    def _run_uninstall(self, *, purge: bool = False) -> subprocess.CompletedProcess:
+    def _run_uninstall(self, *, purge: bool = False, dpkg_owns: bool = False) -> subprocess.CompletedProcess:
         env = os.environ.copy()
         env["PATH"] = f"{self.commands}:{self.sysctl_bin}:{env['PATH']}"
         env["HY2_YES"] = "1"
@@ -165,6 +196,7 @@ class UninstallCleanupTests(unittest.TestCase):
             env["HY2_PURGE"] = "1"
         else:
             env.pop("HY2_PURGE", None)
+        env["MOCK_DPKG_OWNS"] = "1" if dpkg_owns else "0"
         patched = self.root / "patched"
         patched.mkdir(exist_ok=True)
         for name in ("core.sh", "install.sh", "config.sh", "cli.sh"):
@@ -184,7 +216,6 @@ source {shlex.quote(str(patched / 'install.sh'))}
 source {shlex.quote(str(patched / 'config.sh'))}
 source {shlex.quote(str(patched / 'cli.sh'))}
 need_root() {{ :; }}
-api_post() {{ printf 'api_post %s\\n' "$*" >> {shlex.quote(str(self.trace))}; }}
 {self._assignments()}
 uninstall_cmd
 """,
@@ -197,87 +228,75 @@ uninstall_cmd
             check=False,
         )
 
-    def test_default_uninstall_removes_service_residuals_but_keeps_data(self):
+    def test_uninstall_stops_services_one_by_one(self):
         result = self._run_uninstall()
         self.assertEqual(0, result.returncode, result.stderr or result.stdout)
 
-        self.assertFalse(self.site_file.exists())
-        self.assertFalse(self.service.exists())
-        self.assertFalse(self.hysteria_service.exists())
-        self.assertFalse(self.xray_service.exists())
-        self.assertFalse(self.reload_path.exists())
-        self.assertFalse(self.reload_service.exists())
-        self.assertFalse(self.xray_reload_path.exists())
-        self.assertFalse(self.xray_reload_service.exists())
-        self.assertFalse(self.dropin_dir.exists())
-        self.assertFalse(self.fail2ban_filter.exists())
-        self.assertFalse(self.fail2ban_jail.exists())
-        self.assertFalse(self.sysctl.exists())
-        self.assertFalse(self.app_dir.exists())
-        self.assertFalse(self.web_dir.exists())
-        self.assertFalse(self.cli.exists())
+        trace = self.trace.read_text(encoding="utf-8")
+        for unit in (
+            "hy2-aio.service",
+            "hy2-xray.service",
+            "hysteria-server.service",
+            "hy2-aio-reload-hysteria.path",
+            "hy2-aio-reload-xray.path",
+            "caddy.service",
+        ):
+            self.assertIn(f"systemctl stop {unit}", trace)
 
-        self.assertTrue(self.config_dir.exists())
-        self.assertTrue(self.state_dir.exists())
-        self.assertTrue(self.rollback_dir.exists())
-        self.assertTrue(self.hysteria_dir.exists())
+    def test_uninstall_removes_everything_for_clean_reinstall(self):
+        result = self._run_uninstall()
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
 
-        caddy_text = self.caddyfile.read_text(encoding="utf-8")
-        self.assertNotIn("hy2-aio.caddy", caddy_text)
-        self.assertIn("other.example.com", caddy_text)
+        for path in (
+            self.config_dir,
+            self.state_dir,
+            self.rollback_dir,
+            self.hysteria_dir,
+            self.app_dir,
+            self.web_dir,
+            self.service,
+            self.hysteria_service,
+            self.xray_service,
+            self.reload_path,
+            self.reload_service,
+            self.xray_reload_path,
+            self.xray_reload_service,
+            self.caddy_service,
+            self.dropin_dir,
+            self.fail2ban_filter,
+            self.fail2ban_jail,
+            self.sysctl,
+            self.bbr_modules,
+            self.cli,
+            self.access,
+            self.hysteria_bin,
+            self.xray_bin,
+            self.caddy_bin,
+            self.apt_list,
+            self.keyring,
+            self.caddy_dir,
+            self.caddy_data,
+            self.caddy_log,
+        ):
+            self.assertFalse(path.exists(), path)
 
         trace = self.trace.read_text(encoding="utf-8")
-        self.assertIn("hy2-aio-reload-hysteria.path", trace)
-        self.assertIn("hy2-xray.service", trace)
-        self.assertIn("caddy validate", trace)
+        self.assertIn("userdel hy2-aio", trace)
+        self.assertIn("userdel hysteria", trace)
+        self.assertIn("userdel caddy", trace)
 
-    def test_purge_uninstall_also_removes_config_and_data(self):
+    def test_uninstall_purges_package_managed_caddy(self):
+        result = self._run_uninstall(dpkg_owns=True)
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+
+        trace = self.trace.read_text(encoding="utf-8")
+        self.assertIn("apt-get purge -y caddy", trace)
+        self.assertFalse(self.caddy_bin.exists())
+
+    def test_purge_env_flag_stays_compatible(self):
         result = self._run_uninstall(purge=True)
         self.assertEqual(0, result.returncode, result.stderr or result.stdout)
         self.assertFalse(self.config_dir.exists())
-        self.assertFalse(self.state_dir.exists())
-        self.assertFalse(self.rollback_dir.exists())
-        self.assertFalse(self.hysteria_dir.exists())
-        self.assertFalse(self.access.exists())
-
-
-class CaddyImportRemovalTests(unittest.TestCase):
-    def test_removes_import_and_preserves_other_sites(self):
-        with tempfile.TemporaryDirectory(dir=ROOT / "tests") as tmp:
-            root = Path(tmp)
-            caddyfile = root / "Caddyfile"
-            site = root / "hy2-aio.caddy"
-            site.write_text("gone\n", encoding="utf-8")
-            relative_caddy = caddyfile.relative_to(ROOT).as_posix()
-            relative_site = site.relative_to(ROOT).as_posix()
-            caddyfile.write_text(
-                "{\n    servers {\n        protocols h1 h2\n    }\n}\n\n"
-                f"import {relative_site}\n\n"
-                "keep.example.com {\n    respond ok\n}\n",
-                encoding="utf-8",
-            )
-            result = subprocess.run(
-                [
-                    "bash",
-                    "-c",
-                    f"""
-set -Eeuo pipefail
-source lib/core.sh
-source lib/config.sh
-caddyfile_remove_hy2_site {shlex.quote(relative_caddy)} {shlex.quote(relative_site)}
-""",
-                ],
-                cwd=ROOT,
-                text=True,
-                encoding="utf-8",
-                capture_output=True,
-                check=False,
-            )
-            self.assertEqual(0, result.returncode, result.stderr or result.stdout)
-            self.assertFalse(site.exists())
-            text = caddyfile.read_text(encoding="utf-8")
-            self.assertNotIn("import ", text)
-            self.assertIn("keep.example.com", text)
 
 
 if __name__ == "__main__":

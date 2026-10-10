@@ -195,33 +195,40 @@ soft_read_env_for_uninstall() {
 uninstall_cmd() {
   need_root uninstall
   soft_read_env_for_uninstall
-  local answer="${HY2_YES:-}" purge="${HY2_PURGE:-0}"
+  local answer="${HY2_YES:-}"
   if [ "$answer" != "1" ]; then
-    echo "将停用并移除 HY2 AIO 服务、面板站点、reload 单元与 fail2ban 规则。"
-    echo "默认保留：$CONFIG_DIR、$STATE_DIR、$ROLLBACK_DIR、/etc/hysteria"
-    echo "彻底删除数据请再用：HY2_PURGE=1 hy2 uninstall"
-    read -r -p "确认卸载 HY2 AIO 服务？输入 YES：" answer
+    echo "将完全卸载 HY2 AIO，卸载后不留残留（可直接重新安装）："
+    echo "  1. 逐个停止：hy2-aio / hy2-xray / hysteria-server / caddy 与 reload 单元"
+    echo "  2. 卸载 Hysteria / Xray / Caddy，删除全部配置、数据、面板、用户、防火墙规则"
+    echo "  3. 删除 $CONFIG_DIR、$STATE_DIR、$ROLLBACK_DIR、$HYSTERIA_DIR（不可恢复）"
+    echo "如需保留用户/流量数据，请先执行：hy2 backup"
+    read -r -p "确认完全卸载？输入 YES：" answer
     [ "$answer" = "YES" ] || die "已取消"
   fi
-  if [ "$purge" = "1" ] && [ "${HY2_YES:-}" != "1" ]; then
-    read -r -p "彻底删除配置与数据不可恢复。输入 PURGE 确认：" answer
-    [ "$answer" = "PURGE" ] || die "已取消彻底删除"
-  fi
 
-  if [ -n "${API_SECRET:-}" ]; then
-    api_post backup >/dev/null 2>&1 || true
-  fi
-
-  systemctl disable --now \
+  # 1) 逐个停止服务，确保端口全部释放（不影响重装）
+  log "停止服务"
+  local unit
+  for unit in \
     hy2-aio.service \
-    hy2-aio-reload-hysteria.path \
-    hy2-aio-reload-xray.path \
     hy2-xray.service \
     hysteria-server.service \
-    2>/dev/null || true
-  systemctl stop hy2-aio-reload-hysteria.service 2>/dev/null || true
-  systemctl stop hy2-aio-reload-xray.service 2>/dev/null || true
+    hy2-aio-reload-hysteria.path \
+    hy2-aio-reload-hysteria.service \
+    hy2-aio-reload-xray.path \
+    hy2-aio-reload-xray.service \
+    caddy.service
+  do
+    systemctl disable "$unit" >/dev/null 2>&1 || true
+    systemctl stop "$unit" >/dev/null 2>&1 || true
+    if systemctl is-active --quiet "$unit" 2>/dev/null; then
+      warn "$unit 未停止，强制终止"
+      systemctl kill -s SIGKILL "$unit" >/dev/null 2>&1 || true
+      systemctl stop "$unit" >/dev/null 2>&1 || true
+    fi
+  done
 
+  # 2) 移除管理组件
   remove_hy2_cli
   rm -f \
     "$SERVICE_FILE" \
@@ -230,24 +237,39 @@ uninstall_cmd() {
     "$RELOAD_PATH_FILE" \
     "$RELOAD_SERVICE_FILE" \
     "$XRAY_RELOAD_PATH_FILE" \
-    "$XRAY_RELOAD_SERVICE_FILE"
+    "$XRAY_RELOAD_SERVICE_FILE" \
+    "$CADDY_SERVICE_FILE"
   rm -rf "${HYSTERIA_DROPIN_DIR:-/etc/systemd/system/hysteria-server.service.d}"
   rm -rf "$APP_DIR" "$WEB_DIR"
   rm -f /run/hy2-aio/reload-hysteria /run/hy2-aio/hysteria-cmd \
     /run/hy2-aio/reload-xray /run/hy2-aio/xray-cmd
 
-  if declare -F caddyfile_remove_hy2_site >/dev/null 2>&1; then
-    caddyfile_remove_hy2_site "$CADDY_FILE" "$CADDY_SITE_FILE"
-  else
-    rm -f "$CADDY_SITE_FILE"
-  fi
-  if command -v caddy >/dev/null 2>&1 && [ -f "$CADDY_FILE" ]; then
-    caddy validate --config "$CADDY_FILE" >/dev/null 2>&1 \
-      && systemctl reload caddy.service 2>/dev/null \
-      || systemctl restart caddy.service 2>/dev/null \
-      || true
-  fi
+  # 3) 逐个完全卸载组件
+  log "卸载 Hysteria"
+  rm -f "$HYSTERIA_BIN"
 
+  log "卸载 Xray"
+  rm -f "$XRAY_BIN"
+
+  log "卸载 Caddy"
+  local caddy_bin
+  caddy_bin="$(command -v caddy 2>/dev/null || true)"
+  if [ -n "$caddy_bin" ] && command -v dpkg >/dev/null 2>&1 && dpkg -S "$caddy_bin" >/dev/null 2>&1; then
+    DEBIAN_FRONTEND=noninteractive apt-get purge -y caddy >/dev/null 2>&1 \
+      || warn "apt 卸载 caddy 失败，继续清理文件"
+  elif command -v rpm >/dev/null 2>&1 && rpm -q caddy >/dev/null 2>&1; then
+    if command -v dnf >/dev/null 2>&1; then
+      dnf remove -y caddy >/dev/null 2>&1 || warn "dnf 卸载 caddy 失败，继续清理文件"
+    elif command -v zypper >/dev/null 2>&1; then
+      zypper --non-interactive remove caddy >/dev/null 2>&1 || warn "zypper 卸载 caddy 失败，继续清理文件"
+    else
+      yum remove -y caddy >/dev/null 2>&1 || warn "yum 卸载 caddy 失败，继续清理文件"
+    fi
+  fi
+  rm -f "$CADDY_BIN" "$CADDY_APT_LIST" "$CADDY_APT_LIST.disabled" "$CADDY_APT_KEYRING"
+  rm -rf "$CADDY_DIR" "$CADDY_DATA_DIR" "$CADDY_LOG_DIR"
+
+  # 4) 清理 fail2ban / 内核参数 / 防火墙
   if declare -F remove_fail2ban_panel >/dev/null 2>&1; then
     remove_fail2ban_panel
   else
@@ -262,18 +284,30 @@ uninstall_cmd() {
     remove_hy2_firewall_rules || true
   fi
 
+  # 5) 删除配置、数据与用户
+  rm -rf "$CONFIG_DIR" "$STATE_DIR" "$ROLLBACK_DIR" "$HYSTERIA_DIR"
+  rm -f "$ACCESS_FILE"
+  local u
+  for u in hy2-aio hysteria caddy; do
+    id "$u" >/dev/null 2>&1 || continue
+    userdel "$u" >/dev/null 2>&1 || warn "用户 $u 删除失败（可能仍被占用）"
+    if getent group "$u" >/dev/null 2>&1; then
+      groupdel "$u" >/dev/null 2>&1 || true
+    fi
+  done
+
   systemctl daemon-reload 2>/dev/null || true
 
-  if [ "$purge" = "1" ]; then
-    rm -rf "$CONFIG_DIR" "$STATE_DIR" "$ROLLBACK_DIR" "$HYSTERIA_DIR"
-    rm -f "$ACCESS_FILE"
-    rm -f /var/log/caddy/hy2-aio.log /var/log/caddy/hy2-aio.log.* 2>/dev/null || true
-    log "已彻底卸载：服务、站点片段与配置/数据均已删除"
-  else
-    warn "已卸载服务与站点残留；保留配置与数据：$CONFIG_DIR、$STATE_DIR、$ROLLBACK_DIR、/etc/hysteria"
-    warn "彻底删除数据：HY2_PURGE=1 hy2 uninstall"
-  fi
-  warn "Caddy / Hysteria / Xray 二进制未卸载；防火墙 80/tcp（若曾放行）可能仍保留"
+  # 6) 验证无残留
+  local p leftover=""
+  for p in \
+    "$CONFIG_DIR" "$STATE_DIR" "$ROLLBACK_DIR" "$HYSTERIA_DIR" "$APP_DIR" "$WEB_DIR" \
+    "$HYSTERIA_BIN" "$XRAY_BIN" "$CADDY_BIN" "$CADDY_APT_LIST"
+  do
+    [ -e "$p" ] && leftover="${leftover} ${p}"
+  done
+  [ -n "$leftover" ] && warn "仍有残留：$leftover"
+  log "HY2 AIO 已完全卸载，可直接重新安装"
 }
 
 menu_call() {

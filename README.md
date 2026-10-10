@@ -1,4 +1,4 @@
-# HY2 AIO v1.7.1
+# HY2 AIO v1.7.2
 
 一键部署 Hysteria 2 + VLESS+Reality + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -8,7 +8,7 @@
 ## 快速开始
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.7.1/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.7.2/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -30,7 +30,7 @@ hy2 upgrade && hy2 restart
 已经装过同一版本、但 tag 后来又补了提交：新入口会对比哈希并继续升级。若本机 `hy2` 仍提示「无需升级」且本次哈希显示「未下载」，用仓库里的新引导脚本跑一次：
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.7.1/hy2.sh?nocache=$(date +%s)" -o hy2.sh
+curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.7.2/hy2.sh?nocache=$(date +%s)" -o hy2.sh
 sudo bash hy2.sh upgrade && hy2 restart
 ```
 
@@ -111,7 +111,7 @@ sudo hy2 logs [行数]         # 查看日志
 sudo hy2 restart             # 重启服务
 sudo hy2 update              # 更新 Hysteria 内核
 sudo hy2 update-xray         # 更新 Xray 内核
-sudo hy2 uninstall           # 卸载
+sudo hy2 uninstall           # 完全卸载（服务、组件、配置、数据全清，不留残留）
 sudo hy2 repair              # 修复/升级
 sudo hy2 obfs show           # 查看混淆状态
 sudo hy2 obfs on|off         # 开启/关闭混淆（服务端+订阅+直链同步）
@@ -145,7 +145,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.7.1` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.7.2` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
 | `XRAY_VERSION` | Xray-core 版本 | `v26.3.27` |
@@ -185,6 +185,10 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v1.7.2
+- 卸载重做为**完全卸载**：逐个停止服务 → 卸载 Hysteria / Xray / Caddy（含软件源）→ 清配置、数据、用户、防火墙（含 80/tcp），结尾校验无残留，卸载后可直接重装
+- `HY2_PURGE` 两段式废弃，`hy2 uninstall` 默认即完全删除；要留数据请先 `hy2 backup`
 
 ### v1.7.1
 - Caddy 软件源挂掉（如 Cloudsmith 402）不再中断安装：禁用坏源后改试系统仓库，最终兜底官方二进制（SHA256 校验）
