@@ -191,6 +191,7 @@ hy2-allin-one/
 
 ### v1.7.3
 - 修复 v1.7.2 卸载重装后 Hysteria 起不来（`Failed at step CHDIR`）：官方安装脚本的服务单元用 `WorkingDirectory=~`（hysteria 用户家目录），v1.7.2 把用户创建提前后家目录变成 `/nonexistent`；现统一为 `/var/lib/hysteria`，安装与 repair 自动改回坏家目录并补目录，已中招机器升级即修复、无需重装
+- 订阅与直链的节点名自动带上服务器归属地国旗（如 `🇸🇬 HY2-用户名`）；按 IP 归属地自动识别，识别不准可在 config.env 设 `COUNTRY_CODE=SG` 这类 ISO 国家码覆盖
 - 修复安装半途失败后重跑 `install` 报「已安装」的死胡同：config.env 在但缺 `hy2` 命令时自动续装修复并拉起服务；`hy2` 命令行入口改为服务启动前安装，服务起不来时 `hy2 repair` / `hy2 restart` 仍可用
 - 新增菜单/命令「重新申请证书」：安装完成但面板/订阅 HTTPS 证书没签下来（云机安全组未放行 TCP 80、ACME 验证超时很常见），进菜单选 25 或 `sudo hy2 cert` 重试——清掉该域名失败签发状态、重启 Caddy 触发重新申请，轮询约 1 分钟检查结果，成功打印签发者与有效期，仍失败给出常见原因
 
