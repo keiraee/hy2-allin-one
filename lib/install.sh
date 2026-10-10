@@ -39,13 +39,20 @@ install_caddy() {
     chmod o+r \
       /usr/share/keyrings/caddy-stable-archive-keyring.gpg \
       /etc/apt/sources.list.d/caddy-stable.list
-    apt-get update
-    apt-get install -y caddy
+    if apt-get update && apt-get install -y caddy; then
+      return 0
+    fi
+    # Cloudsmith 源挂了（如 402/不可达）：禁用坏源，避免毒化后续 apt
+    warn "Caddy 官方仓库安装失败，禁用后尝试系统仓库"
+    rm -f /etc/apt/sources.list.d/caddy-stable.list
+    apt-get update || true
+    apt-get install -y caddy && return 0
   else
     warn "Caddy 官方仓库添加失败，尝试系统仓库"
-    apt-get install -y caddy
+    apt-get install -y caddy && return 0
   fi
-  command -v caddy >/dev/null 2>&1 || die "Caddy 安装失败"
+  warn "系统仓库 Caddy 安装失败，将改用官方二进制"
+  return 1
 }
 
 install_caddy_v12() {
@@ -55,7 +62,7 @@ install_caddy_v12() {
   caddy_bin="$(command -v caddy 2>/dev/null || true)"
   if [ -z "$caddy_bin" ]; then
     case "$PKG_MANAGER" in
-      apt) install_caddy ;;
+      apt) install_caddy || true ;;
       dnf|yum) "$PKG_MANAGER" install -y caddy >/dev/null 2>&1 || true ;;
       zypper) zypper --non-interactive install caddy >/dev/null 2>&1 || true ;;
       *) die "不支持的包管理器：$PKG_MANAGER" ;;

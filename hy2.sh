@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
 DEFAULT_REPO_SLUG="keiraee/hy2-allin-one"
 REPO_SLUG="${HY2_REPO:-$DEFAULT_REPO_SLUG}"
-REPO_REF="${HY2_REPO_REF:-v1.7.0}"
+REPO_REF="${HY2_REPO_REF:-v1.7.1}"
 
 apply_repo_url() {
   if [ -n "${HY2_REPO_URL:-}" ]; then
@@ -482,11 +482,7 @@ PYV
   echo
   log "开始安装…"
 
-  configure_swap_and_kernel
-  install_hysteria
-  install_xray
-  install_caddy_v12
-
+  # 先写 config.env：后面任何一步失败，都可以 bash hy2.sh repair 续装
   getent group hysteria >/dev/null 2>&1 || groupadd --system hysteria
   id hysteria >/dev/null 2>&1 || useradd --system --gid hysteria --home /nonexistent --shell /usr/sbin/nologin hysteria
   ensure_hy2_aio_user
@@ -494,8 +490,6 @@ PYV
   install -d -o root -g hy2-aio -m 0770 "$CONFIG_DIR"
   install -d -o hy2-aio -g hy2-aio -m 0750 "$STATE_DIR" "$STATE_DIR/backups"
   install -d -o root -g root -m 0755 "$APP_DIR"
-
-  ensure_reality_env
 
   cat > "$ENV_FILE" <<EOF
 AIO_VERSION=$AIO_VERSION
@@ -522,11 +516,6 @@ QUIC_KEEP_ALIVE_PERIOD=$QUIC_KEEP_ALIVE_PERIOD
 QUIC_MAX_IDLE_TIMEOUT=$QUIC_MAX_IDLE_TIMEOUT
 SNI_GUARD=$SNI_GUARD
 CLIENT_INSECURE=$CLIENT_INSECURE
-REALITY_DEST=$REALITY_DEST
-REALITY_SERVER_NAMES=$REALITY_SERVER_NAMES
-REALITY_SHORT_ID=$REALITY_SHORT_ID
-REALITY_PRIVATE_KEY=$REALITY_PRIVATE_KEY
-REALITY_PUBLIC_KEY=$REALITY_PUBLIC_KEY
 EOF
   if [ -n "${HY2_FETCH_MODULES_SHA:-}" ]; then
     printf 'HY2_MODULES_SHA=%s\n' "$HY2_FETCH_MODULES_SHA" >> "$ENV_FILE"
@@ -536,6 +525,13 @@ EOF
   fi
   chown root:hy2-aio "$ENV_FILE"
   chmod 0640 "$ENV_FILE"
+
+  configure_swap_and_kernel
+  install_hysteria
+  install_xray
+  ensure_reality_env
+  install_caddy_v12
+
   configure_firewall_v12
 
   generate_users "$users_count"

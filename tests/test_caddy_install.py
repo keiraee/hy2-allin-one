@@ -1,5 +1,9 @@
+import hashlib
+import io
 import os
+import platform
 import subprocess
+import tarfile
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,6 +25,7 @@ class CaddyInstallTests(unittest.TestCase):
         self.trace = self.root / "trace.log"
         self.commands.mkdir(parents=True)
         self.caddy_dir.mkdir(parents=True)
+        self.legacy_bin.parent.mkdir(parents=True, exist_ok=True)
         self.local_unit.parent.mkdir(parents=True, exist_ok=True)
 
         source = (ROOT / "lib/install.sh").read_text(encoding="utf-8")
@@ -28,8 +33,33 @@ class CaddyInstallTests(unittest.TestCase):
             "/etc/systemd/system/caddy.service", self.local_unit.as_posix()
         )
         source = source.replace("/usr/local/bin/caddy", self.legacy_bin.as_posix())
+        source = source.replace(
+            "/usr/share/keyrings", (self.root / "usr/share/keyrings").as_posix()
+        )
+        source = source.replace(
+            "/etc/apt/sources.list.d",
+            (self.root / "etc/apt/sources.list.d").as_posix(),
+        )
         self.install_source = self.root / "install.sh"
         self.install_source.write_text(source, encoding="utf-8")
+        self.cloudsmith_list = self.root / "etc/apt/sources.list.d/caddy-stable.list"
+
+        arch = {"x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(
+            platform.machine(), "amd64"
+        )
+        self.tarball_name = f"caddy_2.11.4_linux_{arch}.tar.gz"
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+            data = b"#!/bin/sh\nprintf 'v2.11.4 h1:test\\n'\n"
+            info = tarfile.TarInfo("caddy")
+            info.size = len(data)
+            info.mode = 0o755
+            tar.addfile(info, io.BytesIO(data))
+        self.fixture_tar = self.root / self.tarball_name
+        self.fixture_tar.write_bytes(buffer.getvalue())
+        self.fixture_sums = self.root / "checksums.txt"
+        digest = hashlib.sha256(buffer.getvalue()).hexdigest()
+        self.fixture_sums.write_text(f"{digest}  {self.tarball_name}\n", encoding="utf-8")
 
         package_command = """
 printf '%s %s\\n' "$(basename "$0")" "$*" >> "$MOCK_TRACE"
@@ -64,7 +94,75 @@ fi
 """,
         )
         self._write_command(
-            "install", "printf 'install %s\\n' \"$*\" >> \"$MOCK_TRACE\""
+            "install",
+            """
+printf 'install %s\\n' "$*" >> "$MOCK_TRACE"
+if [ "${1:-}" = "-m" ]; then
+  cp "$3" "$4"
+  chmod 0755 "$4"
+fi
+""",
+        )
+        self._write_command(
+            "curl",
+            """
+printf 'curl %s\\n' "$*" >> "$MOCK_TRACE"
+url=""
+out=""
+prev=""
+for a in "$@"; do
+  case "$a" in
+    -*) ;;
+    *) [ -n "$url" ] || url="$a" ;;
+  esac
+  [ "$prev" = "-o" ] && out="$a"
+  prev="$a"
+done
+case "$url" in
+  *cloudsmith*gpg.key*)
+    [ "${MOCK_CLOUDSMITH:-ok}" = "ok" ] || exit 22
+    printf 'KEY\\n'
+    ;;
+  *cloudsmith*debian.deb.txt*)
+    [ "${MOCK_CLOUDSMITH:-ok}" = "ok" ] || exit 22
+    mkdir -p "$(dirname "$out")"
+    printf 'deb https://example/caddy stable main\\n' > "$out"
+    ;;
+  *checksums.txt*)
+    mkdir -p "$(dirname "$out")"
+    cp "$MOCK_FIXTURE_SUMS" "$out"
+    ;;
+  *caddy_*linux*)
+    mkdir -p "$(dirname "$out")"
+    cp "$MOCK_FIXTURE_TAR" "$out"
+    ;;
+  *) exit 22 ;;
+esac
+""",
+        )
+        self._write_command(
+            "gpg",
+            """
+printf 'gpg %s\\n' "$*" >> "$MOCK_TRACE"
+cat > /dev/null
+out=""
+prev=""
+for a in "$@"; do
+  [ "$prev" = "-o" ] && out="$a"
+  prev="$a"
+done
+if [ -n "$out" ]; then
+  mkdir -p "$(dirname "$out")"
+  printf 'KEY\\n' > "$out"
+fi
+""",
+        )
+        self._write_command(
+            "apt-get",
+            """
+printf 'apt-get %s\\n' "$*" >> "$MOCK_TRACE"
+exit 1
+""",
         )
         self._write_command(
             "groupadd", "printf 'groupadd %s\\n' \"$*\" >> \"$MOCK_TRACE\""
@@ -91,16 +189,19 @@ fi
         path.chmod(0o755)
         return path
 
-    def _run_install(self, *, package_unit=False, manager="dnf"):
+    def _run_install(self, *, package_unit=False, manager="dnf", cloudsmith="ok"):
         env = os.environ.copy()
         env.update(
             {
-                "PATH": f"{self.commands}:{self.caddy_dir}:{env['PATH']}",
+                "PATH": f"{self.commands}:{self.caddy_dir}:{self.legacy_bin.parent}:{env['PATH']}",
                 "MOCK_CADDY_DIR": str(self.caddy_dir),
                 "MOCK_CREATE_VENDOR_UNIT": "1" if package_unit else "0",
                 "MOCK_LOCAL_UNIT": str(self.local_unit),
                 "MOCK_VENDOR_UNIT": str(self.vendor_unit),
                 "MOCK_TRACE": str(self.trace),
+                "MOCK_FIXTURE_SUMS": str(self.fixture_sums),
+                "MOCK_FIXTURE_TAR": str(self.fixture_tar),
+                "MOCK_CLOUDSMITH": cloudsmith,
             }
         )
         return subprocess.run(
@@ -112,7 +213,7 @@ set -Eeuo pipefail
 source "$1"
 log() { :; }
 warn() { printf 'WARN: %s\\n' "$*" >&2; }
-die() { printf 'ERROR: %s\\n' "$*" >&2; return 1; }
+die() { printf 'ERROR: %s\\n' "$*" >&2; exit 1; }
 PKG_MANAGER="$2"
 install_caddy_v12
 """,
@@ -185,6 +286,26 @@ install_caddy_v12
         unit = self.local_unit.read_text(encoding="utf-8")
         self.assertIn(f"ExecStart={caddy} ", unit)
         self.assertNotIn(str(self.legacy_bin), unit)
+
+
+    def test_apt_repo_failure_falls_back_to_official_binary(self):
+        result = self._run_install(manager="apt", cloudsmith="fail")
+
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        self.assertTrue(os.access(self.legacy_bin, os.X_OK))
+        trace = self.trace.read_text(encoding="utf-8")
+        self.assertIn("apt-get install -y caddy", trace)
+        unit = self.local_unit.read_text(encoding="utf-8")
+        self.assertIn(f"ExecStart={self.legacy_bin} ", unit)
+
+    def test_broken_cloudsmith_repo_is_disabled_before_fallback(self):
+        result = self._run_install(manager="apt")
+
+        self.assertEqual(0, result.returncode, result.stderr or result.stdout)
+        self.assertFalse(self.cloudsmith_list.exists())
+        self.assertTrue(os.access(self.legacy_bin, os.X_OK))
+        trace = self.trace.read_text(encoding="utf-8")
+        self.assertIn("apt-get update", trace)
 
 
 if __name__ == "__main__":

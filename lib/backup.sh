@@ -283,7 +283,10 @@ PY
   chmod 0640 "$ENV_FILE"
   read_env
 
+  # 补齐缺失组件：安装中途失败后 repair 可直接续装（已装则跳过）
+  install_hysteria
   install_xray
+  install_caddy_v12
   ensure_reality_env
   read_env
   ensure_users_vless_ids
