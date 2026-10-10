@@ -329,7 +329,15 @@ install_stack() {
   detect_platform
 
   if [ -f "$ENV_FILE" ] && [ "${HY2_FORCE:-0}" != "1" ]; then
-    die "HY2 AIO 已安装。查看状态：hy2 status"
+    # config.env 先落盘是故意的：安装半途而废时可续装。缺 hy2 命令 = 上次没装完
+    if [ ! -x "$SELF_INSTALL" ]; then
+      warn "检测到未完成的安装（缺少 hy2 命令），改为自动续装；如需全新安装请先：bash hy2.sh uninstall"
+      repair_cmd
+      restart_cmd
+      log "续装完成：hy2 panel 查看面板账号，hy2 show 查看订阅"
+      return
+    fi
+    die "HY2 AIO 已安装。查看状态：hy2 status；修复：hy2 repair；全新重装：hy2 uninstall 后再 bash hy2.sh install"
   fi
 
   install_packages_v12
@@ -559,6 +567,9 @@ EOF
   cp -a "${SCRIPT_DIR}/lib/"* "$modules_dir/lib/"
   cp -a "${SCRIPT_DIR}/bin/"* "$modules_dir/bin/"
 
+  # 先装 CLI：后面服务启动失败时 hy2 仍可用（同 repair 的顺序约定）
+  install_hy2_cli "${modules_dir}/bin/hy2.sh"
+
   systemctl daemon-reload
   systemctl enable hysteria-server.service hy2-xray.service hy2-aio.service hy2-aio-reload-hysteria.path hy2-aio-reload-xray.path caddy.service >/dev/null
   systemctl restart hysteria-server.service
@@ -572,9 +583,6 @@ EOF
   wait_services
 
   api_post sync >/dev/null || true
-
-  # 安装系统命令入口
-  install_hy2_cli "${modules_dir}/bin/hy2.sh"
 
   write_access_file
   test_https
