@@ -416,6 +416,58 @@ def public_base_url(env: dict[str, str]) -> str:
     return f"https://{domain}:{port}"
 
 
+def country_code_to_flag(code: str) -> str:
+    cc = str(code or "").strip().upper()
+    if len(cc) != 2 or not cc.isalpha():
+        return ""
+    return "".join(chr(127397 + ord(ch)) for ch in cc)
+
+
+def _http_get_json(url: str) -> Optional[dict[str, Any]]:
+    try:
+        req = urllib.request.Request(url, headers={"accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8", "replace"))
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
+
+
+_GEO_CACHE: dict[str, str] = {}
+
+
+def server_country_code(env: dict[str, str]) -> str:
+    # COUNTRY_CODE 显式覆盖（config.env）；否则按 PUBLIC_IP 查归属地，结果缓存
+    override = str(env.get("COUNTRY_CODE") or "").strip().upper()
+    if override:
+        return override
+    ip = str(env.get("PUBLIC_IP") or "")
+    if not ip:
+        return ""
+    if ip in _GEO_CACHE:
+        return _GEO_CACHE[ip]
+    code = ""
+    for url in (
+        f"https://ipwho.is/{ip}",
+        f"https://api.ip.sb/geoip/{ip}",
+        f"https://freeipapi.com/api/json/{ip}",
+    ):
+        data = _http_get_json(url) or {}
+        if data.get("success") is False:
+            continue
+        candidate = str(data.get("country_code") or data.get("countryCode") or "").strip().upper()
+        if len(candidate) == 2 and candidate.isalpha():
+            code = candidate
+            break
+    _GEO_CACHE[ip] = code
+    return code
+
+
+def flag_prefix(env: dict[str, str]) -> str:
+    flag = country_code_to_flag(server_country_code(env))
+    return flag + " " if flag else ""
+
+
 def direct_link(env: dict[str, str], username: str, password: str) -> str:
     auth = urllib.parse.quote(f"{username}:{password}", safe="")
     query_items: dict[str, str] = {
@@ -427,7 +479,7 @@ def direct_link(env: dict[str, str], username: str, password: str) -> str:
     if client_insecure(env):
         query_items["insecure"] = "1"
     query = urllib.parse.urlencode(query_items)
-    name = urllib.parse.quote(f"HY2-{username}", safe="")
+    name = urllib.parse.quote(flag_prefix(env) + f"HY2-{username}", safe="")
     return f"hysteria2://{auth}@{env['PUBLIC_IP']}:{env.get('HY2_PORT', '443')}/?{query}#{name}"
 
 
@@ -482,7 +534,7 @@ def vless_link(env: dict[str, str], username: str, info: Optional[dict[str, Any]
             "type": "tcp",
         }
     )
-    name = urllib.parse.quote(VLESS_NODE_NAME, safe="")
+    name = urllib.parse.quote(flag_prefix(env) + VLESS_NODE_NAME, safe="")
     return f"vless://{vless_id}@{env['PUBLIC_IP']}:{xray_port(env)}?{query}#{name}"
 
 
@@ -518,7 +570,7 @@ def subscription_yaml(
             f"    obfs-password: {q(env['OBFS_PASSWORD'])}\n"
         )
 
-    node = q("HY2-" + username)
+    node = q(flag_prefix(env) + "HY2-" + username)
     vless_block = ""
     vless_group = ""
     payload = info if isinstance(info, dict) else {}
@@ -526,7 +578,7 @@ def subscription_yaml(
     public_key = str(env.get("REALITY_PUBLIC_KEY") or "").strip()
     short_id = str(env.get("REALITY_SHORT_ID") or "").strip()
     if vless_id and public_key and short_id:
-        vless_name = q(VLESS_NODE_NAME)
+        vless_name = q(flag_prefix(env) + VLESS_NODE_NAME)
         vless_group = f"      - {vless_name}\n"
         vless_block = (
             f"  - name: {vless_name}\n"

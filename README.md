@@ -148,6 +148,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
 | `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.7.3` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
+| `COUNTRY_CODE` | 节点名国旗（ISO 码如 `SG`）；留空=按服务器 IP 自动识别 | 自动识别 |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
 | `XRAY_VERSION` | Xray-core 版本 | `v26.3.27` |
 | `CADDY_VERSION` | Caddy 回退安装版本 | `v2.11.4` |
@@ -182,6 +183,7 @@ hy2-allin-one/
 - **安装向导**默认代理 UDP `8443`（云上比 443 更稳）；仍可改成 `443`。
 - **整机流量**：面板顶部为网卡计数，尽量对齐云厂商套餐；Clash 订阅进度与此同源。
 - **用户流量**：用户表为 HY2 代理分摊参考，各用户之和通常小于整机。
+- **节点国旗**：订阅与直链的节点名自动带上服务器归属地国旗（如 `🇸🇬 HY2-用户名`）；识别不准时在 `/etc/hy2-aio/config.env` 里加 `COUNTRY_CODE=SG` 这类 ISO 国家码后 `hy2 restart`
 - **凭据**：密码/订阅 token 不在 `data.json` 公开；面板内按需复制。
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 

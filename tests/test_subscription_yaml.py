@@ -23,6 +23,7 @@ def load_backend_namespace():
 class SubscriptionYamlTests(unittest.TestCase):
     def setUp(self):
         self.namespace = load_backend_namespace()
+        self.namespace["server_country_code"] = lambda env: ""  # 本组用例不测国旗
         self.temporary = tempfile.TemporaryDirectory()
         self.mode_file = Path(self.temporary.name) / "client-mode.json"
         self.mode_file.write_text("{}\n", encoding="utf-8")
@@ -167,6 +168,7 @@ class SubscriptionUserinfoTests(unittest.TestCase):
 
     def setUp(self):
         self.namespace = load_backend_namespace()
+        self.namespace["server_country_code"] = lambda env: ""  # 本组用例不测国旗
         self.temporary = tempfile.TemporaryDirectory()
         root = Path(self.temporary.name)
         self.namespace["MODE_FILE"] = root / "client-mode.json"
@@ -209,6 +211,84 @@ class SubscriptionUserinfoTests(unittest.TestCase):
         disposition = [v for k, v in stub.header_pairs if k == "Content-Disposition"]
         self.assertEqual(1, len(disposition))
         self.assertEqual("attachment; filename=HY2-alice", disposition[0])
+
+
+class SubscriptionFlagTests(unittest.TestCase):
+    """节点名加国旗：COUNTRY_CODE 覆盖或按 PUBLIC_IP 自动查归属地。"""
+
+    def setUp(self):
+        self.namespace = load_backend_namespace()
+        self.temporary = tempfile.TemporaryDirectory()
+        self.mode_file = Path(self.temporary.name) / "client-mode.json"
+        self.mode_file.write_text("{}\n", encoding="utf-8")
+        self.namespace["MODE_FILE"] = self.mode_file
+        self.env = {
+            "PUBLIC_IP": "203.0.113.10",
+            "HY2_PORT": "8443",
+            "XRAY_PORT": "8443",
+            "OBFS_ENABLED": "false",
+            "SNI": "www.amazon.sg",
+            "CLIENT_INSECURE": "true",
+            "DOMAIN": "203-0-113-10.sslip.io",
+            "REALITY_PUBLIC_KEY": "public-key-fixture",
+            "REALITY_SHORT_ID": "abcd1234",
+            "REALITY_DEST": "www.cloudflare.com:443",
+            "REALITY_SERVER_NAMES": "www.cloudflare.com",
+        }
+        self.vless_id = "11111111-2222-4333-8444-555555555555"
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_country_code_to_flag(self):
+        to_flag = self.namespace["country_code_to_flag"]
+        self.assertEqual("🇸🇬", to_flag("SG"))
+        self.assertEqual("🇺🇸", to_flag("us"))
+        self.assertEqual("", to_flag(""))
+        self.assertEqual("", to_flag("X"))
+        self.assertEqual("", to_flag("SGP"))
+
+    def test_country_code_override_prefixes_names(self):
+        self.env["COUNTRY_CODE"] = "SG"
+        text = self.namespace["subscription_yaml"](
+            self.env, "alice", "p4ss", {"vless_id": self.vless_id}
+        ).decode("utf-8")
+        self.assertIn('"🇸🇬 HY2-alice"', text)
+        self.assertIn('"🇸🇬 hy2超时备用临时节点"', text)
+
+        links = self.namespace["direct_links"](
+            self.env, "alice", "p4ss", {"vless_id": self.vless_id}
+        )
+        self.assertIn("#" + urllib.parse.quote("🇸🇬 HY2-alice", safe=""), links)
+        self.assertIn(
+            "#" + urllib.parse.quote("🇸🇬 hy2超时备用临时节点", safe=""), links
+        )
+
+    def test_auto_lookup_caches_result(self):
+        calls = []
+
+        def fake_json(url):
+            calls.append(url)
+            return {"country_code": "jp"}
+
+        self.namespace["_http_get_json"] = fake_json
+        code = self.namespace["server_country_code"](self.env)
+        self.assertEqual("JP", code)
+        self.assertEqual("JP", self.namespace["server_country_code"](self.env))
+        self.assertEqual(1, len(calls))
+
+        text = self.namespace["subscription_yaml"](
+            self.env, "alice", "p4ss", {"vless_id": self.vless_id}
+        ).decode("utf-8")
+        self.assertIn('"🇯🇵 HY2-alice"', text)
+
+    def test_lookup_failure_keeps_original_names(self):
+        self.namespace["_http_get_json"] = lambda url: None
+        text = self.namespace["subscription_yaml"](
+            self.env, "alice", "p4ss", {"vless_id": self.vless_id}
+        ).decode("utf-8")
+        self.assertIn('"HY2-alice"', text)
+        self.assertIn('"hy2超时备用临时节点"', text)
 
 
 if __name__ == "__main__":
