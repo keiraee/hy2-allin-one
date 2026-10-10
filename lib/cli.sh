@@ -310,6 +310,44 @@ uninstall_cmd() {
   log "HY2 AIO 已完全卸载，可直接重新安装"
 }
 
+cert_cmd() {
+  need_root cert
+  read_env
+  local domain="${DOMAIN:-}" panel_port="${PANEL_PORT:-443}" i cert_info
+  [ -n "$domain" ] || die "config.env 缺少 DOMAIN"
+  command -v caddy >/dev/null 2>&1 || die "未安装 Caddy"
+  [ -f "$CADDY_FILE" ] || die "缺少 Caddyfile：$CADDY_FILE"
+
+  log "重新申请 ${domain} 的 HTTPS 证书"
+  if ! ss -lnt 2>/dev/null | grep -qE '[:.]80([^0-9]|$)'; then
+    warn "本机没有进程监听 TCP 80；HTTP-01 验证要求外网能访问本机 80 端口（云安全组/防火墙需放行 TCP 80）"
+  fi
+
+  # 清掉该域名的旧证书状态（失败缓存与本地自签兜底），强制重新向 CA 申请
+  rm -rf "$CADDY_DATA_DIR/certificates"/*/"$domain" \
+    "$CADDY_DATA_DIR/.local/share/caddy/certificates"/*/"$domain" 2>/dev/null || true
+
+  if ! systemctl restart caddy.service; then
+    journalctl -u caddy.service --no-pager -n 40 >&2 || true
+    die "Caddy 启动失败，无法申请证书"
+  fi
+
+  for i in $(seq 1 12); do
+    sleep 5
+    cert_info="$(echo | openssl s_client -connect "127.0.0.1:${panel_port}" -servername "$domain" 2>/dev/null \
+      | openssl x509 -noout -subject -issuer -enddate 2>/dev/null || true)"
+    if [ -n "$cert_info" ] && ! printf '%s\n' "$cert_info" | grep -qi 'caddy local authority'; then
+      log "证书已签发："
+      printf '%s\n' "$cert_info"
+      return 0
+    fi
+  done
+  warn "等待约 1 分钟仍未拿到受信任证书（当前仍是本地自签兜底证书）"
+  warn "常见原因：云安全组未放行 TCP 80、域名未解析到本机公网 IP、面板端口被占用"
+  journalctl -u caddy.service --no-pager -n 20 >&2 || true
+  return 1
+}
+
 menu_call() {
   local fn="$1"
   shift || true
@@ -466,6 +504,7 @@ EOF
   echo " 24) 更新 Xray 内核"
   echo "  4) 重启服务"
   echo "  5) 状态"
+  echo " 25) 重新申请证书"
   echo
   echo "── 账号 ──────────────────────────"
   echo "  6) 显示账号/订阅"
@@ -499,7 +538,7 @@ menu_interactive() {
   refresh_update_hint
   while true; do
     show_menu
-    read -r -p "请选择 [1-24/99]: " choice
+    read -r -p "请选择 [1-25/99]: " choice
     case "$choice" in
       1)  menu_upgrade ;;
       2)  menu_call repair_cmd ;;
@@ -547,6 +586,7 @@ menu_interactive() {
       21) menu_call hy2_on_cmd ;;
       22) menu_call hy2_off_cmd ;;
       23) menu_call panel_cmd ;;
+      25) menu_call cert_cmd ;;
       99) exit 0 ;;
       *)
         echo "无效选择"

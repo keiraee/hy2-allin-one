@@ -109,6 +109,7 @@ sudo hy2 off                 # 关闭 Hysteria
 sudo hy2 backup              # 备份
 sudo hy2 logs [行数]         # 查看日志
 sudo hy2 restart             # 重启服务
+sudo hy2 cert                # 重新申请面板/订阅 HTTPS 证书
 sudo hy2 update              # 更新 Hysteria 内核
 sudo hy2 update-xray         # 更新 Xray 内核
 sudo hy2 uninstall           # 完全卸载（服务、组件、配置、数据全清，不留残留）
@@ -187,7 +188,8 @@ hy2-allin-one/
 ## 更新日志
 
 ### v1.7.3
-- 修复 v1.7.2 卸载重装后 Hysteria 起不来（`Failed at step CHDIR`）：hysteria 用户家目录统一为 `/var/lib/hysteria`（官方 unit 用 `WorkingDirectory=~`）；坏家目录的存量机器 `hy2 upgrade && hy2 restart` 自动修复
+- 修复 v1.7.2 卸载重装后 Hysteria 起不来（`Failed at step CHDIR`）：官方安装脚本的服务单元用 `WorkingDirectory=~`（hysteria 用户家目录），v1.7.2 把用户创建提前后家目录变成 `/nonexistent`；现统一为 `/var/lib/hysteria`，安装与 repair 自动改回坏家目录并补目录，已中招机器升级即修复、无需重装
+- 新增菜单/命令「重新申请证书」：安装完成但面板/订阅 HTTPS 证书没签下来（云机安全组未放行 TCP 80、ACME 验证超时很常见），进菜单选 25 或 `sudo hy2 cert` 重试——清掉该域名失败签发状态、重启 Caddy 触发重新申请，轮询约 1 分钟检查结果，成功打印签发者与有效期，仍失败给出常见原因
 
 ### v1.7.2
 - 卸载重做为**完全卸载**：逐个停止服务 → 卸载 Hysteria / Xray / Caddy（含软件源）→ 清配置、数据、用户、防火墙（含 80/tcp），结尾校验无残留，卸载后可直接重装

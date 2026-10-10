@@ -698,6 +698,7 @@ HY2 AIO v${AIO_VERSION}
   hy2 rollback                 # 回滚最近快照
   hy2 logs [行数]              # 查看日志
   hy2 restart                  # 重启 Hysteria + Xray + 面板后端 + Caddy
+  hy2 cert                     # 重新申请面板/订阅 HTTPS 证书（安装后证书没签下来用）
   hy2 update                   # 更新 Hysteria 内核
   hy2 update-xray              # 更新 Xray 内核
   hy2 upgrade                  # 升级 HY2 AIO 到最新 Release

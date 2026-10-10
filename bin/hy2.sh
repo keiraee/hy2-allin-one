@@ -177,6 +177,7 @@ HY2 AIO v${AIO_VERSION}
   hy2 rollback            # 回滚最近快照
   hy2 logs [行数]         # 查看日志
   hy2 restart             # 重启 Hysteria + Xray + 面板后端 + Caddy
+  hy2 cert                # 重新申请面板/订阅 HTTPS 证书
   hy2 update              # 更新 Hysteria 内核
   hy2 update-xray         # 更新 Xray 内核
   hy2 upgrade             # 升级 HY2 AIO 到 GitHub 最新版
@@ -203,6 +204,7 @@ case "$command" in
   rollback)   rollback_cmd ;;
   logs)       logs_cmd "${2:-}" ;;
   restart)    restart_cmd ;;
+  cert)       cert_cmd ;;
   users)      users_cmd ;;
   add-user)   modify_user "add-user" "${2:-}" ;;
   remove-user) modify_user "remove-user" "${2:-}" ;;
