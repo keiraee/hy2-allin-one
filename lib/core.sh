@@ -3,11 +3,12 @@
 
 set -Eeuo pipefail
 
-SCRIPT_VERSION="1.7.2"
+SCRIPT_VERSION="1.7.3"
 AIO_VERSION="$SCRIPT_VERSION"
 XRAY_VERSION="v26.3.27"
 CONFIG_DIR="/etc/hy2-aio"
 HYSTERIA_DIR="/etc/hysteria"
+HYSTERIA_HOME_DIR="/var/lib/hysteria"
 ENV_FILE="${CONFIG_DIR}/config.env"
 USERS_FILE="${CONFIG_DIR}/users.json"
 USER_MUTATION_LOCK="${CONFIG_DIR}/.users.lock"

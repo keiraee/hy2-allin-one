@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
 DEFAULT_REPO_SLUG="keiraee/hy2-allin-one"
 REPO_SLUG="${HY2_REPO:-$DEFAULT_REPO_SLUG}"
-REPO_REF="${HY2_REPO_REF:-v1.7.2}"
+REPO_REF="${HY2_REPO_REF:-v1.7.3}"
 
 apply_repo_url() {
   if [ -n "${HY2_REPO_URL:-}" ]; then
@@ -483,8 +483,7 @@ PYV
   log "开始安装…"
 
   # 先写 config.env：后面任何一步失败，都可以 bash hy2.sh repair 续装
-  getent group hysteria >/dev/null 2>&1 || groupadd --system hysteria
-  id hysteria >/dev/null 2>&1 || useradd --system --gid hysteria --home /nonexistent --shell /usr/sbin/nologin hysteria
+  ensure_hysteria_user
   ensure_hy2_aio_user
 
   install -d -o root -g hy2-aio -m 0770 "$CONFIG_DIR"

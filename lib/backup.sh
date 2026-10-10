@@ -284,6 +284,7 @@ PY
   read_env
 
   # 补齐缺失组件：安装中途失败后 repair 可直接续装（已装则跳过）
+  ensure_hysteria_user
   install_hysteria
   install_xray
   install_caddy_v12

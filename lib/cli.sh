@@ -285,7 +285,7 @@ uninstall_cmd() {
   fi
 
   # 5) 删除配置、数据与用户
-  rm -rf "$CONFIG_DIR" "$STATE_DIR" "$ROLLBACK_DIR" "$HYSTERIA_DIR"
+  rm -rf "$CONFIG_DIR" "$STATE_DIR" "$ROLLBACK_DIR" "$HYSTERIA_DIR" "$HYSTERIA_HOME_DIR"
   rm -f "$ACCESS_FILE"
   local u
   for u in hy2-aio hysteria caddy; do
@@ -301,7 +301,7 @@ uninstall_cmd() {
   # 6) 验证无残留
   local p leftover=""
   for p in \
-    "$CONFIG_DIR" "$STATE_DIR" "$ROLLBACK_DIR" "$HYSTERIA_DIR" "$APP_DIR" "$WEB_DIR" \
+    "$CONFIG_DIR" "$STATE_DIR" "$ROLLBACK_DIR" "$HYSTERIA_DIR" "$HYSTERIA_HOME_DIR" "$APP_DIR" "$WEB_DIR" \
     "$HYSTERIA_BIN" "$XRAY_BIN" "$CADDY_BIN" "$CADDY_APT_LIST"
   do
     [ -e "$p" ] && leftover="${leftover} ${p}"

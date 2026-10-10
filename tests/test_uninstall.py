@@ -24,6 +24,7 @@ class UninstallCleanupTests(unittest.TestCase):
         self.state_dir = self.root / "var/lib/hy2-aio"
         self.rollback_dir = self.root / "var/lib/hy2-aio-rollbacks"
         self.hysteria_dir = self.root / "etc/hysteria"
+        self.hysteria_home = self.root / "var/lib/hysteria"
         self.app_dir = self.root / "usr/local/lib/hy2-aio"
         self.web_dir = self.root / "var/www/hy2-aio"
         self.access = self.root / "root/hy2-aio-access.txt"
@@ -61,6 +62,7 @@ class UninstallCleanupTests(unittest.TestCase):
             self.state_dir,
             self.rollback_dir,
             self.hysteria_dir,
+            self.hysteria_home,
             self.app_dir,
             self.web_dir,
             self.access.parent,
@@ -155,6 +157,7 @@ class UninstallCleanupTests(unittest.TestCase):
             "CONFIG_DIR": self.config_dir,
             "ENV_FILE": self.config_dir / "config.env",
             "HYSTERIA_DIR": self.hysteria_dir,
+            "HYSTERIA_HOME_DIR": self.hysteria_home,
             "APP_DIR": self.app_dir,
             "WEB_DIR": self.web_dir,
             "STATE_DIR": self.state_dir,
@@ -252,6 +255,7 @@ uninstall_cmd
             self.state_dir,
             self.rollback_dir,
             self.hysteria_dir,
+            self.hysteria_home,
             self.app_dir,
             self.web_dir,
             self.service,

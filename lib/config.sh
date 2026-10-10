@@ -494,6 +494,26 @@ EOF
   chmod 0755 "$XRAY_CONTROL_FILE"
 }
 
+ensure_hysteria_user() {
+  # 官方 get-hy2.sh 的 hysteria-server.service 用 WorkingDirectory=~（用户家目录），
+  # 家目录必须真实存在，否则服务启动 CHDIR 失败。
+  getent group hysteria >/dev/null 2>&1 || groupadd --system hysteria
+  local home="${HYSTERIA_HOME_DIR:-/var/lib/hysteria}" current
+  if ! id hysteria >/dev/null 2>&1; then
+    useradd --system --gid hysteria --home-dir "$home" --create-home --shell /usr/sbin/nologin hysteria
+    install -d -o hysteria -g hysteria -m 0750 "$home"
+    return
+  fi
+  current="$(getent passwd hysteria | cut -d: -f6)" || true
+  case "$current" in
+    ""|/nonexistent|/dev/null|/false)
+      usermod -d "$home" hysteria
+      current="$home"
+      ;;
+  esac
+  [ -d "$current" ] || install -d -o hysteria -g hysteria -m 0750 "$current"
+}
+
 ensure_hy2_aio_user() {
   getent group hy2-aio >/dev/null 2>&1 || groupadd --system hy2-aio
   getent group hysteria >/dev/null 2>&1 || groupadd --system hysteria
