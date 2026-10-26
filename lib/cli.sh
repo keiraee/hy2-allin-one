@@ -17,6 +17,11 @@ status_cmd() {
   else
     echo "混淆：off"
   fi
+  if command -v adblock_is_enabled >/dev/null 2>&1 && adblock_is_enabled; then
+    echo "去广告：on (${ADBLOCK_LEVEL:-lite})"
+  else
+    echo "去广告：off"
+  fi
   echo "QUIC 保活：${QUIC_KEEP_ALIVE_PERIOD:-5s} / idle ${QUIC_MAX_IDLE_TIMEOUT:-120s}"
   if [ -f "${HY2_OFF_FILE:-/etc/hy2-aio/hy2.off}" ]; then
     echo "Hysteria：已关闭（开启：hy2 on）"
@@ -519,6 +524,7 @@ EOF
   echo "── 功能 ──────────────────────────"
   echo " 13) 速率模式"
   echo " 14) 混淆开关（obfs）"
+  echo " 25) 去广告开关（adblock）"
   echo " 15) 同步数据"
   echo " 16) 备份"
   echo " 17) 回滚最近快照"
@@ -534,7 +540,7 @@ EOF
 }
 
 menu_interactive() {
-  local choice username note obfs_choice
+  local choice username note obfs_choice ad_choice ad_level
   refresh_update_hint
   while true; do
     show_menu
@@ -574,6 +580,20 @@ menu_interactive() {
           0) menu_call obfs_cmd show ;;
           1) menu_call obfs_cmd on ;;
           2) menu_call obfs_cmd off ;;
+          *) echo "无效选择" ;;
+        esac
+        ;;
+      25)
+        echo "0) 查看状态  1) 开启去广告  2) 关闭去广告  3) 切换规则集 lite/full"
+        read -r -p "请选择 [0-3]: " ad_choice
+        case "$ad_choice" in
+          0) menu_call adblock_cmd show ;;
+          1) menu_call adblock_cmd on ;;
+          2) menu_call adblock_cmd off ;;
+          3)
+            read -r -p "lite=轻量约600条(移动端推荐) / full=全量约29万条11MB [lite]: " ad_level
+            menu_call adblock_cmd level "${ad_level:-lite}"
+            ;;
           *) echo "无效选择" ;;
         esac
         ;;

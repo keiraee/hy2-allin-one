@@ -407,6 +407,18 @@ def obfs_enabled(env: dict[str, str]) -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
+def adblock_enabled(env: dict[str, str]) -> bool:
+    """去广告规则集开关，默认开启（装了就是为去广告，不想要再关）。"""
+    raw = str(env.get("ADBLOCK_ENABLED", "true")).strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def adblock_level(env: dict[str, str]) -> str:
+    """lite=ACL4SSR BanAD 轻量版（默认，移动端友好）；full=blackmatrix7 全量 11MB。"""
+    raw = str(env.get("ADBLOCK_LEVEL", "lite")).strip().lower()
+    return "full" if raw == "full" else "lite"
+
+
 def public_base_url(env: dict[str, str]) -> str:
     """Panel/subscription base URL (always HTTPS)."""
     domain = str(env.get("DOMAIN", "") or "")
@@ -596,6 +608,37 @@ def subscription_yaml(
             f"      public-key: {q(public_key)}\n"
             f"      short-id: {q(short_id)}\n"
         )
+
+    # 去广告规则集（默认开启，hy2 adblock off 可关）
+    # 放在 china-domain 之前：国内 CDN 上的广告域名若先被 DIRECT 命中，拦截就失效了。
+    adblock_provider = ""
+    adblock_rule = ""
+    if adblock_enabled(env):
+        if adblock_level(env) == "full":
+            ad_url = (
+                "https://testingcf.jsdelivr.net/gh/blackmatrix7/ios_rule_script"
+                "@master/rule/Clash/Advertising/Advertising_Classical.yaml"
+            )
+            ad_interval = 604800  # 11MB，一周拉一次足够
+            ad_note = "blackmatrix7 完整版，约 29 万条 / 11MB，仅建议桌面端"
+        else:
+            ad_url = (
+                "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR"
+                "/master/Clash/BanAD.list"
+            )
+            ad_interval = 86400
+            ad_note = "ACL4SSR BanAD，约 600 条，移动端友好"
+        adblock_provider = (
+            "  adblock:\n"
+            "    type: http\n"
+            "    behavior: classical\n"
+            "    format: yaml\n"
+            "    path: ./ruleset/adblock.yaml\n"
+            f"    interval: {ad_interval}\n"
+            f"    url: {ad_url}\n"
+        )
+        adblock_rule = f"  - RULE-SET,adblock,REJECT  # {ad_note}\n"
+
     content = f"""mixed-port: 7890
 allow-lan: false
 mode: rule
@@ -655,14 +698,14 @@ rule-providers:
     path: ./ruleset/china-ip.mrs
     interval: 86400
     url: https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geoip/cn.mrs
-
+{adblock_provider}
 rules:
   - DOMAIN-SUFFIX,lan,DIRECT
   - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
-  - RULE-SET,china-domain,DIRECT
+{adblock_rule}  - RULE-SET,china-domain,DIRECT
   - RULE-SET,china-ip,DIRECT
   - MATCH,PROXY
 """

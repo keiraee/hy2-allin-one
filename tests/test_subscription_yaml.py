@@ -137,6 +137,90 @@ class SubscriptionYamlTests(unittest.TestCase):
         self.assertRegex(text, r"(?m)^mode: rule$")
 
 
+class AdblockRuleTests(unittest.TestCase):
+    """去广告规则集：默认开启、可关闭、两档规则源，且必须排在 china-domain 之前。"""
+
+    def setUp(self):
+        self.namespace = load_backend_namespace()
+        self.namespace["server_country_code"] = lambda env: ""
+        self.temporary = tempfile.TemporaryDirectory()
+        self.mode_file = Path(self.temporary.name) / "client-mode.json"
+        self.mode_file.write_text("{}\n", encoding="utf-8")
+        self.namespace["MODE_FILE"] = self.mode_file
+        self.base_env = {
+            "PUBLIC_IP": "203.0.113.10",
+            "HY2_PORT": "8443",
+            "XRAY_PORT": "8443",
+            "OBFS_ENABLED": "false",
+            "SNI": "www.amazon.sg",
+            "CLIENT_INSECURE": "true",
+            "DOMAIN": "203-0-113-10.sslip.io",
+        }
+        self.info = {"vless_id": "11111111-2222-4333-8444-555555555555"}
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def text(self, **extra):
+        env = dict(self.base_env)
+        env.update(extra)
+        return self.namespace["subscription_yaml"](env, "alice", "p4ss", self.info).decode(
+            "utf-8"
+        )
+
+    def test_enabled_by_default_with_lite_ruleset(self):
+        text = self.text()
+        self.assertIn("  adblock:\n", text)
+        self.assertIn("behavior: classical", text)
+        self.assertIn("ACL4SSR/ACL4SSR/master/Clash/BanAD.list", text)
+        self.assertIn("- RULE-SET,adblock,REJECT", text)
+
+    def test_can_be_disabled(self):
+        text = self.text(ADBLOCK_ENABLED="false")
+        self.assertNotIn("adblock", text)
+        self.assertNotIn("RULE-SET,adblock", text)
+        # 关闭后国内分流与兜底仍然完整
+        self.assertIn("- RULE-SET,china-domain,DIRECT", text)
+        self.assertIn("- MATCH,PROXY", text)
+
+    def test_full_level_switches_source_and_slows_interval(self):
+        text = self.text(ADBLOCK_LEVEL="full")
+        self.assertIn("Advertising/Advertising_Classical.yaml", text)
+        self.assertIn("interval: 604800", text)
+        self.assertNotIn("BanAD.list", text)
+
+    def test_unknown_level_falls_back_to_lite(self):
+        text = self.text(ADBLOCK_LEVEL="banana")
+        self.assertIn("BanAD.list", text)
+        self.assertIn("interval: 86400", text)
+
+    def test_adblock_rule_precedes_china_domain(self):
+        """广告域名可能挂在 .cn / 国内 CDN 上，必须先于 china-domain 命中，否则会被 DIRECT 放行。"""
+        text = self.text()
+        ad_index = text.index("- RULE-SET,adblock,REJECT")
+        china_index = text.index("- RULE-SET,china-domain,DIRECT")
+        self.assertLess(ad_index, china_index)
+
+    def test_lan_and_private_cidrs_stay_ahead_of_adblock(self):
+        """内网直连必须排最前，去广告不能把它们抢走。"""
+        text = self.text()
+        ad_index = text.index("- RULE-SET,adblock,REJECT")
+        lan_index = text.index("- IP-CIDR,192.168.0.0/16,DIRECT,no-resolve")
+        self.assertLess(lan_index, ad_index)
+
+    def test_generated_yaml_parses(self):
+        """结构正确性：payload 缩进、段落边界都不能破坏 YAML。"""
+        try:
+            import yaml
+        except ImportError:
+            self.skipTest("未安装 PyYAML")
+        data = yaml.safe_load(self.text())
+        self.assertIn("adblock", data["rule-providers"])
+        self.assertEqual("classical", data["rule-providers"]["adblock"]["behavior"])
+        self.assertIn("RULE-SET,adblock,REJECT", data["rules"])
+        self.assertEqual("MATCH,PROXY", data["rules"][-1])
+
+
 class SubscriptionUserinfoTests(unittest.TestCase):
     """订阅头命名与全站约定对齐：upload 对应 tx（Hysteria 口径 tx=客户端上行）。"""
 
