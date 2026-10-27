@@ -395,6 +395,25 @@ class SubscriptionFlagTests(unittest.TestCase):
         ).decode("utf-8")
         self.assertIn('"🇯🇵 HY2-alice"', text)
 
+    def test_lookup_failure_is_retried_after_window(self):
+        """查不到若被永久缓存，一次网络抖动就让国旗一直不出现，只能重启后端。"""
+        calls = []
+
+        def always_fail(url):
+            calls.append(url)
+            return None
+
+        self.namespace["_http_get_json"] = always_fail
+        self.assertEqual("", self.namespace["server_country_code"](self.env))
+        self.assertEqual(3, len(calls))
+        # 窗口内拿缓存，不再空跑 3 次超时
+        self.assertEqual("", self.namespace["server_country_code"](self.env))
+        self.assertEqual(3, len(calls))
+        # 时间戳放到窗口之外后重试，这次通了
+        self.namespace["_GEO_CACHE"]["203.0.113.10"] = ("", 0.0)
+        self.namespace["_http_get_json"] = lambda url: {"country_code": "sg"}
+        self.assertEqual("SG", self.namespace["server_country_code"](self.env))
+
     def test_lookup_failure_keeps_original_names(self):
         self.namespace["_http_get_json"] = lambda url: None
         text = self.namespace["subscription_yaml"](

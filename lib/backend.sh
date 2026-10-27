@@ -466,7 +466,10 @@ def _http_get_json(url: str) -> Optional[dict[str, Any]]:
         return None
 
 
-_GEO_CACHE: dict[str, str] = {}
+_GEO_CACHE: dict[str, tuple[str, float]] = {}
+# 查不到只记一个窗口：一次网络抖动若被永久缓存，国旗会一直不出现，得重启后端才能恢复。
+# ponytail: 固定 1 小时，够短到自愈、够长到不会每次请求都去挨 3×5s 超时；要更细就上退避。
+GEO_FAILURE_RETRY = 3600.0
 
 
 def server_country_code(env: dict[str, str]) -> str:
@@ -477,8 +480,11 @@ def server_country_code(env: dict[str, str]) -> str:
     ip = str(env.get("PUBLIC_IP") or "")
     if not ip:
         return ""
-    if ip in _GEO_CACHE:
-        return _GEO_CACHE[ip]
+    cached = _GEO_CACHE.get(ip)
+    if cached is not None:
+        code, stamp = cached
+        if code or time.time() - stamp < GEO_FAILURE_RETRY:
+            return code
     code = ""
     for url in (
         f"https://ipwho.is/{ip}",
@@ -492,7 +498,7 @@ def server_country_code(env: dict[str, str]) -> str:
         if len(candidate) == 2 and candidate.isalpha():
             code = candidate
             break
-    _GEO_CACHE[ip] = code
+    _GEO_CACHE[ip] = (code, time.time())
     return code
 
 
