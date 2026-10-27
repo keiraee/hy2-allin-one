@@ -774,13 +774,8 @@ obfs_is_enabled() {
   esac
 }
 
-adblock_is_enabled() {
-  local raw
-  raw="$(printf '%s' "${ADBLOCK_ENABLED:-true}" | tr '[:upper:]' '[:lower:]')"
-  case "$raw" in
-    1|true|yes|on) return 0 ;;
-    *) return 1 ;;
-  esac
+adblock_value_is_on() {
+  printf '%s' "$1" | grep -qiE '^(1|true|yes|on)$'
 }
 
 set_config_env_var() {
@@ -906,7 +901,7 @@ adblock_cmd() {
       state="$(adblock_effective_state)"
       enabled="${state%% *}"
       current_level="${state##* }"
-      if printf '%s' "$enabled" | grep -qiE '^(1|true|yes|on)$'; then
+      if adblock_value_is_on "$enabled"; then
         echo "adblock: on"
         echo "规则集：${current_level}（lite=ACL4SSR BanAD 约 600 条 / full=blackmatrix7 约 29 万条 11MB）"
         echo "位置：RULE-SET,adblock,REJECT 排在 china-domain 之前"

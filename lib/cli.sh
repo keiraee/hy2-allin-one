@@ -17,8 +17,14 @@ status_cmd() {
   else
     echo "混淆：off"
   fi
-  if command -v adblock_is_enabled >/dev/null 2>&1 && adblock_is_enabled; then
-    echo "去广告：on (${ADBLOCK_LEVEL:-lite})"
+  # 必须走 effective：面板的开关写在 adblock.json 里，只看 config.env 会在
+  # 面板关掉之后仍报 on，用户以为没生效又去点一遍。
+  local adblock_state="${ADBLOCK_ENABLED:-true} ${ADBLOCK_LEVEL:-lite}"
+  if command -v adblock_effective_state >/dev/null 2>&1; then
+    adblock_state="$(adblock_effective_state)"
+  fi
+  if adblock_value_is_on "${adblock_state%% *}"; then
+    echo "去广告：on (${adblock_state##* })"
   else
     echo "去广告：off"
   fi
