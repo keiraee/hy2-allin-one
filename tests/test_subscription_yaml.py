@@ -5,6 +5,11 @@ import unittest
 import urllib.parse
 from pathlib import Path
 
+try:
+    import yaml
+except ImportError:  # 未装 PyYAML 时相关用例自行 skipTest
+    yaml = None
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -174,6 +179,24 @@ class AdblockRuleTests(unittest.TestCase):
         self.assertIn("behavior: classical", text)
         self.assertIn("ACL4SSR/ACL4SSR/master/Clash/BanAD.list", text)
         self.assertIn("- RULE-SET,adblock,REJECT", text)
+
+    def test_lite_ruleset_declares_text_format(self):
+        """BanAD.list 是纯文本；标成 yaml 内核会按 payload: 解析出 0 条，去广告静默失效。"""
+        if yaml is None:
+            self.skipTest("未安装 PyYAML")
+        provider = yaml.safe_load(self.text())["rule-providers"]["adblock"]
+        self.assertEqual("text", provider["format"])
+        self.assertTrue(str(provider["path"]).endswith(".list"))
+
+    def test_levels_use_separate_cache_files(self):
+        """两档同用一个缓存路径，切档后内核会拿上一档的残留文件解析出新格式的 0 条。"""
+        if yaml is None:
+            self.skipTest("未安装 PyYAML")
+        lite = yaml.safe_load(self.text())["rule-providers"]["adblock"]
+        full = yaml.safe_load(self.text(ADBLOCK_LEVEL="full"))["rule-providers"]["adblock"]
+        self.assertNotEqual(lite["path"], full["path"])
+        self.assertEqual("text", lite["format"])
+        self.assertEqual("yaml", full["format"])
 
     def test_can_be_disabled(self):
         text = self.text(ADBLOCK_ENABLED="false")

@@ -39,6 +39,9 @@ ENV_FILE = Path("/etc/hy2-aio/config.env")
 USERS_FILE = Path("/etc/hy2-aio/users.json")
 USER_MUTATION_LOCK = Path("/etc/hy2-aio/.users.lock")
 MODE_FILE = Path("/etc/hy2-aio/client-mode.json")
+# 去广告开关落在单独文件里：config.env 是 root:hy2-aio 0640，面板用户只读得动、
+# 写不了；这里照 client-mode.json 的先例给 hy2-aio 属主，面板才能自己改。
+ADBLOCK_FILE = Path("/etc/hy2-aio/adblock.json")
 HYSTERIA_CONFIG = Path("/etc/hysteria/config.yaml")
 STATE_DIR = Path("/var/lib/hy2-aio")
 STATE_FILE = STATE_DIR / "state.json"
@@ -61,6 +64,7 @@ BACKUP_REQUIRED_MEMBERS = (
 BACKUP_OPTIONAL = (
     "etc/caddy/hy2-aio.caddy",
     "etc/hy2-aio/hy2.off",
+    "etc/hy2-aio/adblock.json",
     "etc/systemd/system/hysteria-server.service.d/hy2-switch.conf",
     "usr/local/lib/hy2-aio/hysteria-control.sh",
     "usr/local/lib/hy2-aio/xray-control.sh",
@@ -407,16 +411,33 @@ def obfs_enabled(env: dict[str, str]) -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
-def adblock_enabled(env: dict[str, str]) -> bool:
-    """去广告规则集开关，默认开启（装了就是为去广告，不想要再关）。"""
-    raw = str(env.get("ADBLOCK_ENABLED", "true")).strip().lower()
+def truthy(value: Any, default: bool) -> bool:
+    raw = str(value if value is not None else ("true" if default else "false")).strip().lower()
     return raw in ("1", "true", "yes", "on")
+
+
+def load_adblock_settings() -> dict[str, Any]:
+    """面板写下的覆盖值；文件缺失/损坏就当没设过，回落 config.env。"""
+    data = read_json(ADBLOCK_FILE, {})
+    return data if isinstance(data, dict) else {}
+
+
+def adblock_enabled(env: dict[str, str]) -> bool:
+    """去广告规则集开关，默认开启（装了就是为去广告，不想要再关）。
+
+    优先级：面板覆盖文件 > config.env，这样面板和 `hy2 adblock on|off` 不会互相打架。
+    """
+    stored = load_adblock_settings()
+    if "enabled" in stored:
+        return truthy(stored.get("enabled"), True)
+    return truthy(env.get("ADBLOCK_ENABLED", "true"), True)
 
 
 def adblock_level(env: dict[str, str]) -> str:
     """lite=ACL4SSR BanAD 轻量版（默认，移动端友好）；full=blackmatrix7 全量 11MB。"""
-    raw = str(env.get("ADBLOCK_LEVEL", "lite")).strip().lower()
-    return "full" if raw == "full" else "lite"
+    stored = load_adblock_settings()
+    raw = stored.get("level") if "level" in stored else env.get("ADBLOCK_LEVEL", "lite")
+    return "full" if str(raw or "").strip().lower() == "full" else "lite"
 
 
 def public_base_url(env: dict[str, str]) -> str:
@@ -614,12 +635,17 @@ def subscription_yaml(
     adblock_provider = ""
     adblock_rule = ""
     if adblock_enabled(env):
+        # format 必须跟源文件真实格式一致：BanAD.list 是纯文本规则列表，
+        # 标成 yaml 会让内核按 payload: 解析，解析出 0 条、去广告静默失效。
+        # 两档也各用各的缓存文件，否则切档后内核会拿上一档的残留文件去解析。
         if adblock_level(env) == "full":
             ad_url = (
                 "https://testingcf.jsdelivr.net/gh/blackmatrix7/ios_rule_script"
                 "@master/rule/Clash/Advertising/Advertising_Classical.yaml"
             )
             ad_interval = 604800  # 11MB，一周拉一次足够
+            ad_format = "yaml"
+            ad_path = "./ruleset/adblock-full.yaml"
             ad_note = "blackmatrix7 完整版，约 29 万条 / 11MB，仅建议桌面端"
         else:
             ad_url = (
@@ -627,13 +653,15 @@ def subscription_yaml(
                 "/master/Clash/BanAD.list"
             )
             ad_interval = 86400
+            ad_format = "text"
+            ad_path = "./ruleset/adblock-lite.list"
             ad_note = "ACL4SSR BanAD，约 600 条，移动端友好"
         adblock_provider = (
             "  adblock:\n"
             "    type: http\n"
             "    behavior: classical\n"
-            "    format: yaml\n"
-            "    path: ./ruleset/adblock.yaml\n"
+            f"    format: {ad_format}\n"
+            f"    path: {ad_path}\n"
             f"    interval: {ad_interval}\n"
             f"    url: {ad_url}\n"
         )
@@ -930,6 +958,10 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
                     "Caddy": service_status("caddy.service"),
                 },
                 "hy2_enabled": hy2_enabled,
+                "adblock": {
+                    "enabled": adblock_enabled(env),
+                    "level": adblock_level(env),
+                },
                 "traffic": {
                     "rx": int(network["rx"]),
                     "tx": int(network["tx"]),
@@ -1282,6 +1314,36 @@ def hy2_turn_on() -> dict[str, Any]:
         raise
     request_hysteria("restart")
     return collect()
+
+
+ADBLOCK_LEVELS = ("lite", "full")
+
+
+def save_adblock_settings(enabled: Optional[bool], level: Optional[str]) -> dict[str, Any]:
+    """落盘去广告开关；只覆盖传进来的字段，其余保留。
+
+    只写订阅内容，服务端 Hysteria/Xray 配置不受影响，所以不重启任何服务，
+    面板改完客户端拉一次订阅即可。
+    """
+    stored = load_adblock_settings()
+    if enabled is not None:
+        stored["enabled"] = bool(enabled)
+    if level is not None:
+        normalized = str(level).strip().lower()
+        if normalized not in ADBLOCK_LEVELS:
+            raise ValueError("规则集只能是 lite 或 full")
+        stored["level"] = normalized
+    stored["updated_at"] = iso_now()
+    atomic_json(ADBLOCK_FILE, stored)
+    try:
+        os.chmod(ADBLOCK_FILE, 0o640)
+    except OSError:
+        pass
+    try:
+        env = load_env()
+    except Exception:
+        env = {}
+    return {"enabled": adblock_enabled(env), "level": adblock_level(env)}
 
 
 USERNAME_PATTERN = re.compile(r"[A-Za-z0-9_-]{1,32}")
@@ -2194,6 +2256,14 @@ def publish_users_to_panel(users: dict[str, Any], timestamp: str) -> None:
         server = {}
         data["server"] = server
     server["hy2_enabled"] = not hy2_is_off()
+    try:
+        adblock_env = load_env()
+    except Exception:
+        adblock_env = {}
+    server["adblock"] = {
+        "enabled": adblock_enabled(adblock_env),
+        "level": adblock_level(adblock_env),
+    }
     summary = data.get("summary")
     if not isinstance(summary, dict):
         summary = {}
@@ -2802,6 +2872,20 @@ class Handler(BaseHTTPRequestHandler):
                         "generated_at": data["generated_at"],
                     },
                 )
+                return
+            if path == "/adblock":
+                payload = self.read_body()
+                enabled = payload.get("enabled")
+                level = payload.get("level")
+                if enabled is not None and not isinstance(enabled, bool):
+                    self.send_json(400, {"ok": False, "error": "enabled 必须是布尔值"})
+                    return
+                try:
+                    settings = save_adblock_settings(enabled, level)
+                except ValueError as error:
+                    self.send_json(400, {"ok": False, "error": str(error)})
+                    return
+                self.send_json(200, {"ok": True, "adblock": settings})
                 return
             if path == "/sync":
                 data = collect()

@@ -1,4 +1,6 @@
+import collections
 import os
+import re
 import subprocess
 import unittest
 from pathlib import Path
@@ -47,6 +49,19 @@ class RollbackGuardTests(unittest.TestCase):
         )
         # 过了交互护栏后应继续走查找快照流程（此处无快照而失败），stderr 不含“交互”。
         self.assertNotIn("交互", result.stderr)
+
+
+class MenuNumberingTests(unittest.TestCase):
+    def test_each_menu_number_maps_to_exactly_one_action(self):
+        """菜单是 case 分派；两处同号时 bash 静默取靠前的那个，后一个功能点了没反应。"""
+        text = (ROOT / "lib" / "cli.sh").read_text(encoding="utf-8")
+        body = text[text.index("menu_interactive() {"):]
+        body = body[: body.index("\n  done\n}")]
+        numbers = re.findall(r"^\s{6}(\d+)\)", body, re.MULTILINE)
+        duplicated = [n for n, count in collections.Counter(numbers).items() if count > 1]
+        self.assertEqual([], duplicated, f"菜单项编号冲突：{duplicated}")
+        listed = re.findall(r'^\s{2}(\d+)\)', text[text.index("show_menu() {"):text.index("menu_interactive() {")], re.MULTILINE)
+        self.assertEqual([], [n for n in listed if n not in numbers], f"菜单列出但无分派：{listed}")
 
 
 class LogsGuardTests(unittest.TestCase):

@@ -524,7 +524,7 @@ EOF
   echo "── 功能 ──────────────────────────"
   echo " 13) 速率模式"
   echo " 14) 混淆开关（obfs）"
-  echo " 25) 去广告开关（adblock）"
+  echo " 26) 去广告开关（adblock）"
   echo " 15) 同步数据"
   echo " 16) 备份"
   echo " 17) 回滚最近快照"
@@ -544,7 +544,7 @@ menu_interactive() {
   refresh_update_hint
   while true; do
     show_menu
-    read -r -p "请选择 [1-25/99]: " choice
+    read -r -p "请选择 [1-26/99]: " choice
     case "$choice" in
       1)  menu_upgrade ;;
       2)  menu_call repair_cmd ;;
@@ -583,7 +583,7 @@ menu_interactive() {
           *) echo "无效选择" ;;
         esac
         ;;
-      25)
+      26)
         echo "0) 查看状态  1) 开启去广告  2) 关闭去广告  3) 切换规则集 lite/full"
         read -r -p "请选择 [0-3]: " ad_choice
         case "$ad_choice" in

@@ -120,6 +120,7 @@ tr.disabled td{opacity:.55}
 .stack{display:flex;flex-direction:column;gap:8px}
 .input{border:1px solid var(--line);border-radius:4px;padding:8px 10px;width:100%;background:var(--surface);font-family:var(--mono)}
 .input:focus{outline:none;border-color:var(--text)}
+.select-inline{width:auto;flex:0 0 auto;padding:6px 8px;font-size:12px}
 .hint{font-size:12px;color:var(--muted);line-height:1.45;margin:0}
 .toast{position:fixed;right:16px;bottom:16px;background:var(--text);color:var(--bg);padding:10px 14px;
   border-radius:var(--radius);opacity:0;pointer-events:none;transition:opacity .2s;z-index:100;max-width:320px;font-size:13px}
@@ -340,6 +341,19 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
         <button id="hy2Toggle" class="btn" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-power"/></svg>关闭 HY2</button>
       </div>
       <div id="services" class="pills"></div>
+    </section>
+    <section class="section">
+      <div class="section-h">
+        <h2><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-activity"/></svg>订阅去广告</h2>
+        <div class="pills">
+          <button id="adblockToggle" class="btn" type="button">关闭去广告</button>
+          <select id="adblockLevel" class="input select-inline" aria-label="去广告规则集">
+            <option value="lite">lite · 约 600 条</option>
+            <option value="full">full · 约 29 万条</option>
+          </select>
+        </div>
+      </div>
+      <p id="adblockHint" class="hint">--</p>
     </section>
     <section class="section">
       <div class="section-h">
@@ -1543,6 +1557,45 @@ async function toggleHy2(){
     }catch(error){toast("操作失败："+error.message)}
   },enabled?"正在关闭 HY2…":"正在开启 HY2…");
 }
+function renderAdblock(state){
+  const enabled=state.enabled!==false;
+  window.__adblockEnabled=enabled;
+  const toggle=$("adblockToggle"),select=$("adblockLevel"),hint=$("adblockHint");
+  if(toggle){
+    toggle.textContent=enabled?"关闭去广告":"开启去广告";
+    toggle.classList.toggle("bad",enabled);
+    toggle.disabled=false;
+  }
+  if(select){
+    select.value=state.level==="full"?"full":"lite";
+    select.disabled=false;
+  }
+  if(hint){
+    hint.textContent=enabled
+      ? "订阅里注入 RULE-SET,adblock,REJECT（排在 china-domain 之前）。当前 "+(state.level==="full"?"full · 约 29 万条 / 11MB，建议桌面端":"lite · ACL4SSR BanAD 约 600 条，移动端友好")+"。改完客户端要更新订阅。"
+      : "去广告已关闭，订阅里不再包含 adblock 规则。改完客户端要更新订阅。";
+  }
+}
+async function toggleAdblock(){
+  const enabled=window.__adblockEnabled!==false;
+  await runMutate($("adblockToggle"),async()=>{
+    try{
+      await apiPost("api/adblock",{enabled:!enabled});
+      toast(enabled?"去广告已关闭":"去广告已开启");
+      await load();
+    }catch(error){toast("操作失败："+error.message)}
+  },enabled?"正在关闭去广告…":"正在开启去广告…");
+}
+async function changeAdblockLevel(event){
+  const level=event.target.value;
+  await runMutate(null,async()=>{
+    try{
+      await apiPost("api/adblock",{level});
+      toast("去广告规则集已切到 "+level);
+      await load();
+    }catch(error){toast("操作失败："+error.message)}
+  },level==="full"?"正在切换到完整规则集（约 29 万条）…":"正在切换到轻量规则集…");
+}
 function menuItem(text,handler,bad){
   return el("button",{type:"button",className:bad?"bad":"",text,onclick:handler});
 }
@@ -1635,6 +1688,7 @@ async function load(){
       setBtnIcon(toggle,"power",hy2On?"关闭 HY2":"开启 HY2");
       toggle.classList.toggle("bad",hy2On);
     }
+    renderAdblock(data.server.adblock||{});
     renderUsers(data.users);
     $("errorText").textContent=(data.errors||[]).join("；");
     const errorText=$("errorText").textContent;
@@ -1647,6 +1701,8 @@ async function load(){
 }
 
 $("hy2Toggle").onclick=toggleHy2;
+$("adblockToggle").onclick=toggleAdblock;
+$("adblockLevel").onchange=changeAdblockLevel;
 $("syncBtn").onclick=syncNow;
 $("themeBtn").onclick=()=>applyTheme(currentTheme()==="dark"?"light":"dark");
 $("drawerSync").onclick=()=>{setDrawer(false);syncNow()};

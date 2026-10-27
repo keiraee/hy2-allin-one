@@ -116,10 +116,12 @@ sudo hy2 uninstall           # 完全卸载（服务、组件、配置、数据�
 sudo hy2 repair              # 修复/升级
 sudo hy2 obfs show           # 查看混淆状态
 sudo hy2 obfs on|off         # 开启/关闭混淆（服务端+订阅+直链同步）
-sudo hy2 adblock show        # 查看去广告状态
+sudo hy2 adblock show        # 查看去广告状态（同面板「订阅去广告」）
 sudo hy2 adblock on|off      # 开启/关闭订阅里的去广告规则
 sudo hy2 adblock level lite|full  # 切换规则集（lite 约600条 / full 约29万条11MB）
 ```
+
+去广告也能直接在面板首页「订阅去广告」里开关和切档位，不用记命令。面板的设置存在 `adblock.json`，优先级高于 `config.env`；用 `hy2 adblock` 改会清掉这份覆盖。两处改完都只需客户端更新订阅，不重启任何服务。
 
 ## 无人值守安装
 
@@ -198,8 +200,12 @@ hy2-allin-one/
 ### 未发布
 - Clash 订阅支持去广告规则集，默认开启：`RULE-SET,adblock,REJECT` 排在 `china-domain` 之前
 - 两档规则源：`lite`（ACL4SSR BanAD，约 600 条，默认）/ `full`（blackmatrix7，约 29 万条 / 11MB）
-- 新命令：`hy2 adblock show|on|off`、`hy2 adblock level lite|full`；菜单 25 项；`hy2 status` 显示开关状态
+- 新命令：`hy2 adblock show|on|off`、`hy2 adblock level lite|full`；菜单 26 项；`hy2 status` 显示开关状态
 - 环境变量：`ADBLOCK_ENABLED`（默认 `true`）、`ADBLOCK_LEVEL`（默认 `lite`）
+- 面板新增「订阅去广告」开关和规则集下拉，不用再走命令行；面板设置存 `adblock.json`，优先于 `config.env`，命令行改动会清掉该覆盖
+- 修复：`lite` 档误标 `format: yaml`，内核按 YAML 解析纯文本列表得到 **0 条**、去广告静默失效；现为 `format: text`
+- 修复：两档曾共用缓存文件 `ruleset/adblock.yaml`，切档后会先吃到上一档残留；现各用 `adblock-lite.list` / `adblock-full.yaml`
+- 修复：菜单 `25` 同时分派「去广告」和「重新申请证书」，`case` 只命中靠前者导致证书入口失效；去广告改为 `26`
 
 ### v1.7.3
 - 修复 v1.7.2 卸载重装后 Hysteria 起不来（`Failed at step CHDIR`）：官方安装脚本的服务单元用 `WorkingDirectory=~`（hysteria 用户家目录），v1.7.2 把用户创建提前后家目录变成 `/nonexistent`；现统一为 `/var/lib/hysteria`，安装与 repair 自动改回坏家目录并补目录，已中招机器升级即修复、无需重装
