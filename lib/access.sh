@@ -3,10 +3,10 @@
 
 write_access_file() {
   read_env
-  python3 - "$ENV_FILE" "$USERS_FILE" "$MODE_FILE" "$ACCESS_FILE" <<'PY'
+  python3 - "$ENV_FILE" "$USERS_FILE" "$MODE_FILE" "$ACCESS_FILE" "${WEB_DIR}/data.json" <<'PY'
 import json, pathlib, sys, urllib.parse
 
-env_file, users_file, mode_file, out_file = map(pathlib.Path, sys.argv[1:])
+env_file, users_file, mode_file, out_file, data_file = map(pathlib.Path, sys.argv[1:])
 env = {}
 for raw in env_file.read_text(encoding="utf-8").splitlines():
     raw = raw.strip()
@@ -15,6 +15,26 @@ for raw in env_file.read_text(encoding="utf-8").splitlines():
         env[key] = value
 
 users = json.loads(users_file.read_text(encoding="utf-8"))
+
+
+def node_flag() -> str:
+    # 节点名的国旗必须和面板/订阅里的一模一样（面板走 backend 的 direct_links）。
+    # 后端把解析好的归属地写在 data.json 的 server.country_code 上，这里只读结果：
+    # hy2 show 是高频命令，不能为个国旗让它自己去挨 3×5 秒的网络超时。
+    code = str(env.get("COUNTRY_CODE") or "").strip().upper()
+    if not code:
+        try:
+            data = json.loads(data_file.read_text(encoding="utf-8"))
+            code = str(data["server"]["country_code"] or "")
+        except Exception:
+            code = ""
+    code = code.strip().upper()
+    if len(code) != 2 or not code.isalpha():
+        return ""
+    return "".join(chr(127397 + ord(char)) for char in code) + " "
+
+
+FLAG = node_flag()
 
 
 def is_disabled(info):
@@ -100,7 +120,7 @@ for username, info in sorted(users.items()):
     if insecure:
         query_items["insecure"] = "1"
     query = urllib.parse.urlencode(query_items)
-    node = urllib.parse.quote(f"HY2-{username}", safe="")
+    node = urllib.parse.quote(f"{FLAG}HY2-{username}", safe="")
     direct = f"hysteria2://{auth}@{env['PUBLIC_IP']}:{env.get('HY2_PORT', '443')}/?{query}#{node}"
     xray_port = str(env.get("XRAY_PORT") or "").strip()
     if not xray_port:
@@ -132,7 +152,7 @@ for username, info in sorted(users.items()):
                 "type": "tcp",
             }
         )
-        vless_name = urllib.parse.quote("hy2超时备用临时节点", safe="")
+        vless_name = urllib.parse.quote(f"{FLAG}hy2超时备用临时节点", safe="")
         vless = f"vless://{vless_id}@{env['PUBLIC_IP']}:{xray_port}?{vless_query}#{vless_name}"
     access_lines = [
         f"【{username}】",

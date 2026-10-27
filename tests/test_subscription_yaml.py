@@ -1,5 +1,6 @@
 import io
 import json
+import sys
 import tempfile
 import unittest
 import urllib.parse
@@ -421,6 +422,80 @@ class SubscriptionFlagTests(unittest.TestCase):
         ).decode("utf-8")
         self.assertIn('"HY2-alice"', text)
         self.assertIn('"hy2超时备用临时节点"', text)
+
+
+class AccessFileFlagTests(unittest.TestCase):
+    """访问资料文件里的节点名必须和面板/订阅一模一样（hy2 show 直接打印它）。"""
+
+    def render_access(self, extra_env="", data_json=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            env_file = root / "config.env"
+            users_file = root / "users.json"
+            mode_file = root / "client-mode.json"
+            out_file = root / "access.txt"
+            data_file = root / "data.json"
+            env_file.write_text(
+                "DOMAIN=panel.example.com\nPANEL_PORT=443\nPANEL_PATH=p\n"
+                "PANEL_USER=admin\nPANEL_PASS=secret\nAIO_VERSION=9.9.9\n"
+                "PUBLIC_IP=203.0.113.10\nHY2_PORT=8443\nSNI=www.amazon.sg\n"
+                "OBFS_ENABLED=false\nTOTAL_BYTES=0\n"
+                "REALITY_PUBLIC_KEY=public-key-fixture\nREALITY_SHORT_ID=abcd1234\n"
+                "REALITY_DEST=www.cloudflare.com:443\n"
+                "REALITY_SERVER_NAMES=www.cloudflare.com\n" + extra_env,
+                encoding="utf-8",
+            )
+            users_file.write_text(
+                json.dumps(
+                    {
+                        "alice": {
+                            "password": "pw",
+                            "token": "tok",
+                            "disabled": False,
+                            "vless_id": "11111111-2222-4333-8444-555555555555",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            mode_file.write_text("{}", encoding="utf-8")
+            if data_json is not None:
+                data_file.write_text(data_json, encoding="utf-8")
+            source = (ROOT / "lib" / "access.sh").read_text(encoding="utf-8")
+            start = source.index("<<'PY'\n") + len("<<'PY'\n")
+            body = source[start : source.index("\nPY\n", start)]
+            argv = sys.argv
+            argv_list = [
+                "access",
+                str(env_file),
+                str(users_file),
+                str(mode_file),
+                str(out_file),
+                str(data_file),
+            ]
+            sys.argv = argv_list
+            try:
+                exec(compile(body, "access.py", "exec"), {"__name__": "access_test"})
+            finally:
+                sys.argv = argv
+            return out_file.read_text(encoding="utf-8")
+
+    def test_flag_comes_from_backend_resolved_country(self):
+        text = self.render_access(data_json='{"server": {"country_code": "SG"}}')
+        self.assertIn("#" + urllib.parse.quote("🇸🇬 HY2-alice", safe=""), text)
+        self.assertIn("#" + urllib.parse.quote("🇸🇬 hy2超时备用临时节点", safe=""), text)
+
+    def test_no_country_keeps_original_names(self):
+        for data_json in (None, "{}", '{"server": {}}', "{not json"):
+            text = self.render_access(data_json=data_json)
+            self.assertIn("#" + urllib.parse.quote("HY2-alice", safe=""), text)
+            self.assertNotIn("🇸🇬", text)
+
+    def test_config_env_override_wins(self):
+        text = self.render_access(
+            extra_env="COUNTRY_CODE=us\n", data_json='{"server": {"country_code": "SG"}}'
+        )
+        self.assertIn("#" + urllib.parse.quote("🇺🇸 HY2-alice", safe=""), text)
 
 
 if __name__ == "__main__":

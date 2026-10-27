@@ -111,6 +111,7 @@ class AccessUnlimitedDisplayTests(unittest.TestCase):
             users_file = root / "users.json"
             mode_file = root / "client-mode.json"
             out_file = root / "access.txt"
+            data_file = root / "data.json"
             env_file.write_text(
                 "DOMAIN=panel.example.com\nPANEL_PORT=443\nPUBLIC_IP=203.0.113.1\n"
                 "HY2_PORT=8443\nSNI=www.amazon.sg\nOBFS_ENABLED=false\n"
@@ -124,7 +125,7 @@ class AccessUnlimitedDisplayTests(unittest.TestCase):
             )
             mode_file.write_text("{}", encoding="utf-8")
             argv = sys.argv
-            sys.argv = ["access", str(env_file), str(users_file), str(mode_file), str(out_file)]
+            sys.argv = ["access", str(env_file), str(users_file), str(mode_file), str(out_file), str(data_file)]
             try:
                 exec(compile(load_access_source(), "access.py", "exec"), {"__name__": "access_test"})
             finally:
