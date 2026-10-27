@@ -116,6 +116,9 @@ sudo hy2 uninstall           # 完全卸载（服务、组件、配置、数据�
 sudo hy2 repair              # 修复/升级
 sudo hy2 obfs show           # 查看混淆状态
 sudo hy2 obfs on|off         # 开启/关闭混淆（服务端+订阅+直链同步）
+sudo hy2 adblock show        # 查看去广告状态
+sudo hy2 adblock on|off      # 开启/关闭订阅里的去广告规则
+sudo hy2 adblock level lite|full  # 切换规则集（lite 约600条 / full 约29万条11MB）
 ```
 
 ## 无人值守安装
@@ -141,6 +144,8 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_PANEL_PATH` | 面板路径 | 随机生成 |
 | `HY2_SNI` | 客户端 SNI | www.amazon.sg |
 | `HY2_OBFS` | Salamander 混淆 `0/1` | `1`（开） |
+| `ADBLOCK_ENABLED` | 订阅注入去广告规则 `true/false` | `true`（开） |
+| `ADBLOCK_LEVEL` | 去广告规则集 `lite/full` | `lite`（ACL4SSR BanAD） |
 | `HY2_PORT` | Hysteria UDP 端口 | 安装向导默认 `8443` |
 | `XRAY_PORT` | VLESS+Reality TCP 端口 | 默认与 `HY2_PORT` 相同 |
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
@@ -180,6 +185,7 @@ hy2-allin-one/
 - **VLESS+Reality** 用官方 [Xray-core](https://github.com/XTLS/Xray-core)（Vision），伪装站固定 `www.cloudflare.com:443`。默认与 HY2 同端口号：HY2 走 UDP，VLESS 走 TCP。`hy2 off` 只关 Hysteria，Xray 继续跑。
 - **复制直链**一次给出两行：`hysteria2://` 和 `vless://`。
 - **混淆默认开启**；不稳时可 `sudo hy2 obfs off` 后让客户端更新订阅（关闭的是伪装，不是加密）。
+- **去广告默认开启**：订阅里注入 `RULE-SET,adblock,REJECT`，排在 `china-domain` 之前（否则国内 CDN 上的广告域名会先被判直连）。默认 `lite` 档用 ACL4SSR BanAD（约 600 条，移动端友好）；`sudo hy2 adblock level full` 换成 blackmatrix7 完整版（约 29 万条 / 11MB，仅建议桌面端）；不要就 `sudo hy2 adblock off`。改完都需客户端更新订阅。
 - **安装向导**默认代理 UDP `8443`（云上比 443 更稳）；仍可改成 `443`。
 - **整机流量**：面板顶部为网卡计数，尽量对齐云厂商套餐；Clash 订阅进度与此同源。
 - **用户流量**：用户表为 HY2 代理分摊参考，各用户之和通常小于整机。
@@ -188,6 +194,12 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### 未发布
+- Clash 订阅支持去广告规则集，默认开启：`RULE-SET,adblock,REJECT` 排在 `china-domain` 之前
+- 两档规则源：`lite`（ACL4SSR BanAD，约 600 条，默认）/ `full`（blackmatrix7，约 29 万条 / 11MB）
+- 新命令：`hy2 adblock show|on|off`、`hy2 adblock level lite|full`；菜单 25 项；`hy2 status` 显示开关状态
+- 环境变量：`ADBLOCK_ENABLED`（默认 `true`）、`ADBLOCK_LEVEL`（默认 `lite`）
 
 ### v1.7.3
 - 修复 v1.7.2 卸载重装后 Hysteria 起不来（`Failed at step CHDIR`）：官方安装脚本的服务单元用 `WorkingDirectory=~`（hysteria 用户家目录），v1.7.2 把用户创建提前后家目录变成 `/nonexistent`；现统一为 `/var/lib/hysteria`，安装与 repair 自动改回坏家目录并补目录，已中招机器升级即修复、无需重装

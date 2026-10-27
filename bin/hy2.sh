@@ -185,6 +185,9 @@ HY2 AIO v${AIO_VERSION}
   hy2 uninstall           # 完全卸载（服务、组件、配置、数据全清，可直接重装）
   hy2 obfs show           # 查看混淆状态
   hy2 obfs on|off         # 开启/关闭 Salamander 混淆
+  hy2 adblock show        # 查看去广告状态
+  hy2 adblock on|off      # 开启/关闭订阅里的去广告规则
+  hy2 adblock level lite|full  # 切换规则集（lite 约600条 / full 约29万条 11MB）
   hy2 help|-h|--help|-help
 EOF
 }
@@ -218,6 +221,7 @@ case "$command" in
   update-xray) update_xray_cmd ;;
   uninstall)  uninstall_cmd ;;
   obfs)       obfs_cmd "${2:-show}" ;;
+  adblock)    adblock_cmd "${2:-show}" "${3:-}" ;;
   help|-h|--help|-help) usage ;;
   *)          usage; exit 1 ;;
 esac

@@ -774,6 +774,15 @@ obfs_is_enabled() {
   esac
 }
 
+adblock_is_enabled() {
+  local raw
+  raw="$(printf '%s' "${ADBLOCK_ENABLED:-true}" | tr '[:upper:]' '[:lower:]')"
+  case "$raw" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 set_config_env_var() {
   local key="$1" value="$2"
   python3 - "$ENV_FILE" "$key" "$value" <<'PY'
@@ -844,6 +853,51 @@ obfs_cmd() {
       ;;
     *)
       die "用法：hy2 obfs on|off|show"
+      ;;
+  esac
+}
+
+adblock_cmd() {
+  need_root adblock
+  read_env
+  local action="${1:-show}" level="${2:-}"
+  case "$action" in
+    show|status|"")
+      if adblock_is_enabled; then
+        echo "adblock: on"
+        echo "规则集：${ADBLOCK_LEVEL:-lite}（lite=ACL4SSR BanAD 约 600 条 / full=blackmatrix7 约 29 万条 11MB）"
+        echo "位置：RULE-SET,adblock,REJECT 排在 china-domain 之前"
+      else
+        echo "adblock: off"
+      fi
+      ;;
+    on|enable)
+      set_config_env_var ADBLOCK_ENABLED true
+      export ADBLOCK_ENABLED=true
+      apply_hysteria_client_settings
+      log "已开启去广告规则；请客户端更新订阅"
+      ;;
+    off|disable)
+      set_config_env_var ADBLOCK_ENABLED false
+      export ADBLOCK_ENABLED=false
+      apply_hysteria_client_settings
+      log "已关闭去广告规则；请客户端更新订阅"
+      ;;
+    level)
+      case "$level" in
+        lite|full)
+          set_config_env_var ADBLOCK_LEVEL "$level"
+          export ADBLOCK_LEVEL="$level"
+          apply_hysteria_client_settings
+          log "去广告规则集已切换为 ${level}；请客户端更新订阅"
+          ;;
+        *)
+          die "用法：hy2 adblock level lite|full"
+          ;;
+      esac
+      ;;
+    *)
+      die "用法：hy2 adblock on|off|show|level lite|full"
       ;;
   esac
 }

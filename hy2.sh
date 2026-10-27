@@ -833,6 +833,7 @@ main() {
     update-xray) update_xray_cmd ;;
     uninstall)  uninstall_cmd ;;
     obfs)       obfs_cmd "${2:-show}" ;;
+    adblock)    adblock_cmd "${2:-show}" "${3:-}" ;;
     help|-h|--help|-help) usage ;;
     *)          usage; exit 1 ;;
   esac
