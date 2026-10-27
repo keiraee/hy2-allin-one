@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -175,6 +176,21 @@ class CliOverrideTests(unittest.TestCase):
         for branch in ("on|enable)", "off|disable)", "lite|full)"):
             self.assertIn(branch, body)
         self.assertEqual(3, body.count("adblock_clear_panel_override\n"))
+
+    def test_cli_adblock_does_not_restart_services(self):
+        """去广告只改订阅内容（订阅由后端按请求现生成），重启 Hysteria 会踢掉全部在线用户。"""
+        config = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
+        body = config[config.index("adblock_cmd() {"):]
+        body = body[: body.index("\n}\n")]
+        self.assertNotIn("apply_hysteria_client_settings", body)
+        self.assertEqual(3, body.count("adblock_refresh\n"))
+        helper = config[config.index("adblock_refresh() {"):]
+        helper = helper[: helper.index("\n}\n")]
+        # 只认真正的调用行；注释里提到函数名不算
+        self.assertIsNone(
+            re.search(r"^\s*apply_hysteria_client_settings\s*$", helper, re.MULTILINE)
+        )
+        self.assertNotIn("systemctl", helper)
 
 
 if __name__ == "__main__":

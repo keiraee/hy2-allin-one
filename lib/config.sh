@@ -890,6 +890,13 @@ print(f"{enabled} {level}")
 PY
 }
 
+adblock_refresh() {
+  # 去广告只影响订阅内容（订阅是后端按请求现生成的），Hysteria 服务端配置一个字都不变。
+  # 所以这里绝不能走 apply_hysteria_client_settings：那会重建配置并 restart，把在线用户全踢下线。
+  # 只需要让面板的 data.json 立刻反映新状态（否则面板要等下一次 60 秒轮询）。
+  api_post sync >/dev/null || true
+}
+
 adblock_cmd() {
   need_root adblock
   read_env
@@ -912,14 +919,14 @@ adblock_cmd() {
       adblock_clear_panel_override
       set_config_env_var ADBLOCK_ENABLED true
       export ADBLOCK_ENABLED=true
-      apply_hysteria_client_settings
+      adblock_refresh
       log "已开启去广告规则；请客户端更新订阅"
       ;;
     off|disable)
       adblock_clear_panel_override
       set_config_env_var ADBLOCK_ENABLED false
       export ADBLOCK_ENABLED=false
-      apply_hysteria_client_settings
+      adblock_refresh
       log "已关闭去广告规则；请客户端更新订阅"
       ;;
     level)
@@ -928,7 +935,7 @@ adblock_cmd() {
           adblock_clear_panel_override
           set_config_env_var ADBLOCK_LEVEL "$level"
           export ADBLOCK_LEVEL="$level"
-          apply_hysteria_client_settings
+          adblock_refresh
           log "去广告规则集已切换为 ${level}；请客户端更新订阅"
           ;;
         *)
