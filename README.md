@@ -206,6 +206,12 @@ hy2-allin-one/
 - 修复：`lite` 档误标 `format: yaml`，内核按 YAML 解析纯文本列表得到 **0 条**、去广告静默失效；现为 `format: text`
 - 修复：两档曾共用缓存文件 `ruleset/adblock.yaml`，切档后会先吃到上一档残留；现各用 `adblock-lite.list` / `adblock-full.yaml`
 - 修复：菜单 `25` 同时分派「去广告」和「重新申请证书」，`case` 只命中靠前者导致证书入口失效；去广告改为 `26`
+- 修复：面板切去广告后没刷新 `data.json`，页面读到最多 60 秒前的旧值，把刚切好的开关又掰回去；`POST /adblock` 现当场重采一次
+- 修复：`hy2 adblock on|off|level` 误走 `apply_hysteria_client_settings`，会重建服务端配置并重启 Hysteria，把在线用户全踢下线；去广告只改订阅内容，现不再重启任何服务
+- 修复：`hy2 status` 的去广告行只读 `config.env`，面板关掉后仍显示 `on`；现走面板覆盖优先的最终状态
+- 修复：`lite` 档规则源走 `raw.githubusercontent.com`，国内客户端拉不动就是静默没有去广告；改走 jsdelivr 镜像（实测内容逐字节相同）
+- 修复：归属地查询失败被永久缓存，一次网络抖动就让国旗一直不出现（只能重启后端恢复）；现失败结果只记 1 小时
+- 修复：国旗只加在面板和订阅上，`hy2 show` 与 `/root/hy2-aio-access.txt` 里的节点名还是旧的，同一节点显示两个名字；归属地现由后端落进 `data.json` 供 CLI 复用
 
 ### v1.7.3
 - 修复 v1.7.2 卸载重装后 Hysteria 起不来（`Failed at step CHDIR`）：官方安装脚本的服务单元用 `WorkingDirectory=~`（hysteria 用户家目录），v1.7.2 把用户创建提前后家目录变成 `/nonexistent`；现统一为 `/var/lib/hysteria`，安装与 repair 自动改回坏家目录并补目录，已中招机器升级即修复、无需重装
