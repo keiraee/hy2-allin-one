@@ -76,6 +76,22 @@ class AdblockApiRouteTests(unittest.TestCase):
         self.settings = Path(self.temporary.name) / "adblock.json"
         self.namespace["ADBLOCK_FILE"] = self.settings
         self.namespace["load_env"] = lambda: {"ADBLOCK_ENABLED": "true", "ADBLOCK_LEVEL": "lite"}
+        self.collect_calls = []
+        namespace = self.namespace
+
+        def fake_collect(*_args, **_kwargs):
+            # 面板读的是采集器写的 data.json，路由必须当场重采一次。
+            self.collect_calls.append(1)
+            return {
+                "server": {
+                    "adblock": {
+                        "enabled": namespace["adblock_enabled"]({}),
+                        "level": namespace["adblock_level"]({}),
+                    }
+                }
+            }
+
+        self.namespace["collect"] = fake_collect
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -117,6 +133,11 @@ class AdblockApiRouteTests(unittest.TestCase):
         status, payload = self.post({"level": "full"})
         self.assertEqual(200, status, payload)
         self.assertEqual("full", payload["adblock"]["level"])
+
+    def test_route_refreshes_panel_data_json(self):
+        """不重采的话，面板紧跟着的 load() 会读到 60 秒前的旧开关值并把它掰回去。"""
+        self.post({"enabled": False})
+        self.assertEqual(1, len(self.collect_calls))
 
     def test_rejects_non_bool_enabled(self):
         status, payload = self.post({"enabled": "false"})

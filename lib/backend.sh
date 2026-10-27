@@ -2881,11 +2881,14 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(400, {"ok": False, "error": "enabled 必须是布尔值"})
                     return
                 try:
-                    settings = save_adblock_settings(enabled, level)
+                    save_adblock_settings(enabled, level)
                 except ValueError as error:
                     self.send_json(400, {"ok": False, "error": str(error)})
                     return
-                self.send_json(200, {"ok": True, "adblock": settings})
+                # 面板读的是采集器写的 data.json；不重采就得等下一次 60s 轮询，
+                # 这期间页面会拿旧值把刚切好的开关又掰回去（同 /hy2/on|off 的做法）。
+                data = collect()
+                self.send_json(200, {"ok": True, "adblock": data["server"]["adblock"]})
                 return
             if path == "/sync":
                 data = collect()
