@@ -648,9 +648,11 @@ def subscription_yaml(
             ad_path = "./ruleset/adblock-full.yaml"
             ad_note = "blackmatrix7 完整版，约 29 万条 / 11MB，仅建议桌面端"
         else:
+            # 走 jsdelivr：规则是客户端去拉的，国内直连 raw.githubusercontent 基本拉不动，
+            # 拉不到就是「规则集 0 条」的静默失效。另两个规则源本来就在用这个镜像。
             ad_url = (
-                "https://raw.githubusercontent.com/ACL4SSR/ACL4SSR"
-                "/master/Clash/BanAD.list"
+                "https://testingcf.jsdelivr.net/gh/ACL4SSR/ACL4SSR"
+                "@master/Clash/BanAD.list"
             )
             ad_interval = 86400
             ad_format = "text"

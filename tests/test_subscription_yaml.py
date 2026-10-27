@@ -177,8 +177,14 @@ class AdblockRuleTests(unittest.TestCase):
         text = self.text()
         self.assertIn("  adblock:\n", text)
         self.assertIn("behavior: classical", text)
-        self.assertIn("ACL4SSR/ACL4SSR/master/Clash/BanAD.list", text)
+        self.assertIn("ACL4SSR/ACL4SSR@master/Clash/BanAD.list", text)
         self.assertIn("- RULE-SET,adblock,REJECT", text)
+
+    def test_rule_sources_avoid_raw_github(self):
+        """规则由客户端去拉；raw.githubusercontent 在国内基本拉不动，拉不到就静默没有去广告。"""
+        for text in (self.text(), self.text(ADBLOCK_LEVEL="full")):
+            self.assertNotIn("raw.githubusercontent.com", text)
+            self.assertIn("testingcf.jsdelivr.net", text)
 
     def test_lite_ruleset_declares_text_format(self):
         """BanAD.list 是纯文本；标成 yaml 内核会按 payload: 解析出 0 条，去广告静默失效。"""
