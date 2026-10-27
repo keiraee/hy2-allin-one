@@ -893,6 +893,9 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
                     "Caddy": service_status("caddy.service"),
                 },
                 "hy2_enabled": hy2_enabled,
+                # 归属地只在这里解析一次，落盘给访问资料文件复用（见 lib/access.sh）：
+                # 节点名的国旗必须处处一致，CLI 那边不能自己再发一遍网络请求。
+                "country_code": server_country_code(env),
                 "traffic": {
                     "rx": int(network["rx"]),
                     "tx": int(network["tx"]),

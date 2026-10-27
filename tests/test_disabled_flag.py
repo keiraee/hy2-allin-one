@@ -136,6 +136,7 @@ class DisabledFlagNormalizationTests(unittest.TestCase):
             users_file = root / "users.json"
             mode_file = root / "client-mode.json"
             out_file = root / "access.txt"
+            data_file = root / "data.json"
             env_file.write_text(
                 "\n".join(f"{key}={value}" for key, value in ENV.items())
                 + "\nAIO_VERSION=1.6.1\nPANEL_PATH=p\nPANEL_USER=admin\nPANEL_PASS=secret\n",
@@ -153,7 +154,7 @@ class DisabledFlagNormalizationTests(unittest.TestCase):
             mode_file.write_text("{}", encoding="utf-8")
             source = load_access_source()
             argv = sys.argv
-            sys.argv = ["access", str(env_file), str(users_file), str(mode_file), str(out_file)]
+            sys.argv = ["access", str(env_file), str(users_file), str(mode_file), str(out_file), str(data_file)]
             try:
                 exec(compile(source, "access.py", "exec"), {"__name__": "access_test"})
             finally:
