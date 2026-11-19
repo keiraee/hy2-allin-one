@@ -185,7 +185,7 @@ hy2-allin-one/
 - **混淆默认开启**；不稳时可 `sudo hy2 obfs off` 后让客户端更新订阅（关闭的是伪装，不是加密）。
 - **安装向导**默认代理 UDP `8443`（云上比 443 更稳）；仍可改成 `443`。
 - **端口跳跃**默认关闭。ISP 只针对单个 UDP 端口限速时，`sudo hy2 hop on` 会让客户端在 `8443-9443` 里随机换端口（Clash 订阅写 `ports` + `hop-interval`，直链端口写作 `8443-9443`）。**云安全组必须放行整段 UDP 范围**（本机 ufw/firewalld 只需放行基准端口），启用后先跑 `sudo hy2 hop check`，再用手机蜂窝网络连续重连 5 次验收；`hy2 hop off` 一键回退。
-- **依赖自检**：`sudo hy2 deps` 先认机器（发行版/架构/内存/磁盘）再列缺哪些命令，`sudo hy2 deps fix` 按 apt/dnf/yum/zypper 自动装；菜单 26 同效。装到精简系统、刚重装的小机上先跑一次，比装到一半撞 `command not found` 省事。
+- **依赖自检**：`sudo hy2 deps` 先认机器（发行版/架构/内存/磁盘余量）再核当前功能所需的命令，`sudo hy2 deps fix` 按 apt/dnf/yum/zypper 只补真正缺的；菜单 26 同效。**不启用的功能不装、不免检**——没开端口跳跃就不碰 iptables/nft，没装 firewalld 就不提 firewall-cmd，小盘机器还会跳过 firewalld/fail2ban 这类几十上百 MB 的大件（可手动装）。
 - **整机流量**：面板顶部为网卡计数，尽量对齐云厂商套餐；Clash 订阅进度与此同源。
 - **用户流量**：用户表为 HY2 代理分摊参考，各用户之和通常小于整机。
 - **节点国旗**：订阅与直链的节点名自动带上服务器归属地国旗（如 `🇸🇬 HY2-用户名`）；识别不准时在 `/etc/hy2-aio/config.env` 里加 `COUNTRY_CODE=SG` 这类 ISO 国家码后 `hy2 restart`
@@ -197,7 +197,8 @@ hy2-allin-one/
 ### 未发布
 - 新增端口跳跃（默认关闭）：`hy2 hop on|off|show|check`，服务端用 Hysteria 内置 `listen` 范围 + 自动 nft/iptables 重定向，订阅写 `ports`/`hop-interval`，直链端口位同步写范围；范围必须从 `HY2_PORT` 开始、跨度 ≤2000
 - 端口跳跃自检 `hy2 hop check`：逐项检查 nft/iptables、服务 `CAP_NET_ADMIN`、进程监听、重定向规则、本机防火墙基准端口，并提示云安全组需放行的 UDP 范围；缺少工具时 `hy2 hop on` 会尝试安装
-- 新增依赖自检 `hy2 deps` / `hy2 deps fix`（菜单 26）：先识别当前机器的发行版、架构、内存与磁盘余量，再逐项检查脚本用到的命令（python3/curl/jq/ss/nft/iptables/ip6tables/fail2ban-client…），`fix` 按 apt/dnf/yum/zypper 自动补齐；装到精简系统上不会再半途撞 `command not found`。安装流程也会在装完基础包后自动跑一次，小机（<600MB）会提前提示启用 swap，磁盘 <3GB、架构不在 amd64/arm64 时直接告警
+- 新增依赖自检 `hy2 deps` / `hy2 deps fix`（菜单 26）：先识别当前机器的发行版、架构、内存与磁盘余量，再检查**当前功能真正需要**的命令；`fix` 按 apt/dnf/yum/zypper 只补缺的那几项，未启用的功能一律不碰（没开端口跳跃不动 iptables/nft，没装 firewalld 不提 firewall-cmd），小盘机器跳过 firewalld/fail2ban 这类几十上百 MB 且带常驻服务的包。安装流程在装完基础包后自动核一次，小机（<600MB）提示会启用 swap，根分区 <3GB、架构不在 amd64/arm64 时告警
+- 精简基础安装清单：去掉从未被调用的 `jq`（全仓 JSON 解析都用 `python3 -c`），也不再预装 ufw/firewalld/fail2ban/nftables/iptables —— 小机器磁盘紧，用不到的就是负担
 - 修复：`hy2 hop on` / `hy2 hop range` 的自动回滚形同虚设——`apply_hysteria_client_settings` 里 `systemctl restart` 失败会返回非零，脚本开着 `set -Eeuo pipefail` 就地退出，回滚判断永远执行不到，Hysteria 停在起不来的状态而 config.env 里还写着 `PORT_HOP_ENABLED=true`；现把调用兜住并纳入回滚条件，`hop off` 的同类问题一并修掉
 - 修复：端口跳跃范围只有两个端口时（如 `8443-8444`，合法配置）自检 5/6 必定误报「没找到重定向规则」——Hysteria 在 `start == end` 时只写单个端口号而不是 `8444-8444`
 - 修复：代理端口为 65535 时 `hy2 hop on` 会抛「结束端口必须大于开始端口」，与实际操作对不上；现改为明确提示先改小代理端口

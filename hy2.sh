@@ -344,10 +344,10 @@ install_stack() {
   fi
 
   install_packages_v12
-  # install_packages_v12 只保证「基础 + Caddy 构建链」，剩下那些只在特定功能
-  # 才用到的命令（jq / ss / nft / fail2ban-client…）在小机器上经常缺，
-  # 装完基础包立刻按当前系统补一遍，免得用户装到一半才撞 command not found。
-  deps_cmd fix || warn "部分可选依赖没装上；不影响安装，稍后可执行 sudo hy2 deps fix 重试"
+  # 装完基础包就地核一遍「服务能不能跑」。deps_cmd fix 只会补当前功能真
+  # 需要的缺件（端口跳跃未启用就不会去装 iptables/nft），小盘机上 large 档
+  # 还会自动跳过。失败不中断安装：缺的通常是可选工具，服务本身能起。
+  deps_cmd fix || warn "有依赖没补齐，见上方列表；修好后重跑 sudo hy2 deps fix"
 
   echo
   echo "============================================================"

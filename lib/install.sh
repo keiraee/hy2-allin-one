@@ -3,21 +3,32 @@
 
 install_packages_v12() {
   log "安装基础依赖"
+  # 这里只装「服务跑起来必须有」的东西。小机器磁盘紧，多一个包就是多一份
+  # 风险，所以清单保持最小：
+  #   curl/openssl/tar/gzip  —— 下载与校验二进制
+  #   python3                —— 面板后端 + 配置生成，本脚本最核心的依赖
+  #   iproute2 (ss/ip)       —— 端口占用检测
+  #   util-linux (flock)     —— 用户改动加锁
+  #   ca-certificates        —— 下载 HTTPS
+  # 刻意不装（历史遗留已清理）：
+  #   jq   —— 全仓代码里没有任何一处调用它，解析 JSON 都走 python3 -c
+  # 也不预装 ufw/firewalld/fail2ban/nftables/iptables：
+  #   本机没在用防火墙就不需要，端口跳跃要用时 hy2 hop on 会自己补。
   case "$PKG_MANAGER" in
     apt)
       export DEBIAN_FRONTEND=noninteractive
       apt-get update
-      apt-get install -y curl ca-certificates openssl python3 jq tar gzip \
-        iproute2 procps util-linux gpg debian-keyring debian-archive-keyring \
-        apt-transport-https
+      apt-get install -y curl ca-certificates openssl python3 tar gzip \
+        iproute2 util-linux \
+        gpg debian-keyring debian-archive-keyring apt-transport-https
       ;;
     dnf|yum)
-      "$PKG_MANAGER" install -y curl ca-certificates openssl python3 jq tar gzip \
-        iproute procps-ng util-linux gnupg2
+      "$PKG_MANAGER" install -y curl ca-certificates openssl python3 tar gzip \
+        iproute util-linux gnupg2
       ;;
     zypper)
-      zypper --non-interactive install curl ca-certificates openssl python3 jq tar gzip \
-        iproute2 procps util-linux gpg2
+      zypper --non-interactive install curl ca-certificates openssl python3 tar gzip \
+        iproute2 util-linux gpg2
       ;;
     *) die "不支持的包管理器：$PKG_MANAGER" ;;
   esac
