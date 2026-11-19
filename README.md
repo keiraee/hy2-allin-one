@@ -189,6 +189,10 @@ hy2-allin-one/
 
 ## 更新日志
 
+### 未发布
+- 修复：归属地查询失败被永久缓存，一次网络抖动就让国旗一直不出现（只能重启后端恢复）；现失败结果只记 1 小时
+- 修复：国旗只加在面板和订阅上，`hy2 show` 与 `/root/hy2-aio-access.txt` 里的节点名还是旧的，同一节点显示两个名字；归属地现由后端落进 `data.json` 供 CLI 复用
+
 ### v1.7.3
 - 修复 v1.7.2 卸载重装后 Hysteria 起不来（`Failed at step CHDIR`）：官方安装脚本的服务单元用 `WorkingDirectory=~`（hysteria 用户家目录），v1.7.2 把用户创建提前后家目录变成 `/nonexistent`；现统一为 `/var/lib/hysteria`，安装与 repair 自动改回坏家目录并补目录，已中招机器升级即修复、无需重装
 - 订阅与直链的节点名自动带上服务器归属地国旗（如 `🇸🇬 HY2-用户名`）；按 IP 归属地自动识别，识别不准可在 config.env 设 `COUNTRY_CODE=SG` 这类 ISO 国家码覆盖
