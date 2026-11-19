@@ -115,6 +115,47 @@ class DepsFixModeTests(unittest.TestCase):
         self.assertNotIn("INSTALLED:", result.stdout)
 
 
+class DepsSmallDiskTests(unittest.TestCase):
+    """4GB 小盘机器（如 512MB/4G 的日本小机）不该被自动装上 firewalld+fail2ban：
+    两者在 Debian 上要几百 MB 且带常驻服务，会把剩余空间和内存挤干。"""
+
+    def _run_fix(self, free_kb: int):
+        return run_bash(
+            PRELUDE
+            + 'PKG_MANAGER="apt"\n'
+            + f'deps_disk_free_kb() {{ echo {free_kb}; }}\n'
+            + 'DEPS_TABLE="hy2-no-such-cmd|pkg-big|pkg-big|pkg-big|optional|large"\n'
+            + 'pkg_install_quiet() { echo "INSTALLED:$1"; }\n'
+            + "deps_cmd fix\n"
+        )
+
+    def test_large_package_installed_when_disk_is_roomy(self):
+        result = self._run_fix(8388608)  # 8GB 可用
+        self.assertIn("INSTALLED:pkg-big", result.stdout, result.stdout + result.stderr)
+
+    def test_large_package_skipped_when_disk_is_tight(self):
+        result = self._run_fix(524288)  # 512MB 可用
+        self.assertNotIn("INSTALLED:pkg-big", result.stdout)
+        self.assertIn("可用空间不足", result.stdout)
+        self.assertIn("跳过", result.stdout)
+
+    def test_small_package_still_installed_on_tight_disk(self):
+        # 只有 large 档才跳过；几 MB 的 small 档照装
+        result = run_bash(
+            PRELUDE
+            + 'PKG_MANAGER="apt"\n'
+            + 'deps_disk_free_kb() { echo 524288; }\n'
+            + 'DEPS_TABLE="hy2-no-such-cmd|pkg-small|pkg-small|pkg-small|optional|small"\n'
+            + 'pkg_install_quiet() { echo "INSTALLED:$1"; }\n'
+            + "deps_cmd fix\n"
+        )
+        self.assertIn("INSTALLED:pkg-small", result.stdout, result.stdout + result.stderr)
+
+    def test_skip_does_not_mark_failure(self):
+        result = self._run_fix(524288)
+        self.assertEqual(0, result.returncode, result.stderr)
+
+
 class DepsDeviceProbeTests(unittest.TestCase):
     def test_prints_arch_and_memory(self):
         result = run_bash(PRELUDE + "deps_print_device\n")
