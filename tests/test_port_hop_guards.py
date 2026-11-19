@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 import unittest
 from pathlib import Path
@@ -98,6 +99,13 @@ class HopSwitchTests(unittest.TestCase):
             PRELUDE + "PORT_HOP_ENABLED=maybe; port_hop_enabled || echo no\n"
         )
         self.assertEqual("no", result.stdout.strip())
+
+
+class HopCliEntryTests(unittest.TestCase):
+    def test_installed_cli_dispatches_hop(self):
+        text = (ROOT / "bin" / "hy2.sh").read_text(encoding="utf-8")
+        self.assertRegex(text, r"(?m)^\s*hop\)\s+hop_cmd\s")
+        self.assertIn("hy2 hop on|off", text)
 
 
 if __name__ == "__main__":

@@ -185,6 +185,11 @@ HY2 AIO v${AIO_VERSION}
   hy2 uninstall           # 完全卸载（服务、组件、配置、数据全清，可直接重装）
   hy2 obfs show           # 查看混淆状态
   hy2 obfs on|off         # 开启/关闭 Salamander 混淆
+  hy2 hop                 # 端口跳跃状态
+  hy2 hop on|off          # 开启/关闭端口跳跃（需重启 Hysteria）
+  hy2 hop check           # 端口跳跃自检
+  hy2 hop range <起-止>   # 设置端口范围（必须从代理端口起）
+  hy2 hop interval <秒>   # 设置跳跃间隔（5-3600）
   hy2 help|-h|--help|-help
 EOF
 }
@@ -218,6 +223,7 @@ case "$command" in
   update-xray) update_xray_cmd ;;
   uninstall)  uninstall_cmd ;;
   obfs)       obfs_cmd "${2:-show}" ;;
+  hop)        hop_cmd "${2:-show}" "${3:-}" ;;
   help|-h|--help|-help) usage ;;
   *)          usage; exit 1 ;;
 esac
