@@ -958,7 +958,7 @@ EOF
 
 hop_check_cmd() {
   read_env
-  local range backend caps listen_port failures=0 nft_out ipt_range
+  local range backend caps listen_port redirect failures=0 nft_out ipt_range ipt_out
   if ! port_hop_enabled; then
     echo "端口跳跃：off"
     echo "默认范围：$(default_hop_range)/UDP；开启：sudo hy2 hop on"
@@ -1000,22 +1000,27 @@ hop_check_cmd() {
     failures=$((failures + 1))
   fi
 
-  if [ "$backend" = "nft" ]; then
+  redirect="$(hop_redirect_range || true)"
+  if [ -z "$redirect" ]; then
+    warn "自检 5/6 失败：端口范围无效，无法推导重定向区间（${range}）"
+    failures=$((failures + 1))
+  elif [ "$backend" = "nft" ]; then
     nft_out="$(nft list ruleset 2>/dev/null || true)"
     if printf '%s\n' "$nft_out" | grep -q "hysteria_" \
-      && printf '%s\n' "$nft_out" | grep -q -- "$range"; then
-      log "自检 5/6 通过：nft 重定向规则已存在（${range} → ${listen_port}）"
+      && printf '%s\n' "$nft_out" | grep -q -- "dport ${redirect}"; then
+      log "自检 5/6 通过：nft 重定向规则已存在（${redirect} → ${listen_port}）"
     else
-      warn "自检 5/6 失败：没找到 nft 重定向规则（journalctl -u hysteria-server 查 firewall）"
+      warn "自检 5/6 失败：没找到 nft 重定向规则（${redirect} → ${listen_port}；journalctl -u hysteria-server 查 firewall）"
       failures=$((failures + 1))
     fi
   elif [ "$backend" = "iptables" ]; then
-    ipt_range="${range/-/:}"
-    if { iptables -t nat -S 2>/dev/null; ip6tables -t nat -S 2>/dev/null; } \
-      | grep -qE -- "${ipt_range}|${range}"; then
-      log "自检 5/6 通过：iptables 重定向规则已存在（${range} → ${listen_port}）"
+    ipt_range="${redirect/-/:}"
+    ipt_out="$( { iptables -t nat -S 2>/dev/null; ip6tables -t nat -S 2>/dev/null; } || true)"
+    if printf '%s\n' "$ipt_out" | grep -q "HYSTERIA-PR-" \
+      && printf '%s\n' "$ipt_out" | grep -q -- "--dport ${ipt_range}"; then
+      log "自检 5/6 通过：iptables 重定向规则已存在（${redirect} → ${listen_port}）"
     else
-      warn "自检 5/6 失败：没找到 iptables 重定向规则"
+      warn "自检 5/6 失败：没找到 iptables 重定向规则（${redirect} → ${listen_port}；iptables -t nat -S | grep HYSTERIA）"
       failures=$((failures + 1))
     fi
   else

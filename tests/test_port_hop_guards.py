@@ -65,6 +65,23 @@ class HopRangeGuardTests(unittest.TestCase):
         self.assertIn("格式", result.stderr)
 
 
+class HopRedirectRangeTests(unittest.TestCase):
+    def test_redirect_starts_after_base_port(self):
+        result = run_bash(
+            PRELUDE
+            + 'HY2_PORT=8443; PORT_HOP_RANGE=8443-9443; hop_redirect_range\n'
+        )
+        self.assertEqual("8444-9443", result.stdout.strip())
+
+    def test_redirect_rejects_bad_range(self):
+        result = run_bash(
+            PRELUDE
+            + "HY2_PORT=8443; PORT_HOP_RANGE=500-600; hop_redirect_range\n"
+        )
+        self.assertNotEqual(0, result.returncode)
+        self.assertEqual("", result.stdout.strip())
+
+
 class HopIntervalGuardTests(unittest.TestCase):
     def test_interval_accepts_bounds(self):
         for value in ("5", "3600"):

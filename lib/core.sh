@@ -205,6 +205,17 @@ hop_range() {
   fi
 }
 
+# Hysteria 只给基准端口以外的端口建重定向（基准端口自己监听），
+# 所以 8443-9443 的规则实际是 8444-9443 → 8443。
+hop_redirect_range() {
+  local range start end
+  range="$(hop_range)" || return 1
+  hop_range_is_valid "$range" || return 1
+  start=$((10#${HY2_PORT:-443} + 1))
+  end="${range##*-}"
+  printf '%s-%s' "$start" "$((10#$end))"
+}
+
 hop_range_is_valid() {
   local range="${1:-}" start end
   [[ "$range" =~ ^([0-9]{1,5})-([0-9]{1,5})$ ]] || return 1
