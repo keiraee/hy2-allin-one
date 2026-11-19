@@ -364,7 +364,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
         </table>
       </div>
     </section>
-    <div class="footer">60 秒自动刷新 · 操作后即时更新</div>
+    <div class="footer">页面每 10 秒拉取一次 · 后端每 60 秒采集 · 操作后即时更新</div>
   </main>
 </div>
 
@@ -584,6 +584,17 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
 const $=id=>document.getElementById(id);
 const bytes=value=>{let n=Number(value||0),i=0;const u=["B","KB","MB","GB","TB"];while(n>=1000&&i<u.length-1){n/=1000;i++}return n.toFixed(i<2?2:1)+" "+u[i]};
 const duration=seconds=>{seconds=Math.max(0,Math.floor(Number(seconds)||0));return Math.floor(seconds/86400)+" 天 "+Math.floor(seconds%86400/3600)+" 小时"};
+// data.json 是后端每 60s 落一次的静态快照，页面看到的永远是「某个时刻」的数字。
+// 把「这份数据有多旧」直接标出来，用户就不会把 55 秒前的 CPU 当成实时值。
+const dataAgeText=raw=>{
+  if(!raw)return "";
+  const t=new Date(raw);
+  if(Number.isNaN(t.getTime()))return "";
+  const sec=Math.max(0,Math.round((Date.now()-t.getTime())/1000));
+  if(sec<70)return sec+" 秒前";
+  if(sec<3600)return Math.round(sec/60)+" 分钟前";
+  return Math.round(sec/3600)+" 小时前";
+};
 const formatActive=raw=>{
   if(!raw||raw==="从未")return "从未";
   const d=new Date(raw);
@@ -1616,14 +1627,20 @@ async function load(){
     if(!response.ok)throw new Error("HTTP "+response.status);
     const data=await response.json(),t=data.server.traffic;
     const ver=String(data.version||"").replace(/^v/i,"").trim();
-    $("time").textContent=(ver&&ver!=="unknown"?("v"+ver+" · "):"")+"更新 "+data.generated_at+" · "+data.server.ip+" · "+data.server.domain;
+    const ageText=dataAgeText(data.generated_at);
+    $("time").textContent=(ver&&ver!=="unknown"?("v"+ver+" · "):"")+"更新 "+data.generated_at+(ageText?"（"+ageText+"）":"")+" · "+data.server.ip+" · "+data.server.domain;
     const unlimited=!(Number(t.limit)>0);
     $("traffic").textContent=bytes(t.used)+(unlimited?" / 无限":" / "+bytes(t.limit));
     $("remain").textContent="入 "+bytes(t.rx)+" · 出 "+bytes(t.tx)+(unlimited?" · 不限量":" · 剩余 "+bytes(t.remain));
     const pctVal=unlimited?0:Math.min(100,Number(t.percent)||0);
     $("trafficBar").style.width=pctVal+"%";
     $("trafficBar").style.background=pctVal>=90?"var(--bad)":"var(--accent)";
-    $("cpu").textContent=data.server.cpu+"%";$("load").textContent="负载 "+data.server.load.join(" / ");
+    $("cpu").textContent=data.server.cpu+"%";
+    // 负载相对核数才有意义：4 核跑 4.0 就是满载，1 核跑 4.0 已经爆了。
+    // 后端带上核数，这里换算成更直观的「负载 / 核数」。
+    const cores=Number(data.server.cpu_cores)||0;
+    const loads=data.server.load||[];
+    $("load").textContent="负载 "+loads.join(" / ")+(cores>1?"（"+cores+" 核）":"");
     $("memory").textContent=data.server.memory.percent+"%";$("swap").textContent="Swap "+data.server.memory.swap_percent+"%";
     $("disk").textContent=data.server.disk.percent+"%";$("uptime").textContent="运行 "+duration(data.server.uptime);
     renderServices(data.server.services);
@@ -1702,7 +1719,17 @@ $("errorClose").onclick=()=>{
 };
 initTheme();
 load();
-setInterval(load,60000);
+// 后端每 60s 落一次 data.json，前端 10s 拉一次就够及时了：
+// 拉的是同一份静态文件，多拉几次成本几乎为零（nginx + 一个 JSON 文件），
+// 但用户点开页面时不用干等一分钟才看到数字变化。
+// 页面在后台时不拉（等切回来再说），省小机器的带宽和电量。
+let refreshTimer=setInterval(()=>{
+  if(document.hidden)return;
+  load();
+},10000);
+document.addEventListener("visibilitychange",()=>{
+  if(!document.hidden)load();
+});
 </script>
 </body>
 </html>

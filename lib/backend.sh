@@ -357,19 +357,64 @@ def service_status(name: str) -> str:
     return result.stdout.strip() or "unknown"
 
 
-def cpu_percent() -> float:
-    def read() -> tuple[int, int]:
-        parts = Path("/proc/stat").read_text(encoding="utf-8").splitlines()[0].split()[1:]
-        values = [int(item) for item in parts]
-        total = sum(values)
-        idle = values[3] + (values[4] if len(values) > 4 else 0)
-        return total, idle
+def read_cpu_counters() -> tuple[int, int]:
+    """返回 (累计 jiffies, 累计 idle jiffies)。
 
-    total1, idle1 = read()
-    time.sleep(0.12)
-    total2, idle2 = read()
-    delta = max(total2 - total1, 1)
-    return round((1 - (idle2 - idle1) / delta) * 100, 1)
+    idle 取 idle 列 + iowait 列：iowait 期间 CPU 并没有真在算，
+    算进 idle 才是「忙不忙」的正确口径（与 top 一致）。
+    """
+    parts = Path("/proc/stat").read_text(encoding="utf-8").splitlines()[0].split()[1:]
+    values = [int(item) for item in parts]
+    total = sum(values)
+    idle = values[3] + (values[4] if len(values) > 4 else 0)
+    return total, idle
+
+
+# 上一次采样点。用模块级变量而不是每次 sleep，是为了让「两次采样间隔」
+# 至少等于采集周期（60s），而不是一个 120ms 的窄窗口——
+# 100Hz 内核上 120ms 只有 12 jiffies/核，1% 的负载折算下来才 0.12 jiffies，
+# 四舍五入永远是 0.0%，小机器上常驻进程的 1~2% 完全测不出来。
+_cpu_samples: dict[str, Any] = {}
+_CPU_MIN_WINDOW = 1.0  # 增量窗口短于这个值时，沿用上次读数而不是硬报一个数
+
+
+def cpu_percent(window_seconds: float = 0.0) -> float:
+    """CPU 使用率（%）。
+
+    Args:
+        window_seconds: >0 时在函数内阻塞采样这么长的窗口（用于一次性调用），
+            0 表示用「距上次调用的增量」计算（用于周期采集）。
+    """
+    total, idle = read_cpu_counters()
+    now = time.monotonic()
+    previous = _cpu_samples.get("last")
+    if window_seconds > 0:
+        time.sleep(window_seconds)
+        total2, idle2 = read_cpu_counters()
+        delta_total = total2 - total
+        delta_idle = idle2 - idle
+        _cpu_samples["last"] = (total2, idle2, time.monotonic())
+    elif previous is None:
+        # 进程刚起来，还没有可比的基线。立刻补一次短窗口，总比返回 0 好。
+        return cpu_percent(window_seconds=0.3)
+    else:
+        # 用户每点一次按钮都会触发一次 collect，间隔可能只有一两秒。
+        # 窗口太窄时分母（jiffies 增量）小得离谱，算出来全是 0 或 100。
+        # 这种情况沿用上次读数，而不是硬编一个假数字。
+        if now - previous[2] < _CPU_MIN_WINDOW:
+            return float(_cpu_samples.get("last_percent", 0.0))
+        delta_total = total - previous[0]
+        delta_idle = idle - previous[1]
+        _cpu_samples["last"] = (total, idle, now)
+
+    # 增量太小说明两次采样挤在同一个 jiffy 里，这时给不出有意义的百分比。
+    # 返回 0 会让人误以为「CPU 空闲」，所以宁可保留上一次的读数。
+    if delta_total <= 0:
+        return float(_cpu_samples.get("last_percent", 0.0))
+    percent = (1 - delta_idle / delta_total) * 100
+    percent = max(0.0, min(100.0, round(percent, 1)))
+    _cpu_samples["last_percent"] = percent
+    return percent
 
 
 def memory_info() -> dict[str, Any]:
@@ -918,6 +963,7 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
                 "interface": iface,
                 "uptime": uptime,
                 "cpu": cpu_percent(),
+                "cpu_cores": os.cpu_count() or 1,
                 "load": loads,
                 "memory": memory,
                 "disk": {
