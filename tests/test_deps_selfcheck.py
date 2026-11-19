@@ -87,6 +87,34 @@ class DepsRequiredByFeatureTests(unittest.TestCase):
         self.assertEqual("yes", result.stdout.strip())
 
 
+class DepsFixModeTests(unittest.TestCase):
+    """fix 模式必须「缺什么装什么」，不能因为「当前功能未用到」就跳过——
+    否则用户开了端口跳跃才发现 nft 一直没装，又得跑一次。"""
+
+    def test_fix_installs_even_when_feature_unused(self):
+        result = run_bash(
+            PRELUDE
+            + 'PKG_MANAGER="apt"\n'
+            + 'PORT_HOP_ENABLED=false\n'
+            + 'DEPS_TABLE="hy2-no-such-cmd|pkg-x|pkg-x|pkg-x|optional"\n'
+            + 'pkg_install_quiet() { echo "INSTALLED:$1"; }\n'
+            + "deps_cmd fix\n"
+        )
+        self.assertIn("INSTALLED:pkg-x", result.stdout, result.stdout + result.stderr)
+
+    def test_check_mode_skips_unused_optional(self):
+        result = run_bash(
+            PRELUDE
+            + 'PKG_MANAGER="apt"\n'
+            + 'PORT_HOP_ENABLED=false\n'
+            + 'DEPS_TABLE="hy2-no-such-cmd|pkg-x|pkg-x|pkg-x|optional"\n'
+            + 'pkg_install_quiet() { echo "INSTALLED:$1"; }\n'
+            + "deps_cmd check\n"
+        )
+        self.assertIn("当前功能未用到", result.stdout)
+        self.assertNotIn("INSTALLED:", result.stdout)
+
+
 class DepsDeviceProbeTests(unittest.TestCase):
     def test_prints_arch_and_memory(self):
         result = run_bash(PRELUDE + "deps_print_device\n")

@@ -166,13 +166,15 @@ deps_cmd() {
       continue
     fi
     found_missing=$((found_missing + 1))
-    if ! deps_is_required "$cmd" "$level"; then
-      # 缺但当前用不到：只在 fix 时顺带提醒，不干扰体检结论
-      printf '  %-16s %s\n' "$cmd" "缺失（当前功能未用到，可忽略）"
-      continue
-    fi
     if [ "$level" = "core" ]; then
       missing_core=$((missing_core + 1))
+    fi
+    # check 模式只追究「当前功能真要用」的缺件；
+    # fix 模式一律装（这才是「提前帮他们准备好」的意思）——
+    # 否则用户开了端口跳跃才发现 nft 一直没装，又得跑一次。
+    if [ "$action" != "fix" ] && ! deps_is_required "$cmd" "$level"; then
+      printf '  %-16s %s\n' "$cmd" "缺失（当前功能未用到，可忽略）"
+      continue
     fi
 
     if [ "$action" = "fix" ]; then
