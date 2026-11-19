@@ -530,6 +530,7 @@ EOF
   echo " 18) 日志"
   echo " 21) 开启 HY2"
   echo " 22) 关闭 HY2"
+  echo " 26) 依赖自检（缺什么装什么）"
   echo
   echo "── 其他 ──────────────────────────"
   echo " 19) 安装说明（仅新机）"
@@ -605,6 +606,7 @@ menu_interactive() {
       20) menu_call uninstall_cmd ;;
       21) menu_call hy2_on_cmd ;;
       22) menu_call hy2_off_cmd ;;
+      26) menu_call deps_cmd fix ;;
       23) menu_call panel_cmd ;;
       25) menu_call cert_cmd ;;
       99) exit 0 ;;

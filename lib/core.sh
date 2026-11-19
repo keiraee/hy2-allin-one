@@ -163,6 +163,45 @@ detect_platform() {
   log "检测到 ${PRETTY_NAME:-unknown}；包管理器：$PKG_MANAGER"
 }
 
+# 静默装一个包（成功返回 0）。依赖自检/端口跳跃都靠它补缺件，
+# 避免每个调用点各写一遍 apt/dnf/yum/zypper 分支。
+pkg_install_quiet() {
+  [ -n "${1:-}" ] || return 1
+  if [ -z "${PKG_MANAGER:-}" ]; then
+    # detect_platform 会 die，装包场景不能让它把整个流程带走
+    have_systemd || return 1
+    if command -v apt-get >/dev/null 2>&1; then
+      PKG_MANAGER="apt"
+    elif command -v dnf >/dev/null 2>&1; then
+      PKG_MANAGER="dnf"
+    elif command -v yum >/dev/null 2>&1; then
+      PKG_MANAGER="yum"
+    elif command -v zypper >/dev/null 2>&1; then
+      PKG_MANAGER="zypper"
+    else
+      return 1
+    fi
+    export PKG_MANAGER
+  fi
+  case "$PKG_MANAGER" in
+    apt)
+      export DEBIAN_FRONTEND=noninteractive
+      # 缓存可能是空的（最小化镜像 / 刚从快照恢复），先 update 一次再装
+      apt-get update >/dev/null 2>&1 || true
+      apt-get install -y "$1" >/dev/null 2>&1
+      ;;
+    dnf|yum)
+      "$PKG_MANAGER" install -y "$1" >/dev/null 2>&1
+      ;;
+    zypper)
+      zypper --non-interactive install "$1" >/dev/null 2>&1
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 rand_hex() { openssl rand -hex "${1:-16}"; }
 valid_name() { [[ "${1:-}" =~ ^[A-Za-z0-9_-]{1,32}$ ]]; }
 panel_port_is_valid() {
@@ -189,11 +228,16 @@ port_hop_enabled() {
   esac
 }
 
+# 默认范围：从代理端口起往后 1000 个，封顶 65535。
+# 代理端口已经顶到 65535 时推不出「结束 > 开始」的范围，返回非零，
+# 由调用方给出人话提示（否则会抛一句「结束端口必须大于开始端口」，
+# 用户根本不知道这句话跟自己的 HY2_PORT 有关）。
 default_hop_range() {
   local start="${HY2_PORT:-8443}" end
   port_number_is_valid "$start" || return 1
   end=$((10#$start + 1000))
   [ "$end" -le 65535 ] || end=65535
+  [ "$((10#$end))" -gt "$((10#$start))" ] || return 1
   printf '%s-%s' "$start" "$end"
 }
 
@@ -207,13 +251,18 @@ hop_range() {
 
 # Hysteria 只给基准端口以外的端口建重定向（基准端口自己监听），
 # 所以 8443-9443 的规则实际是 8444-9443 → 8443。
+# 只有一个待重定向端口时（如 8443-8444）Hysteria 的 nftPortExpr/
+# iptablesPortExpr 只写单个数字，不写 "8444-8444"，这里跟着对齐，
+# 否则自检 grep 永远匹配不上，把正常机器判成坏机器。
 hop_redirect_range() {
   local range start end
   range="$(hop_range)" || return 1
   hop_range_is_valid "$range" || return 1
   start=$((10#${HY2_PORT:-443} + 1))
   end="${range##*-}"
-  printf '%s-%s' "$start" "$((10#$end))"
+  end=$((10#$end))
+  [ "$start" -eq "$end" ] && { printf '%s' "$start"; return 0; }
+  printf '%s-%s' "$start" "$end"
 }
 
 hop_range_is_valid() {

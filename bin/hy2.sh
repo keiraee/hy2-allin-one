@@ -147,6 +147,7 @@ source "${MODULES_DIR}/lib/backup.sh"
 source "${MODULES_DIR}/lib/mode.sh"
 source "${MODULES_DIR}/lib/backend.sh"
 source "${MODULES_DIR}/lib/cli.sh"
+source "${MODULES_DIR}/lib/deps.sh"
 
 usage() {
   cat <<EOF
@@ -190,6 +191,8 @@ HY2 AIO v${AIO_VERSION}
   hy2 hop check           # 端口跳跃自检
   hy2 hop range <起-止>   # 设置端口范围（必须从代理端口起）
   hy2 hop interval <秒>   # 设置跳跃间隔（5-3600）
+  hy2 deps                # 运行环境自检（缺哪些命令）
+  hy2 deps fix            # 缺什么按发行版自动装什么
   hy2 help|-h|--help|-help
 EOF
 }
@@ -224,6 +227,7 @@ case "$command" in
   uninstall)  uninstall_cmd ;;
   obfs)       obfs_cmd "${2:-show}" ;;
   hop)        hop_cmd "${2:-show}" "${3:-}" ;;
+  deps)       deps_cmd "${2:-check}" ;;
   help|-h|--help|-help) usage ;;
   *)          usage; exit 1 ;;
 esac

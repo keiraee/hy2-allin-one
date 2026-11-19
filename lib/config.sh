@@ -899,10 +899,13 @@ prompt_obfs_enabled() {
   esac
 }
 
+# Hysteria 监听 0.0.0.0 时走 iptables 后端要求 iptables 和 ip6tables 两把都在
+# （firewall_linux.go 的 iptablesBinariesForAddr 会对通配地址同时 LookPath 两个），
+# 只装了 iptables 的话规则建不起来、服务直接拒绝启动，所以这里当成「不可用」。
 hop_firewall_backend() {
   if command -v nft >/dev/null 2>&1; then
     printf '%s' "nft"
-  elif command -v iptables >/dev/null 2>&1; then
+  elif command -v iptables >/dev/null 2>&1 && command -v ip6tables >/dev/null 2>&1; then
     printf '%s' "iptables"
   fi
 }
@@ -910,29 +913,10 @@ hop_firewall_backend() {
 # Hysteria 写端口重定向规则要调用 nft/iptables；两者都没有时启动会直接失败。
 ensure_hop_firewall_tool() {
   [ -n "$(hop_firewall_backend)" ] && return 0
-  warn "未找到 nft/iptables，尝试安装（Hysteria 建立端口重定向需要）"
-  detect_platform
-  case "$PKG_MANAGER" in
-    apt)
-      export DEBIAN_FRONTEND=noninteractive
-      apt-get update >/dev/null 2>&1 || true
-      apt-get install -y nftables >/dev/null 2>&1 \
-        || apt-get install -y iptables >/dev/null 2>&1 \
-        || true
-      ;;
-    dnf|yum)
-      "$PKG_MANAGER" install -y nftables >/dev/null 2>&1 \
-        || "$PKG_MANAGER" install -y iptables >/dev/null 2>&1 \
-        || true
-      ;;
-    zypper)
-      zypper --non-interactive install nftables >/dev/null 2>&1 \
-        || zypper --non-interactive install iptables >/dev/null 2>&1 \
-        || true
-      ;;
-  esac
+  warn "未找到可用的 nft / iptables+ip6tables，尝试安装（Hysteria 建立端口重定向需要）"
+  pkg_install_quiet nftables || pkg_install_quiet iptables
   [ -n "$(hop_firewall_backend)" ] \
-    || die "缺少 nft 或 iptables：Debian/Ubuntu 用 apt install nftables，RHEL 系用 dnf install iptables"
+    || die "缺少 nft 或 iptables/ip6tables：Debian/Ubuntu 用 apt install nftables，RHEL 系用 dnf install iptables（某些精简系统要另外装 iptables-ipv6）"
 }
 
 ensure_hop_capability() {
@@ -1060,7 +1044,7 @@ hop_check_cmd() {
 hop_cmd() {
   need_root hop
   read_env
-  local action="${1:-show}" value previous_range=""
+  local action="${1:-show}" value previous_range="" apply_failed=0
   case "$action" in
     show|status|"")
       if port_hop_enabled; then
@@ -1085,7 +1069,8 @@ hop_cmd() {
       ensure_hop_firewall_tool
       ensure_hop_capability
       if [ -z "${PORT_HOP_RANGE:-}" ]; then
-        value="$(default_hop_range)" || die "无法根据 HY2_PORT 生成端口跳跃范围"
+        value="$(default_hop_range)" \
+          || die "代理端口 ${HY2_PORT:-443} 已经到 65535，往后没有可用端口可跳。先改小代理端口（hy2 install 时选个更低的，或手动改 config.env 的 HY2_PORT）再开启端口跳跃"
         set_config_env_var PORT_HOP_RANGE "$value"
         export PORT_HOP_RANGE="$value"
       fi
@@ -1097,9 +1082,18 @@ hop_cmd() {
       validate_hop_interval "$PORT_HOP_INTERVAL"
       set_config_env_var PORT_HOP_ENABLED true
       export PORT_HOP_ENABLED=true
-      apply_hysteria_client_settings
+      # 必须用 || true 兜住：apply_hysteria_client_settings 内部 systemctl restart
+      # 失败会返回非零，脚本开着 set -Eeuo pipefail 会就地退出，
+      # 下面的回滚判断根本执行不到，Hysteria 会永远停在起不来的状态。
+      apply_failed=0
+      if ! apply_hysteria_client_settings; then
+        warn "Hysteria 重启失败"
+        apply_failed=1
+      fi
       sleep 2
-      if ! systemctl is-active --quiet hysteria-server.service; then
+      # apply_failed 也要回滚：重启失败时旧配置可能还在跑，is-active 会骗人说「活着」，
+      # 但新配置压根没生效，端口跳跃实际是关的，配置里却写着 on。
+      if [ "$apply_failed" -eq 1 ] || ! systemctl is-active --quiet hysteria-server.service; then
         warn "Hysteria 没能带着端口范围启动，自动回滚到单端口"
         journalctl -u hysteria-server.service --no-pager -n 40 >&2 || true
         set_config_env_var PORT_HOP_ENABLED false
@@ -1114,8 +1108,13 @@ hop_cmd() {
     off|disable)
       set_config_env_var PORT_HOP_ENABLED false
       export PORT_HOP_ENABLED=false
-      apply_hysteria_client_settings
-      log "已关闭端口跳跃，恢复单端口 ${HY2_PORT:-443}/UDP；请客户端更新订阅"
+      # 关也兜住：配置已经写成 off，服务没重启成功的话实际还在范围监听，
+      # 用户会以为关了其实没关。这里报错但保留 off（宁可显示关闭也别谎报）。
+      if ! apply_hysteria_client_settings; then
+        warn "端口跳跃配置已关闭，但 Hysteria 重启失败；执行 sudo hy2 restart 让单端口生效"
+      else
+        log "已关闭端口跳跃，恢复单端口 ${HY2_PORT:-443}/UDP；请客户端更新订阅"
+      fi
       ;;
     range)
       value="${2:-}"
@@ -1126,10 +1125,15 @@ hop_cmd() {
       set_config_env_var PORT_HOP_RANGE "$value"
       export PORT_HOP_RANGE="$value"
       if port_hop_enabled; then
-        apply_hysteria_client_settings
+        # 同 hop on：重启失败不能让 set -e 掐断回滚路径。
+        apply_failed=0
+        if ! apply_hysteria_client_settings; then
+          warn "Hysteria 重启失败"
+          apply_failed=1
+        fi
         if [ ! -f "${HY2_OFF_FILE:-/etc/hy2-aio/hy2.off}" ]; then
           sleep 2
-          if ! systemctl is-active --quiet hysteria-server.service; then
+          if [ "$apply_failed" -eq 1 ] || ! systemctl is-active --quiet hysteria-server.service; then
             warn "Hysteria 没能带着新范围启动，回滚到 ${previous_range:-默认范围}"
             journalctl -u hysteria-server.service --no-pager -n 40 >&2 || true
             if [ -n "$previous_range" ]; then

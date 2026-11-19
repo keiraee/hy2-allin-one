@@ -189,6 +189,7 @@ fetch_modules() {
     "lib/mode.sh"
     "lib/backend.sh"
     "lib/cli.sh"
+    "lib/deps.sh"
     "bin/hy2.sh"
   )
   local sums tmp f expected
@@ -231,6 +232,7 @@ load_local_modules() {
   source "${SCRIPT_DIR}/lib/mode.sh"
   source "${SCRIPT_DIR}/lib/backend.sh"
   source "${SCRIPT_DIR}/lib/cli.sh"
+  source "${SCRIPT_DIR}/lib/deps.sh"
 }
 
 # 加载已安装的模块
@@ -249,6 +251,7 @@ load_installed_modules() {
     source "${modules_dir}/lib/mode.sh"
     source "${modules_dir}/lib/backend.sh"
     source "${modules_dir}/lib/cli.sh"
+    source "${modules_dir}/lib/deps.sh"
   else
     die "模块未安装，请运行：sudo bash hy2.sh install"
   fi
@@ -341,6 +344,10 @@ install_stack() {
   fi
 
   install_packages_v12
+  # install_packages_v12 只保证「基础 + Caddy 构建链」，剩下那些只在特定功能
+  # 才用到的命令（jq / ss / nft / fail2ban-client…）在小机器上经常缺，
+  # 装完基础包立刻按当前系统补一遍，免得用户装到一半才撞 command not found。
+  deps_cmd fix || warn "部分可选依赖没装上；不影响安装，稍后可执行 sudo hy2 deps fix 重试"
 
   echo
   echo "============================================================"
@@ -748,6 +755,8 @@ HY2 AIO v${AIO_VERSION}
   hy2 hop check                # 自检：防火墙工具、CAP_NET_ADMIN、监听与重定向规则
   hy2 hop range 8443-9443      # 设置范围（必须从 HY2_PORT 开始，跨度 ≤2000）
   hy2 hop interval 30          # 设置跳跃间隔（5-3600 秒）
+  hy2 deps                     # 运行环境自检（缺哪些命令）
+  hy2 deps fix                 # 缺什么按发行版自动装什么
   hy2 help|-h|--help|-help
 
 无人值守安装：
@@ -871,6 +880,7 @@ main() {
     uninstall)  uninstall_cmd ;;
     obfs)       obfs_cmd "${2:-show}" ;;
     hop)        hop_cmd "${2:-show}" "${3:-}" ;;
+    deps)       deps_cmd "${2:-check}" ;;
     help|-h|--help|-help) usage ;;
     *)          usage; exit 1 ;;
   esac

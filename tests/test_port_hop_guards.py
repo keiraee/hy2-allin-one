@@ -39,6 +39,17 @@ class HopRangeGuardTests(unittest.TestCase):
         result = run_bash(PRELUDE + 'HY2_PORT=65000; default_hop_range\n')
         self.assertEqual("65000-65535", result.stdout.strip())
 
+    def test_default_range_fails_at_max_port(self):
+        # 65535 是合法代理端口，但往后没有可跳的端口了；这里必须失败，
+        # 让 hop on 能给出「先改小代理端口」的人话提示，而不是抛
+        # 「结束端口必须大于开始端口」这种跟用户行为对不上的话。
+        result = run_bash(PRELUDE + 'HY2_PORT=65535; default_hop_range\n')
+        self.assertNotEqual(0, result.returncode)
+
+    def test_default_range_still_works_just_below_max(self):
+        result = run_bash(PRELUDE + 'HY2_PORT=65534; default_hop_range\n')
+        self.assertEqual("65534-65535", result.stdout.strip())
+
     def test_hop_range_falls_back_to_default(self):
         result = run_bash(PRELUDE + 'HY2_PORT=8443; PORT_HOP_RANGE=""; hop_range\n')
         self.assertEqual("8443-9443", result.stdout.strip())
@@ -81,6 +92,22 @@ class HopRedirectRangeTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertEqual("", result.stdout.strip())
 
+    def test_redirect_single_port_range_is_bare_number(self):
+        # Hysteria 的 nftPortExpr/iptablesPortExpr 在 start==end 时只写单个数字，
+        # 自检若拿 "8444-8444" 去 grep，规则建好了也永远匹配不上（误报）。
+        result = run_bash(
+            PRELUDE
+            + 'HY2_PORT=8443; PORT_HOP_RANGE=8443-8444; hop_redirect_range\n'
+        )
+        self.assertEqual("8444", result.stdout.strip())
+
+    def test_redirect_two_port_range_keeps_dash(self):
+        result = run_bash(
+            PRELUDE
+            + 'HY2_PORT=8443; PORT_HOP_RANGE=8443-8445; hop_redirect_range\n'
+        )
+        self.assertEqual("8444-8445", result.stdout.strip())
+
 
 class HopIntervalGuardTests(unittest.TestCase):
     def test_interval_accepts_bounds(self):
@@ -116,6 +143,47 @@ class HopSwitchTests(unittest.TestCase):
             PRELUDE + "PORT_HOP_ENABLED=maybe; port_hop_enabled || echo no\n"
         )
         self.assertEqual("no", result.stdout.strip())
+
+
+class HopRollbackReachabilityTests(unittest.TestCase):
+    """apply_hysteria_client_settings 内部 systemctl restart 失败会返回非零。
+    脚本开着 set -Eeuo pipefail，若直接裸调，回滚代码永远执行不到，
+    Hysteria 会停在起不来的状态而 config.env 里还写着 PORT_HOP_ENABLED=true。
+    这里从源码层面钉住「调用点必须被兜住」。"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.text = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
+
+    def hop_cmd_body(self) -> str:
+        start = self.text.index("hop_cmd() {")
+        # 下一个顶层函数（行首顶格的 xxx() {）
+        rest = self.text[start:]
+        for marker in ("\nobfs_cmd() {", "\nprompt_obfs_enabled() {"):
+            idx = rest.find(marker)
+            if idx != -1:
+                return rest[:idx]
+        return rest
+
+    def test_no_bare_apply_call_in_hop_cmd(self):
+        body = self.hop_cmd_body()
+        bare = [
+            line.strip()
+            for line in body.splitlines()
+            if line.strip() == "apply_hysteria_client_settings"
+        ]
+        self.assertEqual(
+            [],
+            bare,
+            "hop_cmd 里不能裸调 apply_hysteria_client_settings："
+            "它失败会让 set -e 直接退出，后面的回滚判断永远执行不到",
+        )
+
+    def test_on_and_range_rollback_when_restart_fails(self):
+        body = self.hop_cmd_body()
+        # on 和 range 两条路径都必须把重启失败计入回滚条件
+        self.assertGreaterEqual(body.count("apply_failed=1"), 2, body)
+        self.assertEqual(2, body.count('[ "$apply_failed" -eq 1 ] || ! systemctl is-active'))
 
 
 class HopCliEntryTests(unittest.TestCase):
