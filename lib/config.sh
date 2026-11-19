@@ -774,10 +774,6 @@ obfs_is_enabled() {
   esac
 }
 
-adblock_value_is_on() {
-  printf '%s' "$1" | grep -qiE '^(1|true|yes|on)$'
-}
-
 set_config_env_var() {
   local key="$1" value="$2"
   python3 - "$ENV_FILE" "$key" "$value" <<'PY'
@@ -848,98 +844,6 @@ obfs_cmd() {
       ;;
     *)
       die "用法：hy2 obfs on|off|show"
-      ;;
-  esac
-}
-
-ADBLOCK_FILE="${CONFIG_DIR}/adblock.json"
-
-# 面板写的覆盖值优先于 config.env；命令行是 root 的显式指令，改动前先清掉覆盖，
-# 否则面板里设过的值会把 CLI 的修改无声盖掉。
-adblock_clear_panel_override() {
-  rm -f "$ADBLOCK_FILE"
-}
-
-adblock_effective_state() {
-  python3 - "$ADBLOCK_FILE" "${ADBLOCK_ENABLED:-true}" "${ADBLOCK_LEVEL:-lite}" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-enabled, level = sys.argv[2], sys.argv[3]
-try:
-    stored = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(stored, dict):
-        stored = {}
-except Exception:
-    stored = {}
-
-if "enabled" in stored:
-    raw = str(stored["enabled"]).strip().lower()
-    enabled = "true" if raw in ("1", "true", "yes", "on") else "false"
-if "level" in stored:
-    level = str(stored["level"]).strip().lower()
-
-print(f"{enabled} {level}")
-PY
-}
-
-adblock_refresh() {
-  # 去广告只影响订阅内容（订阅是后端按请求现生成的），Hysteria 服务端配置一个字都不变。
-  # 所以这里绝不能走 apply_hysteria_client_settings：那会重建配置并 restart，把在线用户全踢下线。
-  # 只需要让面板的 data.json 立刻反映新状态（否则面板要等下一次 60 秒轮询）。
-  api_post sync >/dev/null || true
-}
-
-adblock_cmd() {
-  need_root adblock
-  read_env
-  local action="${1:-show}" level="${2:-}" state enabled current_level
-  case "$action" in
-    show|status|"")
-      state="$(adblock_effective_state)"
-      enabled="${state%% *}"
-      current_level="${state##* }"
-      if adblock_value_is_on "$enabled"; then
-        echo "adblock: on"
-        echo "规则集：${current_level}（lite=ACL4SSR BanAD 约 600 条 / full=blackmatrix7 约 29 万条 11MB）"
-        echo "位置：RULE-SET,adblock,REJECT 排在 china-domain 之前"
-        echo "来源：$( [ -f "$ADBLOCK_FILE" ] && echo '面板设置（hy2 adblock 会覆盖）' || echo 'config.env' )"
-      else
-        echo "adblock: off"
-      fi
-      ;;
-    on|enable)
-      adblock_clear_panel_override
-      set_config_env_var ADBLOCK_ENABLED true
-      export ADBLOCK_ENABLED=true
-      adblock_refresh
-      log "已开启去广告规则；请客户端更新订阅"
-      ;;
-    off|disable)
-      adblock_clear_panel_override
-      set_config_env_var ADBLOCK_ENABLED false
-      export ADBLOCK_ENABLED=false
-      adblock_refresh
-      log "已关闭去广告规则；请客户端更新订阅"
-      ;;
-    level)
-      case "$level" in
-        lite|full)
-          adblock_clear_panel_override
-          set_config_env_var ADBLOCK_LEVEL "$level"
-          export ADBLOCK_LEVEL="$level"
-          adblock_refresh
-          log "去广告规则集已切换为 ${level}；请客户端更新订阅"
-          ;;
-        *)
-          die "用法：hy2 adblock level lite|full"
-          ;;
-      esac
-      ;;
-    *)
-      die "用法：hy2 adblock on|off|show|level lite|full"
       ;;
   esac
 }

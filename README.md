@@ -116,12 +116,7 @@ sudo hy2 uninstall           # 完全卸载（服务、组件、配置、数据�
 sudo hy2 repair              # 修复/升级
 sudo hy2 obfs show           # 查看混淆状态
 sudo hy2 obfs on|off         # 开启/关闭混淆（服务端+订阅+直链同步）
-sudo hy2 adblock show        # 查看去广告状态（同面板「订阅去广告」）
-sudo hy2 adblock on|off      # 开启/关闭订阅里的去广告规则
-sudo hy2 adblock level lite|full  # 切换规则集（lite 约600条 / full 约29万条11MB）
 ```
-
-去广告也能直接在面板首页「订阅去广告」里开关和切档位，不用记命令。面板的设置存在 `adblock.json`，优先级高于 `config.env`；用 `hy2 adblock` 改会清掉这份覆盖。两处改完都只需客户端更新订阅，不重启任何服务。
 
 ## 无人值守安装
 
@@ -146,8 +141,6 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_PANEL_PATH` | 面板路径 | 随机生成 |
 | `HY2_SNI` | 客户端 SNI | www.amazon.sg |
 | `HY2_OBFS` | Salamander 混淆 `0/1` | `1`（开） |
-| `ADBLOCK_ENABLED` | 订阅注入去广告规则 `true/false` | `true`（开） |
-| `ADBLOCK_LEVEL` | 去广告规则集 `lite/full` | `lite`（ACL4SSR BanAD） |
 | `HY2_PORT` | Hysteria UDP 端口 | 安装向导默认 `8443` |
 | `XRAY_PORT` | VLESS+Reality TCP 端口 | 默认与 `HY2_PORT` 相同 |
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
@@ -187,7 +180,6 @@ hy2-allin-one/
 - **VLESS+Reality** 用官方 [Xray-core](https://github.com/XTLS/Xray-core)（Vision），伪装站固定 `www.cloudflare.com:443`。默认与 HY2 同端口号：HY2 走 UDP，VLESS 走 TCP。`hy2 off` 只关 Hysteria，Xray 继续跑。
 - **复制直链**一次给出两行：`hysteria2://` 和 `vless://`。
 - **混淆默认开启**；不稳时可 `sudo hy2 obfs off` 后让客户端更新订阅（关闭的是伪装，不是加密）。
-- **去广告默认开启**：订阅里注入 `RULE-SET,adblock,REJECT`，排在 `china-domain` 之前（否则国内 CDN 上的广告域名会先被判直连）。默认 `lite` 档用 ACL4SSR BanAD（约 600 条，移动端友好）；`sudo hy2 adblock level full` 换成 blackmatrix7 完整版（约 29 万条 / 11MB，仅建议桌面端）；不要就 `sudo hy2 adblock off`。改完都需客户端更新订阅。
 - **安装向导**默认代理 UDP `8443`（云上比 443 更稳）；仍可改成 `443`。
 - **整机流量**：面板顶部为网卡计数，尽量对齐云厂商套餐；Clash 订阅进度与此同源。
 - **用户流量**：用户表为 HY2 代理分摊参考，各用户之和通常小于整机。
@@ -196,22 +188,6 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
-
-### 未发布
-- Clash 订阅支持去广告规则集，默认开启：`RULE-SET,adblock,REJECT` 排在 `china-domain` 之前
-- 两档规则源：`lite`（ACL4SSR BanAD，约 600 条，默认）/ `full`（blackmatrix7，约 29 万条 / 11MB）
-- 新命令：`hy2 adblock show|on|off`、`hy2 adblock level lite|full`；菜单 26 项；`hy2 status` 显示开关状态
-- 环境变量：`ADBLOCK_ENABLED`（默认 `true`）、`ADBLOCK_LEVEL`（默认 `lite`）
-- 面板新增「订阅去广告」开关和规则集下拉，不用再走命令行；面板设置存 `adblock.json`，优先于 `config.env`，命令行改动会清掉该覆盖
-- 修复：`lite` 档误标 `format: yaml`，内核按 YAML 解析纯文本列表得到 **0 条**、去广告静默失效；现为 `format: text`
-- 修复：两档曾共用缓存文件 `ruleset/adblock.yaml`，切档后会先吃到上一档残留；现各用 `adblock-lite.list` / `adblock-full.yaml`
-- 修复：菜单 `25` 同时分派「去广告」和「重新申请证书」，`case` 只命中靠前者导致证书入口失效；去广告改为 `26`
-- 修复：面板切去广告后没刷新 `data.json`，页面读到最多 60 秒前的旧值，把刚切好的开关又掰回去；`POST /adblock` 现当场重采一次
-- 修复：`hy2 adblock on|off|level` 误走 `apply_hysteria_client_settings`，会重建服务端配置并重启 Hysteria，把在线用户全踢下线；去广告只改订阅内容，现不再重启任何服务
-- 修复：`hy2 status` 的去广告行只读 `config.env`，面板关掉后仍显示 `on`；现走面板覆盖优先的最终状态
-- 修复：`lite` 档规则源走 `raw.githubusercontent.com`，国内客户端拉不动就是静默没有去广告；改走 jsdelivr 镜像（实测内容逐字节相同）
-- 修复：归属地查询失败被永久缓存，一次网络抖动就让国旗一直不出现（只能重启后端恢复）；现失败结果只记 1 小时
-- 修复：国旗只加在面板和订阅上，`hy2 show` 与 `/root/hy2-aio-access.txt` 里的节点名还是旧的，同一节点显示两个名字；归属地现由后端落进 `data.json` 供 CLI 复用
 
 ### v1.7.3
 - 修复 v1.7.2 卸载重装后 Hysteria 起不来（`Failed at step CHDIR`）：官方安装脚本的服务单元用 `WorkingDirectory=~`（hysteria 用户家目录），v1.7.2 把用户创建提前后家目录变成 `/nonexistent`；现统一为 `/var/lib/hysteria`，安装与 repair 自动改回坏家目录并补目录，已中招机器升级即修复、无需重装

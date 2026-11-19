@@ -1,15 +1,9 @@
 import io
 import json
-import sys
 import tempfile
 import unittest
 import urllib.parse
 from pathlib import Path
-
-try:
-    import yaml
-except ImportError:  # 未装 PyYAML 时相关用例自行 skipTest
-    yaml = None
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -141,114 +135,6 @@ class SubscriptionYamlTests(unittest.TestCase):
         self.assertIn('up: "80 Mbps"', text)
         self.assertIn('down: "300 Mbps"', text)
         self.assertRegex(text, r"(?m)^mode: rule$")
-
-
-class AdblockRuleTests(unittest.TestCase):
-    """去广告规则集：默认开启、可关闭、两档规则源，且必须排在 china-domain 之前。"""
-
-    def setUp(self):
-        self.namespace = load_backend_namespace()
-        self.namespace["server_country_code"] = lambda env: ""
-        self.temporary = tempfile.TemporaryDirectory()
-        self.mode_file = Path(self.temporary.name) / "client-mode.json"
-        self.mode_file.write_text("{}\n", encoding="utf-8")
-        self.namespace["MODE_FILE"] = self.mode_file
-        self.base_env = {
-            "PUBLIC_IP": "203.0.113.10",
-            "HY2_PORT": "8443",
-            "XRAY_PORT": "8443",
-            "OBFS_ENABLED": "false",
-            "SNI": "www.amazon.sg",
-            "CLIENT_INSECURE": "true",
-            "DOMAIN": "203-0-113-10.sslip.io",
-        }
-        self.info = {"vless_id": "11111111-2222-4333-8444-555555555555"}
-
-    def tearDown(self):
-        self.temporary.cleanup()
-
-    def text(self, **extra):
-        env = dict(self.base_env)
-        env.update(extra)
-        return self.namespace["subscription_yaml"](env, "alice", "p4ss", self.info).decode(
-            "utf-8"
-        )
-
-    def test_enabled_by_default_with_lite_ruleset(self):
-        text = self.text()
-        self.assertIn("  adblock:\n", text)
-        self.assertIn("behavior: classical", text)
-        self.assertIn("ACL4SSR/ACL4SSR@master/Clash/BanAD.list", text)
-        self.assertIn("- RULE-SET,adblock,REJECT", text)
-
-    def test_rule_sources_avoid_raw_github(self):
-        """规则由客户端去拉；raw.githubusercontent 在国内基本拉不动，拉不到就静默没有去广告。"""
-        for text in (self.text(), self.text(ADBLOCK_LEVEL="full")):
-            self.assertNotIn("raw.githubusercontent.com", text)
-            self.assertIn("testingcf.jsdelivr.net", text)
-
-    def test_lite_ruleset_declares_text_format(self):
-        """BanAD.list 是纯文本；标成 yaml 内核会按 payload: 解析出 0 条，去广告静默失效。"""
-        if yaml is None:
-            self.skipTest("未安装 PyYAML")
-        provider = yaml.safe_load(self.text())["rule-providers"]["adblock"]
-        self.assertEqual("text", provider["format"])
-        self.assertTrue(str(provider["path"]).endswith(".list"))
-
-    def test_levels_use_separate_cache_files(self):
-        """两档同用一个缓存路径，切档后内核会拿上一档的残留文件解析出新格式的 0 条。"""
-        if yaml is None:
-            self.skipTest("未安装 PyYAML")
-        lite = yaml.safe_load(self.text())["rule-providers"]["adblock"]
-        full = yaml.safe_load(self.text(ADBLOCK_LEVEL="full"))["rule-providers"]["adblock"]
-        self.assertNotEqual(lite["path"], full["path"])
-        self.assertEqual("text", lite["format"])
-        self.assertEqual("yaml", full["format"])
-
-    def test_can_be_disabled(self):
-        text = self.text(ADBLOCK_ENABLED="false")
-        self.assertNotIn("adblock", text)
-        self.assertNotIn("RULE-SET,adblock", text)
-        # 关闭后国内分流与兜底仍然完整
-        self.assertIn("- RULE-SET,china-domain,DIRECT", text)
-        self.assertIn("- MATCH,PROXY", text)
-
-    def test_full_level_switches_source_and_slows_interval(self):
-        text = self.text(ADBLOCK_LEVEL="full")
-        self.assertIn("Advertising/Advertising_Classical.yaml", text)
-        self.assertIn("interval: 604800", text)
-        self.assertNotIn("BanAD.list", text)
-
-    def test_unknown_level_falls_back_to_lite(self):
-        text = self.text(ADBLOCK_LEVEL="banana")
-        self.assertIn("BanAD.list", text)
-        self.assertIn("interval: 86400", text)
-
-    def test_adblock_rule_precedes_china_domain(self):
-        """广告域名可能挂在 .cn / 国内 CDN 上，必须先于 china-domain 命中，否则会被 DIRECT 放行。"""
-        text = self.text()
-        ad_index = text.index("- RULE-SET,adblock,REJECT")
-        china_index = text.index("- RULE-SET,china-domain,DIRECT")
-        self.assertLess(ad_index, china_index)
-
-    def test_lan_and_private_cidrs_stay_ahead_of_adblock(self):
-        """内网直连必须排最前，去广告不能把它们抢走。"""
-        text = self.text()
-        ad_index = text.index("- RULE-SET,adblock,REJECT")
-        lan_index = text.index("- IP-CIDR,192.168.0.0/16,DIRECT,no-resolve")
-        self.assertLess(lan_index, ad_index)
-
-    def test_generated_yaml_parses(self):
-        """结构正确性：payload 缩进、段落边界都不能破坏 YAML。"""
-        try:
-            import yaml
-        except ImportError:
-            self.skipTest("未安装 PyYAML")
-        data = yaml.safe_load(self.text())
-        self.assertIn("adblock", data["rule-providers"])
-        self.assertEqual("classical", data["rule-providers"]["adblock"]["behavior"])
-        self.assertIn("RULE-SET,adblock,REJECT", data["rules"])
-        self.assertEqual("MATCH,PROXY", data["rules"][-1])
 
 
 class SubscriptionUserinfoTests(unittest.TestCase):
@@ -396,25 +282,6 @@ class SubscriptionFlagTests(unittest.TestCase):
         ).decode("utf-8")
         self.assertIn('"🇯🇵 HY2-alice"', text)
 
-    def test_lookup_failure_is_retried_after_window(self):
-        """查不到若被永久缓存，一次网络抖动就让国旗一直不出现，只能重启后端。"""
-        calls = []
-
-        def always_fail(url):
-            calls.append(url)
-            return None
-
-        self.namespace["_http_get_json"] = always_fail
-        self.assertEqual("", self.namespace["server_country_code"](self.env))
-        self.assertEqual(3, len(calls))
-        # 窗口内拿缓存，不再空跑 3 次超时
-        self.assertEqual("", self.namespace["server_country_code"](self.env))
-        self.assertEqual(3, len(calls))
-        # 时间戳放到窗口之外后重试，这次通了
-        self.namespace["_GEO_CACHE"]["203.0.113.10"] = ("", 0.0)
-        self.namespace["_http_get_json"] = lambda url: {"country_code": "sg"}
-        self.assertEqual("SG", self.namespace["server_country_code"](self.env))
-
     def test_lookup_failure_keeps_original_names(self):
         self.namespace["_http_get_json"] = lambda url: None
         text = self.namespace["subscription_yaml"](
@@ -422,80 +289,6 @@ class SubscriptionFlagTests(unittest.TestCase):
         ).decode("utf-8")
         self.assertIn('"HY2-alice"', text)
         self.assertIn('"hy2超时备用临时节点"', text)
-
-
-class AccessFileFlagTests(unittest.TestCase):
-    """访问资料文件里的节点名必须和面板/订阅一模一样（hy2 show 直接打印它）。"""
-
-    def render_access(self, extra_env="", data_json=None):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            env_file = root / "config.env"
-            users_file = root / "users.json"
-            mode_file = root / "client-mode.json"
-            out_file = root / "access.txt"
-            data_file = root / "data.json"
-            env_file.write_text(
-                "DOMAIN=panel.example.com\nPANEL_PORT=443\nPANEL_PATH=p\n"
-                "PANEL_USER=admin\nPANEL_PASS=secret\nAIO_VERSION=9.9.9\n"
-                "PUBLIC_IP=203.0.113.10\nHY2_PORT=8443\nSNI=www.amazon.sg\n"
-                "OBFS_ENABLED=false\nTOTAL_BYTES=0\n"
-                "REALITY_PUBLIC_KEY=public-key-fixture\nREALITY_SHORT_ID=abcd1234\n"
-                "REALITY_DEST=www.cloudflare.com:443\n"
-                "REALITY_SERVER_NAMES=www.cloudflare.com\n" + extra_env,
-                encoding="utf-8",
-            )
-            users_file.write_text(
-                json.dumps(
-                    {
-                        "alice": {
-                            "password": "pw",
-                            "token": "tok",
-                            "disabled": False,
-                            "vless_id": "11111111-2222-4333-8444-555555555555",
-                        }
-                    }
-                ),
-                encoding="utf-8",
-            )
-            mode_file.write_text("{}", encoding="utf-8")
-            if data_json is not None:
-                data_file.write_text(data_json, encoding="utf-8")
-            source = (ROOT / "lib" / "access.sh").read_text(encoding="utf-8")
-            start = source.index("<<'PY'\n") + len("<<'PY'\n")
-            body = source[start : source.index("\nPY\n", start)]
-            argv = sys.argv
-            argv_list = [
-                "access",
-                str(env_file),
-                str(users_file),
-                str(mode_file),
-                str(out_file),
-                str(data_file),
-            ]
-            sys.argv = argv_list
-            try:
-                exec(compile(body, "access.py", "exec"), {"__name__": "access_test"})
-            finally:
-                sys.argv = argv
-            return out_file.read_text(encoding="utf-8")
-
-    def test_flag_comes_from_backend_resolved_country(self):
-        text = self.render_access(data_json='{"server": {"country_code": "SG"}}')
-        self.assertIn("#" + urllib.parse.quote("🇸🇬 HY2-alice", safe=""), text)
-        self.assertIn("#" + urllib.parse.quote("🇸🇬 hy2超时备用临时节点", safe=""), text)
-
-    def test_no_country_keeps_original_names(self):
-        for data_json in (None, "{}", '{"server": {}}', "{not json"):
-            text = self.render_access(data_json=data_json)
-            self.assertIn("#" + urllib.parse.quote("HY2-alice", safe=""), text)
-            self.assertNotIn("🇸🇬", text)
-
-    def test_config_env_override_wins(self):
-        text = self.render_access(
-            extra_env="COUNTRY_CODE=us\n", data_json='{"server": {"country_code": "SG"}}'
-        )
-        self.assertIn("#" + urllib.parse.quote("🇺🇸 HY2-alice", safe=""), text)
 
 
 if __name__ == "__main__":

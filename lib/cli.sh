@@ -17,17 +17,6 @@ status_cmd() {
   else
     echo "混淆：off"
   fi
-  # 必须走 effective：面板的开关写在 adblock.json 里，只看 config.env 会在
-  # 面板关掉之后仍报 on，用户以为没生效又去点一遍。
-  local adblock_state="${ADBLOCK_ENABLED:-true} ${ADBLOCK_LEVEL:-lite}"
-  if command -v adblock_effective_state >/dev/null 2>&1; then
-    adblock_state="$(adblock_effective_state)"
-  fi
-  if adblock_value_is_on "${adblock_state%% *}"; then
-    echo "去广告：on (${adblock_state##* })"
-  else
-    echo "去广告：off"
-  fi
   echo "QUIC 保活：${QUIC_KEEP_ALIVE_PERIOD:-5s} / idle ${QUIC_MAX_IDLE_TIMEOUT:-120s}"
   if [ -f "${HY2_OFF_FILE:-/etc/hy2-aio/hy2.off}" ]; then
     echo "Hysteria：已关闭（开启：hy2 on）"
@@ -530,7 +519,6 @@ EOF
   echo "── 功能 ──────────────────────────"
   echo " 13) 速率模式"
   echo " 14) 混淆开关（obfs）"
-  echo " 26) 去广告开关（adblock）"
   echo " 15) 同步数据"
   echo " 16) 备份"
   echo " 17) 回滚最近快照"
@@ -546,11 +534,11 @@ EOF
 }
 
 menu_interactive() {
-  local choice username note obfs_choice ad_choice ad_level
+  local choice username note obfs_choice
   refresh_update_hint
   while true; do
     show_menu
-    read -r -p "请选择 [1-26/99]: " choice
+    read -r -p "请选择 [1-25/99]: " choice
     case "$choice" in
       1)  menu_upgrade ;;
       2)  menu_call repair_cmd ;;
@@ -586,20 +574,6 @@ menu_interactive() {
           0) menu_call obfs_cmd show ;;
           1) menu_call obfs_cmd on ;;
           2) menu_call obfs_cmd off ;;
-          *) echo "无效选择" ;;
-        esac
-        ;;
-      26)
-        echo "0) 查看状态  1) 开启去广告  2) 关闭去广告  3) 切换规则集 lite/full"
-        read -r -p "请选择 [0-3]: " ad_choice
-        case "$ad_choice" in
-          0) menu_call adblock_cmd show ;;
-          1) menu_call adblock_cmd on ;;
-          2) menu_call adblock_cmd off ;;
-          3)
-            read -r -p "lite=轻量约600条(移动端推荐) / full=全量约29万条11MB [lite]: " ad_level
-            menu_call adblock_cmd level "${ad_level:-lite}"
-            ;;
           *) echo "无效选择" ;;
         esac
         ;;

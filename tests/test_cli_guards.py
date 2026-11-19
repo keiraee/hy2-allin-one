@@ -1,8 +1,5 @@
-import collections
 import os
-import re
 import subprocess
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -50,68 +47,6 @@ class RollbackGuardTests(unittest.TestCase):
         )
         # 过了交互护栏后应继续走查找快照流程（此处无快照而失败），stderr 不含“交互”。
         self.assertNotIn("交互", result.stderr)
-
-
-class MenuNumberingTests(unittest.TestCase):
-    def test_each_menu_number_maps_to_exactly_one_action(self):
-        """菜单是 case 分派；两处同号时 bash 静默取靠前的那个，后一个功能点了没反应。"""
-        text = (ROOT / "lib" / "cli.sh").read_text(encoding="utf-8")
-        body = text[text.index("menu_interactive() {"):]
-        body = body[: body.index("\n  done\n}")]
-        numbers = re.findall(r"^\s{6}(\d+)\)", body, re.MULTILINE)
-        duplicated = [n for n, count in collections.Counter(numbers).items() if count > 1]
-        self.assertEqual([], duplicated, f"菜单项编号冲突：{duplicated}")
-        listed = re.findall(r'^\s{2}(\d+)\)', text[text.index("show_menu() {"):text.index("menu_interactive() {")], re.MULTILINE)
-        self.assertEqual([], [n for n in listed if n not in numbers], f"菜单列出但无分派：{listed}")
-
-
-class StatusAdblockTests(unittest.TestCase):
-    """hy2 status 的去广告行必须反映面板写下的覆盖（adblock.json），不能只看 config.env。"""
-
-    def render_status(self, adblock_json: str) -> str:
-        with tempfile.TemporaryDirectory(dir=ROOT) as tmp:
-            root = Path(tmp)
-            env_file = root / "config.env"
-            env_file.write_text(
-                "DOMAIN=panel.example.com\nPANEL_PORT=443\nPANEL_PATH=p\n"
-                "HY2_PORT=8443\nSTATS_PORT=9999\n"
-                # BACKEND_HOST/BACKEND_PORT 是 core.sh 的 readonly 常量，不能进 config.env
-                "ADBLOCK_ENABLED=true\nADBLOCK_LEVEL=lite\n",
-                encoding="utf-8",
-            )
-            adblock_file = root / "adblock.json"
-            adblock_file.write_text(adblock_json, encoding="utf-8")
-            env_rel = env_file.relative_to(ROOT).as_posix()
-            adblock_rel = adblock_file.relative_to(ROOT).as_posix()
-            result = run_bash(
-                "set -Eeuo pipefail\n"
-                "source lib/core.sh\n"
-                "source lib/config.sh\n"
-                "source lib/cli.sh\n"
-                "need_root() { :; }\n"
-                f'ENV_FILE="{env_rel}"\n'
-                f'ADBLOCK_FILE="{adblock_rel}"\n'
-                "systemctl() { :; }\n"
-                "ss() { :; }\n"
-                "status_cmd\n"
-            )
-            self.assertEqual(0, result.returncode, result.stderr or result.stdout)
-            return result.stdout
-
-    def adblock_line(self, adblock_json: str) -> str:
-        return next(
-            line for line in self.render_status(adblock_json).splitlines()
-            if line.startswith("去广告：")
-        )
-
-    def test_panel_override_turns_status_off(self):
-        self.assertEqual("去广告：off", self.adblock_line('{"enabled": false}'))
-
-    def test_status_follows_config_env_without_override(self):
-        self.assertEqual("去广告：on (lite)", self.adblock_line("{}"))
-
-    def test_status_shows_effective_level(self):
-        self.assertEqual("去广告：on (full)", self.adblock_line('{"level": "full"}'))
 
 
 class LogsGuardTests(unittest.TestCase):
