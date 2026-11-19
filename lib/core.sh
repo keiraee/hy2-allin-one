@@ -180,6 +180,72 @@ port_number_is_valid() {
     && [ "$value" -le 65535 ]
 }
 
+port_hop_enabled() {
+  local raw
+  raw="$(printf '%s' "${PORT_HOP_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')"
+  case "$raw" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+default_hop_range() {
+  local start="${HY2_PORT:-8443}" end
+  port_number_is_valid "$start" || return 1
+  end=$((10#$start + 1000))
+  [ "$end" -le 65535 ] || end=65535
+  printf '%s-%s' "$start" "$end"
+}
+
+hop_range() {
+  if [ -n "${PORT_HOP_RANGE:-}" ]; then
+    printf '%s' "$PORT_HOP_RANGE"
+  else
+    default_hop_range
+  fi
+}
+
+hop_range_is_valid() {
+  local range="${1:-}" start end
+  [[ "$range" =~ ^([0-9]{1,5})-([0-9]{1,5})$ ]] || return 1
+  start="${BASH_REMATCH[1]}"
+  end="${BASH_REMATCH[2]}"
+  port_number_is_valid "$start" && port_number_is_valid "$end" || return 1
+  [ $((10#$start)) -eq $((10#${HY2_PORT:-443})) ] || return 1
+  [ $((10#$end)) -gt $((10#$start)) ] || return 1
+  [ $((10#$end - 10#$start)) -le 2000 ] || return 1
+}
+
+validate_hop_range() {
+  local range="${1:-}" start="" end=""
+  [[ "$range" =~ ^([0-9]{1,5})-([0-9]{1,5})$ ]] \
+    || die "端口跳跃范围格式应为 开始-结束（如 ${HY2_PORT:-8443}-$((10#${HY2_PORT:-8443} + 1000))）：${range:-<empty>}"
+  start="${BASH_REMATCH[1]}"
+  end="${BASH_REMATCH[2]}"
+  port_number_is_valid "$start" && port_number_is_valid "$end" \
+    || die "端口跳跃范围超出 1-65535：$range"
+  [ $((10#$start)) -eq $((10#${HY2_PORT:-443})) ] \
+    || die "端口跳跃范围必须从代理端口 ${HY2_PORT:-443} 开始：$range"
+  [ $((10#$end)) -gt $((10#$start)) ] \
+    || die "端口跳跃范围结束端口必须大于开始端口：$range"
+  [ $((10#$end - 10#$start)) -le 2000 ] \
+    || die "端口跳跃范围跨度过大（最多 2000 个额外端口）：$range"
+  return 0
+}
+
+hop_interval_is_valid() {
+  local value="${1:-}"
+  [[ "$value" =~ ^[0-9]{1,4}$ ]] \
+    && [ $((10#$value)) -ge 5 ] \
+    && [ $((10#$value)) -le 3600 ]
+}
+
+validate_hop_interval() {
+  local value="${1:-}"
+  hop_interval_is_valid "$value" \
+    || die "端口跳跃间隔须为 5-3600 的整数秒：${value:-<empty>}"
+}
+
 port_layout_is_valid() {
   local panel_port="${1:-}" stats_port="${2:-}"
   panel_port_is_valid "$panel_port" \
@@ -308,6 +374,16 @@ read_env() {
   OBFS_ENABLED="${OBFS_ENABLED:-true}"
   QUIC_KEEP_ALIVE_PERIOD="${QUIC_KEEP_ALIVE_PERIOD:-5s}"
   QUIC_MAX_IDLE_TIMEOUT="${QUIC_MAX_IDLE_TIMEOUT:-120s}"
+  PORT_HOP_ENABLED="${PORT_HOP_ENABLED:-false}"
+  if port_hop_enabled; then
+    PORT_HOP_RANGE="${PORT_HOP_RANGE:-$(default_hop_range)}"
+    PORT_HOP_INTERVAL="${PORT_HOP_INTERVAL:-30}"
+    # 这里只警告不退出：range 写坏时仍要允许 `hy2 hop off` 把功能关掉恢复。
+    hop_range_is_valid "$PORT_HOP_RANGE" \
+      || warn "PORT_HOP_RANGE 无效：${PORT_HOP_RANGE}（须从 ${HY2_PORT:-443} 开始、跨度 ≤2000）"
+    hop_interval_is_valid "$PORT_HOP_INTERVAL" \
+      || warn "PORT_HOP_INTERVAL 无效：${PORT_HOP_INTERVAL}（须为 5-3600 的整数秒）"
+  fi
 }
 
 api_post() {

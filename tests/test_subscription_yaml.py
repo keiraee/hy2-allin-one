@@ -137,6 +137,45 @@ class SubscriptionYamlTests(unittest.TestCase):
         self.assertIn('down: "300 Mbps"', text)
         self.assertRegex(text, r"(?m)^mode: rule$")
 
+    def enable_hop(self, **overrides):
+        self.env.update(
+            {"PORT_HOP_ENABLED": "true", "PORT_HOP_RANGE": "8443-9443", "PORT_HOP_INTERVAL": "20"}
+        )
+        self.env.update(overrides)
+
+    def test_port_hop_off_has_no_ports_fields(self):
+        text = self.yaml_text()
+        self.assertIn("    port: 8443", text)
+        self.assertNotIn("ports:", text)
+        self.assertNotIn("hop-interval:", text)
+
+    def test_port_hop_adds_ports_and_interval(self):
+        self.enable_hop()
+        text = self.yaml_text()
+        self.assertIn('    ports: "8443-9443"', text)
+        self.assertIn("    hop-interval: 20", text)
+
+    def test_port_hop_direct_link_uses_range(self):
+        self.enable_hop()
+        text = self.namespace["direct_links"](
+            self.env, "alice", "p4ss", {"vless_id": self.vless_id}
+        )
+        self.assertIn(":8443-9443/", text)
+
+    def test_invalid_hop_range_falls_back_to_single_port(self):
+        self.enable_hop(PORT_HOP_RANGE="500-600")
+        text = self.yaml_text()
+        self.assertNotIn("ports:", text)
+        self.assertNotIn("hop-interval:", text)
+        links = self.namespace["direct_links"](self.env, "alice", "p4ss")
+        self.assertIn(":8443/", links)
+        self.assertNotIn(":500-600/", links)
+
+    def test_bad_hop_interval_falls_back_to_30(self):
+        self.enable_hop(PORT_HOP_INTERVAL="2")
+        text = self.yaml_text()
+        self.assertIn("    hop-interval: 30", text)
+
 
 class SubscriptionUserinfoTests(unittest.TestCase):
     """订阅头命名与全站约定对齐：upload 对应 tx（Hysteria 口径 tx=客户端上行）。"""
@@ -383,6 +422,20 @@ class AccessFileFlagTests(unittest.TestCase):
             extra_env="COUNTRY_CODE=us\n", data_json='{"server": {"country_code": "SG"}}'
         )
         self.assertIn("#" + urllib.parse.quote("🇺🇸 HY2-alice", safe=""), text)
+
+    def test_port_hop_range_in_access_file(self):
+        text = self.render_access(
+            extra_env="PORT_HOP_ENABLED=true\nPORT_HOP_RANGE=8443-9443\n"
+        )
+        self.assertIn("HY2 端口：8443-9443/UDP（端口跳跃）", text)
+        self.assertIn(":8443-9443/", text)
+
+    def test_invalid_hop_range_falls_back_in_access_file(self):
+        text = self.render_access(
+            extra_env="PORT_HOP_ENABLED=true\nPORT_HOP_RANGE=500-600\n"
+        )
+        self.assertIn("HY2 端口：8443/UDP", text)
+        self.assertNotIn(":500-600/", text)
 
 
 if __name__ == "__main__":

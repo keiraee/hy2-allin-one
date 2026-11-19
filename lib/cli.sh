@@ -8,7 +8,11 @@ status_cmd() {
   [ "${PANEL_PORT:-443}" != "443" ] && port_suffix=":${PANEL_PORT}"
   echo "HY2 AIO v${AIO_VERSION:-unknown}"
   echo "面板：https://${DOMAIN}${port_suffix}/${PANEL_PATH}/"
-  echo "Hysteria UDP：${HY2_PORT:-443}"
+  if command -v port_hop_enabled >/dev/null 2>&1 && port_hop_enabled; then
+    echo "Hysteria UDP：$(hop_range)（端口跳跃，间隔 ${PORT_HOP_INTERVAL:-30}s）"
+  else
+    echo "Hysteria UDP：${HY2_PORT:-443}"
+  fi
   echo "VLESS TCP：${XRAY_PORT:-${HY2_PORT:-443}}"
   echo "统计 API：127.0.0.1:${STATS_PORT}"
   echo "面板后端：${BACKEND_HOST}:${BACKEND_PORT}"
@@ -519,6 +523,7 @@ EOF
   echo "── 功能 ──────────────────────────"
   echo " 13) 速率模式"
   echo " 14) 混淆开关（obfs）"
+  echo " 27) 端口跳跃（端口 hopping）"
   echo " 15) 同步数据"
   echo " 16) 备份"
   echo " 17) 回滚最近快照"
@@ -534,11 +539,11 @@ EOF
 }
 
 menu_interactive() {
-  local choice username note obfs_choice
+  local choice username note obfs_choice hop_choice hop_range_value
   refresh_update_hint
   while true; do
     show_menu
-    read -r -p "请选择 [1-25/99]: " choice
+    read -r -p "请选择 [1-27/99]: " choice
     case "$choice" in
       1)  menu_upgrade ;;
       2)  menu_call repair_cmd ;;
@@ -574,6 +579,21 @@ menu_interactive() {
           0) menu_call obfs_cmd show ;;
           1) menu_call obfs_cmd on ;;
           2) menu_call obfs_cmd off ;;
+          *) echo "无效选择" ;;
+        esac
+        ;;
+      27)
+        echo "0) 查看状态  1) 开启  2) 关闭  3) 自检  4) 修改范围"
+        read -r -p "请选择 [0-4]: " hop_choice
+        case "$hop_choice" in
+          0) menu_call hop_cmd show ;;
+          1) menu_call hop_cmd on ;;
+          2) menu_call hop_cmd off ;;
+          3) menu_call hop_cmd check ;;
+          4)
+            read -r -p "范围（如 ${HY2_PORT:-8443}-$((10#${HY2_PORT:-8443} + 1000))）：" hop_range_value
+            menu_call hop_cmd range "$hop_range_value"
+            ;;
           *) echo "无效选择" ;;
         esac
         ;;

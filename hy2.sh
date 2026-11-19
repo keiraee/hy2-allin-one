@@ -413,6 +413,22 @@ install_stack() {
     true|false) ;;
     *) die "混淆开关无效（内部错误，请升级安装脚本）：${OBFS_ENABLED}" ;;
   esac
+
+  # 端口跳跃默认关闭，老机器升级不受影响；需要时安装完执行 hy2 hop on。
+  PORT_HOP_ENABLED=false
+  PORT_HOP_RANGE=""
+  PORT_HOP_INTERVAL=30
+  case "$(printf '%s' "${HY2_PORT_HOP:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on)
+      PORT_HOP_ENABLED=true
+      PORT_HOP_RANGE="${HY2_PORT_HOP_RANGE:-$(default_hop_range)}"
+      PORT_HOP_INTERVAL="${HY2_PORT_HOP_INTERVAL:-30}"
+      validate_hop_range "$PORT_HOP_RANGE"
+      validate_hop_interval "$PORT_HOP_INTERVAL"
+      ;;
+    ""|0|false|no|off) ;;
+    *) die "HY2_PORT_HOP 须为 0/1 或 true/false" ;;
+  esac
   API_SECRET="$(rand_hex 24)"
   SNI="${HY2_SNI:-www.amazon.sg}"
   BACKUP_RETENTION_DAYS="${HY2_BACKUP_DAYS:-14}"
@@ -473,6 +489,9 @@ PYV
   echo "  公网 IP     : $PUBLIC_IP"
   echo "  网卡        : $NETWORK_INTERFACE"
   echo "  代理 UDP    : $HY2_PORT"
+  if [ "$PORT_HOP_ENABLED" = "true" ]; then
+    echo "  端口跳跃    : $PORT_HOP_RANGE"
+  fi
   echo "  VLESS TCP   : $XRAY_PORT"
   echo "  面板 HTTPS  : $PANEL_PORT"
   echo "  域名        : $DOMAIN"
@@ -523,6 +542,9 @@ QUIC_KEEP_ALIVE_PERIOD=$QUIC_KEEP_ALIVE_PERIOD
 QUIC_MAX_IDLE_TIMEOUT=$QUIC_MAX_IDLE_TIMEOUT
 SNI_GUARD=$SNI_GUARD
 CLIENT_INSECURE=$CLIENT_INSECURE
+PORT_HOP_ENABLED=$PORT_HOP_ENABLED
+PORT_HOP_RANGE=$PORT_HOP_RANGE
+PORT_HOP_INTERVAL=$PORT_HOP_INTERVAL
 EOF
   if [ -n "${HY2_FETCH_MODULES_SHA:-}" ]; then
     printf 'HY2_MODULES_SHA=%s\n' "$HY2_FETCH_MODULES_SHA" >> "$ENV_FILE"
@@ -610,6 +632,10 @@ EOF
   echo "  hy2 upgrade && hy2 restart  # 升级到最新版并重启"
   echo
   echo "云控制台防火墙请放行：TCP 80、TCP ${PANEL_PORT}、UDP ${HY2_PORT}、TCP ${XRAY_PORT}"
+  if [ "${PORT_HOP_ENABLED:-false}" = "true" ]; then
+    echo "端口跳跃已开启，还需额外放行：UDP ${PORT_HOP_RANGE}"
+    echo "自检：hy2 hop check；关闭：hy2 hop off"
+  fi
   echo "============================================================"
 }
 
@@ -636,6 +662,9 @@ test_https() {
 
   if [ "$code" != "200" ]; then
     warn "面板 HTTPS 暂未成功。请确认云控制台已放行 TCP 80、TCP ${PANEL_PORT}、UDP ${HY2_PORT}、TCP ${XRAY_PORT}。"
+    if [ "${PORT_HOP_ENABLED:-false}" = "true" ]; then
+      warn "端口跳跃已开启，云安全组还需放行 UDP ${PORT_HOP_RANGE}。"
+    fi
     warn "Caddy 日志：journalctl -u caddy -n 100 --no-pager"
   else
     log "HTTPS 面板测试成功：HTTP 200"
@@ -714,6 +743,11 @@ HY2 AIO v${AIO_VERSION}
   hy2 uninstall                # 完全卸载（服务、组件、配置、数据全清，可直接重装）
   hy2 obfs show                # 查看混淆状态
   hy2 obfs on|off              # 开启/关闭 Salamander 混淆
+  hy2 hop show                 # 查看端口跳跃状态
+  hy2 hop on|off               # 开启/关闭端口跳跃（会重启 Hysteria）
+  hy2 hop check                # 自检：防火墙工具、CAP_NET_ADMIN、监听与重定向规则
+  hy2 hop range 8443-9443      # 设置范围（必须从 HY2_PORT 开始，跨度 ≤2000）
+  hy2 hop interval 30          # 设置跳跃间隔（5-3600 秒）
   hy2 help|-h|--help|-help
 
 无人值守安装：
@@ -735,6 +769,9 @@ HY2 AIO v${AIO_VERSION}
   HY2_PORT            Hysteria UDP 端口，安装向导默认 8443
   XRAY_PORT           VLESS+Reality TCP 端口，默认与 HY2_PORT 相同
   HY2_OBFS            Salamander 混淆 0/1，默认 1（开）
+  HY2_PORT_HOP        安装时启用端口跳跃 0/1，默认 0（关）
+  HY2_PORT_HOP_RANGE  端口跳跃范围，默认 HY2_PORT 至 HY2_PORT+1000
+  HY2_PORT_HOP_INTERVAL 跳跃间隔秒数，默认 30（范围 5-3600）
   HY2_SPEED_TEST      开启 Hysteria speedTest（默认 false）
   HY2_SNI_GUARD       SNI 校验：disable|strict（真实域名默认 strict）
   HY2_CLIENT_INSECURE 客户端 skip-cert-verify（真实域名默认 false）
@@ -833,6 +870,7 @@ main() {
     update-xray) update_xray_cmd ;;
     uninstall)  uninstall_cmd ;;
     obfs)       obfs_cmd "${2:-show}" ;;
+    hop)        hop_cmd "${2:-show}" "${3:-}" ;;
     help|-h|--help|-help) usage ;;
     *)          usage; exit 1 ;;
   esac

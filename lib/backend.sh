@@ -407,6 +407,38 @@ def obfs_enabled(env: dict[str, str]) -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
+def port_hop_enabled(env: dict[str, str]) -> bool:
+    raw = str(env.get("PORT_HOP_ENABLED", "false")).strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def port_hop_ports(env: dict[str, str]) -> str:
+    """端口跳跃范围；无效时返回空串，订阅/直链退回单端口，别把坏配置发出去。"""
+    if not port_hop_enabled(env):
+        return ""
+    try:
+        base = int(str(env.get("HY2_PORT") or "8443"))
+    except ValueError:
+        return ""
+    raw = str(env.get("PORT_HOP_RANGE") or "").strip()
+    if not raw:
+        raw = f"{base}-{min(base + 1000, 65535)}"
+    match = re.fullmatch(r"([0-9]{1,5})-([0-9]{1,5})", raw)
+    if not match:
+        return ""
+    start, end = int(match.group(1)), int(match.group(2))
+    if start != base or end <= start or end > 65535 or end - start > 2000:
+        return ""
+    return f"{start}-{end}"
+
+
+def port_hop_interval(env: dict[str, str]) -> str:
+    raw = str(env.get("PORT_HOP_INTERVAL") or "30").strip()
+    if raw.isdigit() and 5 <= int(raw) <= 3600:
+        return str(int(raw))
+    return "30"
+
+
 def public_base_url(env: dict[str, str]) -> str:
     """Panel/subscription base URL (always HTTPS)."""
     domain = str(env.get("DOMAIN", "") or "")
@@ -486,7 +518,8 @@ def direct_link(env: dict[str, str], username: str, password: str) -> str:
         query_items["insecure"] = "1"
     query = urllib.parse.urlencode(query_items)
     name = urllib.parse.quote(flag_prefix(env) + f"HY2-{username}", safe="")
-    return f"hysteria2://{auth}@{env['PUBLIC_IP']}:{env.get('HY2_PORT', '443')}/?{query}#{name}"
+    ports = port_hop_ports(env) or env.get("HY2_PORT", "443")
+    return f"hysteria2://{auth}@{env['PUBLIC_IP']}:{ports}/?{query}#{name}"
 
 
 def xray_port(env: dict[str, str]) -> str:
@@ -576,6 +609,14 @@ def subscription_yaml(
             f"    obfs-password: {q(env['OBFS_PASSWORD'])}\n"
         )
 
+    hop_lines = ""
+    hop_ports = port_hop_ports(env)
+    if hop_ports:
+        hop_lines = (
+            f"    ports: {q(hop_ports)}\n"
+            f"    hop-interval: {port_hop_interval(env)}\n"
+        )
+
     node = q(flag_prefix(env) + "HY2-" + username)
     vless_block = ""
     vless_group = ""
@@ -634,7 +675,7 @@ proxies:
     server: {q(env["PUBLIC_IP"])}
     port: {env.get('HY2_PORT', '443')}
 {rate_lines}    password: {q(username + ":" + password)}
-{obfs_lines}    sni: {q(env.get("SNI", "www.amazon.sg"))}
+{obfs_lines}{hop_lines}    sni: {q(env.get("SNI", "www.amazon.sg"))}
     skip-cert-verify: {"true" if client_insecure(env) else "false"}
     udp: true
     keepalive: 5s

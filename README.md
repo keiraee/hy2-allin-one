@@ -142,6 +142,9 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_SNI` | 客户端 SNI | www.amazon.sg |
 | `HY2_OBFS` | Salamander 混淆 `0/1` | `1`（开） |
 | `HY2_PORT` | Hysteria UDP 端口 | 安装向导默认 `8443` |
+| `HY2_PORT_HOP` | 安装时启用端口跳跃 `0/1` | `0`（关） |
+| `HY2_PORT_HOP_RANGE` | 端口跳跃范围（必须从 `HY2_PORT` 开始，跨度 ≤2000） | `HY2_PORT` 至 `HY2_PORT+1000` |
+| `HY2_PORT_HOP_INTERVAL` | 客户端换端口间隔（秒） | 30 |
 | `XRAY_PORT` | VLESS+Reality TCP 端口 | 默认与 `HY2_PORT` 相同 |
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
@@ -181,6 +184,7 @@ hy2-allin-one/
 - **复制直链**一次给出两行：`hysteria2://` 和 `vless://`。
 - **混淆默认开启**；不稳时可 `sudo hy2 obfs off` 后让客户端更新订阅（关闭的是伪装，不是加密）。
 - **安装向导**默认代理 UDP `8443`（云上比 443 更稳）；仍可改成 `443`。
+- **端口跳跃**默认关闭。ISP 只针对单个 UDP 端口限速时，`sudo hy2 hop on` 会让客户端在 `8443-9443` 里随机换端口（Clash 订阅写 `ports` + `hop-interval`，直链端口写作 `8443-9443`）。**云安全组必须放行整段 UDP 范围**（本机 ufw/firewalld 只需放行基准端口），启用后先跑 `sudo hy2 hop check`，再用手机蜂窝网络连续重连 5 次验收；`hy2 hop off` 一键回退。
 - **整机流量**：面板顶部为网卡计数，尽量对齐云厂商套餐；Clash 订阅进度与此同源。
 - **用户流量**：用户表为 HY2 代理分摊参考，各用户之和通常小于整机。
 - **节点国旗**：订阅与直链的节点名自动带上服务器归属地国旗（如 `🇸🇬 HY2-用户名`）；识别不准时在 `/etc/hy2-aio/config.env` 里加 `COUNTRY_CODE=SG` 这类 ISO 国家码后 `hy2 restart`
@@ -190,6 +194,8 @@ hy2-allin-one/
 ## 更新日志
 
 ### 未发布
+- 新增端口跳跃（默认关闭）：`hy2 hop on|off|show|check`，服务端用 Hysteria 内置 `listen` 范围 + 自动 nft/iptables 重定向，订阅写 `ports`/`hop-interval`，直链端口位同步写范围；范围必须从 `HY2_PORT` 开始、跨度 ≤2000
+- 端口跳跃自检 `hy2 hop check`：逐项检查 nft/iptables、服务 `CAP_NET_ADMIN`、进程监听、重定向规则、本机防火墙基准端口，并提示云安全组需放行的 UDP 范围；缺少工具时 `hy2 hop on` 会尝试安装
 - 修复：归属地查询失败被永久缓存，一次网络抖动就让国旗一直不出现（只能重启后端恢复）；现失败结果只记 1 小时
 - 修复：国旗只加在面板和订阅上，`hy2 show` 与 `/root/hy2-aio-access.txt` 里的节点名还是旧的，同一节点显示两个名字；归属地现由后端落进 `data.json` 供 CLI 复用
 

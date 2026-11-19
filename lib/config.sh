@@ -7,6 +7,7 @@ write_rebuild_helper() {
 #!/usr/bin/env python3
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -65,8 +66,31 @@ if not userpass_lines:
 def truthy(key: str, default: str = "false") -> bool:
     return str(env.get(key, default)).strip().lower() in ("1", "true", "yes", "on")
 
+# 端口跳跃：listen 写范围时，Hysteria 自己用 nft/iptables 把范围内其他端口
+# 重定向到第一个端口；范围写坏会让 Hysteria 拒绝启动，所以这里先校验再落盘。
+hop_enabled = truthy("PORT_HOP_ENABLED", "false")
+base_port = str(env.get("HY2_PORT", "443")).strip()
+listen_port = base_port
+if hop_enabled:
+    hop_range = str(env.get("PORT_HOP_RANGE") or "").strip()
+    try:
+        base_number = int(base_port)
+    except ValueError:
+        raise SystemExit(f"HY2_PORT 不是有效端口：{base_port}")
+    if not hop_range:
+        hop_range = f"{base_number}-{min(base_number + 1000, 65535)}"
+    match = re.fullmatch(r"([0-9]{1,5})-([0-9]{1,5})", hop_range)
+    if not match:
+        raise SystemExit(f"PORT_HOP_RANGE 格式错误：{hop_range}（应形如 {base_number}-{base_number + 1000}）")
+    start, end = int(match.group(1)), int(match.group(2))
+    if start != base_number or end <= start or end > 65535 or end - start > 2000:
+        raise SystemExit(
+            f"PORT_HOP_RANGE 无效：{hop_range}（须从 HY2_PORT={base_number} 开始、跨度 ≤2000）"
+        )
+    listen_port = f"{start}-{end}"
+
 lines = [
-    f'listen: ":{env.get("HY2_PORT", "443")}"',
+    f'listen: ":{listen_port}"',
     "",
     "quic:",
     f'  maxIdleTimeout: {json.dumps(env.get("QUIC_MAX_IDLE_TIMEOUT", "120s"))}',
@@ -871,6 +895,262 @@ prompt_obfs_enabled() {
     *)
       warn "无效输入，已默认开启"
       printf '%s' "true"
+      ;;
+  esac
+}
+
+hop_firewall_backend() {
+  if command -v nft >/dev/null 2>&1; then
+    printf '%s' "nft"
+  elif command -v iptables >/dev/null 2>&1; then
+    printf '%s' "iptables"
+  fi
+}
+
+# Hysteria 写端口重定向规则要调用 nft/iptables；两者都没有时启动会直接失败。
+ensure_hop_firewall_tool() {
+  [ -n "$(hop_firewall_backend)" ] && return 0
+  warn "未找到 nft/iptables，尝试安装（Hysteria 建立端口重定向需要）"
+  detect_platform
+  case "$PKG_MANAGER" in
+    apt)
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update >/dev/null 2>&1 || true
+      apt-get install -y nftables >/dev/null 2>&1 \
+        || apt-get install -y iptables >/dev/null 2>&1 \
+        || true
+      ;;
+    dnf|yum)
+      "$PKG_MANAGER" install -y nftables >/dev/null 2>&1 \
+        || "$PKG_MANAGER" install -y iptables >/dev/null 2>&1 \
+        || true
+      ;;
+    zypper)
+      zypper --non-interactive install nftables >/dev/null 2>&1 \
+        || zypper --non-interactive install iptables >/dev/null 2>&1 \
+        || true
+      ;;
+  esac
+  [ -n "$(hop_firewall_backend)" ] \
+    || die "缺少 nft 或 iptables：Debian/Ubuntu 用 apt install nftables，RHEL 系用 dnf install iptables"
+}
+
+ensure_hop_capability() {
+  local caps dropin="${HYSTERIA_DROPIN_DIR:-/etc/systemd/system/hysteria-server.service.d}/hy2-capabilities.conf"
+  caps="$(systemctl show hysteria-server.service -p AmbientCapabilities --value 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+  case "$caps" in
+    *cap_net_admin*) return 0 ;;
+  esac
+  warn "hysteria-server 缺少 CAP_NET_ADMIN，写入 systemd drop-in 后重试"
+  install -d -m 0755 "$(dirname "$dropin")"
+  cat > "$dropin" <<EOF
+[Service]
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_BIND_SERVICE CAP_NET_RAW
+EOF
+  chmod 0644 "$dropin"
+  systemctl daemon-reload
+  caps="$(systemctl show hysteria-server.service -p AmbientCapabilities --value 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+  case "$caps" in
+    *cap_net_admin*) log "已授予 CAP_NET_ADMIN" ;;
+    *) die "无法授予 CAP_NET_ADMIN；请检查 hysteria-server.service 的 CapabilityBoundingSet" ;;
+  esac
+}
+
+hop_check_cmd() {
+  read_env
+  local range backend caps listen_port failures=0 nft_out ipt_range
+  if ! port_hop_enabled; then
+    echo "端口跳跃：off"
+    echo "默认范围：$(default_hop_range)/UDP；开启：sudo hy2 hop on"
+    return 0
+  fi
+  range="$(hop_range)"
+  listen_port="${HY2_PORT:-443}"
+  backend="$(hop_firewall_backend)"
+  echo "端口跳跃：${range}/UDP（间隔 ${PORT_HOP_INTERVAL:-30}s）"
+  echo
+
+  if [ -n "$backend" ]; then
+    log "自检 1/6 通过：防火墙工具 ${backend}"
+  else
+    warn "自检 1/6 失败：未找到 nft/iptables（hy2 hop on 会自动尝试安装）"
+    failures=$((failures + 1))
+  fi
+
+  caps="$(systemctl show hysteria-server.service -p AmbientCapabilities --value 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+  case "$caps" in
+    *cap_net_admin*) log "自检 2/6 通过：服务具备 CAP_NET_ADMIN" ;;
+    *)
+      warn "自检 2/6 失败：hysteria-server.service 缺少 CAP_NET_ADMIN"
+      failures=$((failures + 1))
+      ;;
+  esac
+
+  if systemctl is-active --quiet hysteria-server.service; then
+    log "自检 3/6 通过：hysteria-server 运行中"
+  else
+    warn "自检 3/6 失败：hysteria-server 未运行（journalctl -u hysteria-server -n 80）"
+    failures=$((failures + 1))
+  fi
+
+  if ss -Hlunp 2>/dev/null | awk -v p=":${listen_port}" '$4 ~ p"$" || $4 ~ p" " {found=1} END {exit !found}'; then
+    log "自检 4/6 通过：监听 UDP ${listen_port}"
+  else
+    warn "自检 4/6 失败：未看到监听 UDP ${listen_port}"
+    failures=$((failures + 1))
+  fi
+
+  if [ "$backend" = "nft" ]; then
+    nft_out="$(nft list ruleset 2>/dev/null || true)"
+    if printf '%s\n' "$nft_out" | grep -q "hysteria_" \
+      && printf '%s\n' "$nft_out" | grep -q -- "$range"; then
+      log "自检 5/6 通过：nft 重定向规则已存在（${range} → ${listen_port}）"
+    else
+      warn "自检 5/6 失败：没找到 nft 重定向规则（journalctl -u hysteria-server 查 firewall）"
+      failures=$((failures + 1))
+    fi
+  elif [ "$backend" = "iptables" ]; then
+    ipt_range="${range/-/:}"
+    if { iptables -t nat -S 2>/dev/null; ip6tables -t nat -S 2>/dev/null; } \
+      | grep -qE -- "${ipt_range}|${range}"; then
+      log "自检 5/6 通过：iptables 重定向规则已存在（${range} → ${listen_port}）"
+    else
+      warn "自检 5/6 失败：没找到 iptables 重定向规则"
+      failures=$((failures + 1))
+    fi
+  else
+    warn "自检 5/6 失败：没有可用的防火墙工具"
+    failures=$((failures + 1))
+  fi
+
+  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
+    if ufw status 2>/dev/null | grep -qE "^${listen_port}/udp[[:space:]]+ALLOW"; then
+      log "自检 6/6 通过：ufw 已放行 ${listen_port}/udp（重定向后只需基准端口）"
+    else
+      warn "自检 6/6 失败：ufw 未放行 ${listen_port}/udp"
+      failures=$((failures + 1))
+    fi
+  elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    if firewall-cmd --query-port="${listen_port}/udp" >/dev/null 2>&1; then
+      log "自检 6/6 通过：firewalld 已放行 ${listen_port}/udp"
+    else
+      warn "自检 6/6 失败：firewalld 未放行 ${listen_port}/udp"
+      failures=$((failures + 1))
+    fi
+  else
+    log "自检 6/6 跳过：本机未启用 ufw/firewalld"
+  fi
+
+  echo
+  echo "云控制台安全组必须放行：UDP ${range}（入站，0.0.0.0/0）"
+  echo "外网验收：手机蜂窝网络导入订阅，连续断开重连 5 次都成功才算可用。"
+  if [ "$failures" -eq 0 ]; then
+    log "本机自检全部通过"
+    return 0
+  fi
+  warn "本机自检有 ${failures} 项未通过，先修掉再让用户用"
+  return 1
+}
+
+hop_cmd() {
+  need_root hop
+  read_env
+  local action="${1:-show}" value previous_range=""
+  case "$action" in
+    show|status|"")
+      if port_hop_enabled; then
+        echo "端口跳跃：on"
+        echo "范围：$(hop_range)/UDP（间隔 ${PORT_HOP_INTERVAL:-30}s）"
+        echo "订阅：Clash 写入 ports + hop-interval；直链端口位写作 $(hop_range)"
+        echo "云安全组需放行：UDP $(hop_range)"
+        echo "自检：sudo hy2 hop check"
+      else
+        echo "端口跳跃：off"
+        echo "默认范围：$(default_hop_range)/UDP"
+        echo "开启：sudo hy2 hop on（会重启 Hysteria，在线用户会短暂断开）"
+      fi
+      ;;
+    check)
+      hop_check_cmd
+      ;;
+    on|enable)
+      if [ -f "${HY2_OFF_FILE:-/etc/hy2-aio/hy2.off}" ]; then
+        die "Hysteria 当前处于关闭状态，先执行：sudo hy2 on"
+      fi
+      ensure_hop_firewall_tool
+      ensure_hop_capability
+      if [ -z "${PORT_HOP_RANGE:-}" ]; then
+        value="$(default_hop_range)" || die "无法根据 HY2_PORT 生成端口跳跃范围"
+        set_config_env_var PORT_HOP_RANGE "$value"
+        export PORT_HOP_RANGE="$value"
+      fi
+      if [ -z "${PORT_HOP_INTERVAL:-}" ]; then
+        set_config_env_var PORT_HOP_INTERVAL 30
+        export PORT_HOP_INTERVAL=30
+      fi
+      validate_hop_range "$(hop_range)"
+      validate_hop_interval "$PORT_HOP_INTERVAL"
+      set_config_env_var PORT_HOP_ENABLED true
+      export PORT_HOP_ENABLED=true
+      apply_hysteria_client_settings
+      sleep 2
+      if ! systemctl is-active --quiet hysteria-server.service; then
+        warn "Hysteria 没能带着端口范围启动，自动回滚到单端口"
+        journalctl -u hysteria-server.service --no-pager -n 40 >&2 || true
+        set_config_env_var PORT_HOP_ENABLED false
+        export PORT_HOP_ENABLED=false
+        apply_hysteria_client_settings || true
+        die "端口跳跃启用失败，已回滚；请查看上方日志"
+      fi
+      if ! hop_check_cmd; then
+        warn "自检未全部通过；最可能是云安全组还没放行 UDP $(hop_range)"
+      fi
+      ;;
+    off|disable)
+      set_config_env_var PORT_HOP_ENABLED false
+      export PORT_HOP_ENABLED=false
+      apply_hysteria_client_settings
+      log "已关闭端口跳跃，恢复单端口 ${HY2_PORT:-443}/UDP；请客户端更新订阅"
+      ;;
+    range)
+      value="${2:-}"
+      [ -n "$value" ] \
+        || die "用法：hy2 hop range ${HY2_PORT:-8443}-$((10#${HY2_PORT:-8443} + 1000))"
+      validate_hop_range "$value"
+      previous_range="${PORT_HOP_RANGE:-}"
+      set_config_env_var PORT_HOP_RANGE "$value"
+      export PORT_HOP_RANGE="$value"
+      if port_hop_enabled; then
+        apply_hysteria_client_settings
+        if [ ! -f "${HY2_OFF_FILE:-/etc/hy2-aio/hy2.off}" ]; then
+          sleep 2
+          if ! systemctl is-active --quiet hysteria-server.service; then
+            warn "Hysteria 没能带着新范围启动，回滚到 ${previous_range:-默认范围}"
+            journalctl -u hysteria-server.service --no-pager -n 40 >&2 || true
+            if [ -n "$previous_range" ]; then
+              set_config_env_var PORT_HOP_RANGE "$previous_range"
+            fi
+            export PORT_HOP_RANGE="$previous_range"
+            apply_hysteria_client_settings || true
+            die "新范围启用失败，已回滚；请查看上方日志"
+          fi
+          hop_check_cmd || true
+        fi
+        log "范围已更新为 ${value}；请客户端更新订阅"
+      else
+        log "范围已保存为 ${value}（端口跳跃当前关闭）"
+      fi
+      ;;
+    interval)
+      value="${2:-}"
+      [ -n "$value" ] || die "用法：hy2 hop interval 30"
+      validate_hop_interval "$value"
+      set_config_env_var PORT_HOP_INTERVAL "$value"
+      export PORT_HOP_INTERVAL="$value"
+      log "跳跃间隔已更新为 ${value}s；订阅下次刷新即生效（无需重启）"
+      ;;
+    *)
+      die "用法：hy2 hop show|on|off|check|range <开始-结束>|interval <秒>"
       ;;
   esac
 }

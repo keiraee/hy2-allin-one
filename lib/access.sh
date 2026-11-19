@@ -4,7 +4,7 @@
 write_access_file() {
   read_env
   python3 - "$ENV_FILE" "$USERS_FILE" "$MODE_FILE" "$ACCESS_FILE" "${WEB_DIR}/data.json" <<'PY'
-import json, pathlib, sys, urllib.parse
+import json, pathlib, re, sys, urllib.parse
 
 env_file, users_file, mode_file, out_file, data_file = map(pathlib.Path, sys.argv[1:])
 env = {}
@@ -35,6 +35,31 @@ def node_flag() -> str:
 
 
 FLAG = node_flag()
+
+
+def hop_ports():
+    # 与 backend 的 port_hop_ports 同语义：范围无效就退回单端口，别让资料文件带坏数据。
+    raw_enabled = str(env.get("PORT_HOP_ENABLED", "false")).strip().lower()
+    if raw_enabled not in ("1", "true", "yes", "on"):
+        return ""
+    base_raw = str(env.get("HY2_PORT") or "8443")
+    try:
+        base = int(base_raw)
+    except ValueError:
+        return ""
+    raw = str(env.get("PORT_HOP_RANGE") or "").strip()
+    if not raw:
+        raw = f"{base}-{min(base + 1000, 65535)}"
+    match = re.fullmatch(r"([0-9]{1,5})-([0-9]{1,5})", raw)
+    if not match:
+        return ""
+    start, end = int(match.group(1)), int(match.group(2))
+    if start != base or end <= start or end > 65535 or end - start > 2000:
+        return ""
+    return f"{start}-{end}"
+
+
+HOP_PORTS = hop_ports()
 
 
 def is_disabled(info):
@@ -87,7 +112,7 @@ lines = [
     "=" * 64,
     f"版本：{env.get('AIO_VERSION', '')}",
     f"服务器：{env['PUBLIC_IP']}",
-    f"HY2 端口：{env.get('HY2_PORT', '443')}/UDP",
+    f"HY2 端口：{HOP_PORTS or env.get('HY2_PORT', '443')}/UDP" + ("（端口跳跃）" if HOP_PORTS else ""),
     f"VLESS 端口：{env.get('XRAY_PORT') or env.get('HY2_PORT', '443')}/TCP",
     f"混淆：{obfs_label}",
     f"面板：{base}/{env['PANEL_PATH']}/",
@@ -121,7 +146,7 @@ for username, info in sorted(users.items()):
         query_items["insecure"] = "1"
     query = urllib.parse.urlencode(query_items)
     node = urllib.parse.quote(f"{FLAG}HY2-{username}", safe="")
-    direct = f"hysteria2://{auth}@{env['PUBLIC_IP']}:{env.get('HY2_PORT', '443')}/?{query}#{node}"
+    direct = f"hysteria2://{auth}@{env['PUBLIC_IP']}:{HOP_PORTS or env.get('HY2_PORT', '443')}/?{query}#{node}"
     xray_port = str(env.get("XRAY_PORT") or "").strip()
     if not xray_port:
         hy2 = str(env.get("HY2_PORT") or "8443")
