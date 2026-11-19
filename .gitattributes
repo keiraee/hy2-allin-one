@@ -1,3 +1,8 @@
 * text=auto eol=lf
 *.sh text eol=lf
 SHA256SUMS text eol=lf
+# 字体是二进制：必须禁用换行符转换，否则 checkout 时 LF/CRLF 互换会把文件写坏
+*.woff2 binary
+*.woff binary
+*.ttf binary
+*.otf binary

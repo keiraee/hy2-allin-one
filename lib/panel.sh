@@ -1,6 +1,89 @@
 #!/usr/bin/env bash
 # panel.sh - Web 面板 HTML 生成
 
+# 面板字体：自托管 Inter + JetBrains Mono（各两个字重，共约 91KB）。
+#
+# 为什么自托管而不是走 Google Fonts / jsdelivr：
+#   面板的 CSP 是 default-src 'self'，跨域字体直接被拦；走同源就绕开了
+#   这条限制，也顺带免掉第三方 CDN 在国内的可用性和隐私问题。
+#
+# 为什么只装 latin 子集：
+#   中文有上万字，任何一个 CJK webfont 都是几 MB 起。面板正文用系统中文
+#   字体（字体栈里排在 Inter 后面），webfont 只负责拉丁字母和数字——
+#   面板 90% 的内容（端口、IP、流量数值、用户名）正好都在这个范围里。
+#
+# 为什么是「可选」：
+#   字体下载失败绝不能让 install/repair 挂掉。缺了字体，HTML 里的字体栈
+#   会自动退到系统字体，功能一切正常，只是少了统一感。
+PANEL_FONT_DIR="${WEB_DIR}/fonts"
+# 文件名 + 期望 sha256。字体是二进制、不进 SHA256SUMS（那份清单只登记
+# bin/*.sh 和 lib/*.sh 模块，混入二进制会打破既有校验约定），
+# 所以哈希直接写在这儿，下载后逐文件比对，防止半截文件或 CDN 投毒。
+PANEL_FONT_FILES=(
+  "inter-400.woff2|dd05e326cf8eac3b55acecf29c842ed73e6e6dd06491cf47f7e8800680ab3e33"
+  "inter-600.woff2|62553d159189834af73c9a6264704be5b2bee9a08da66a14768d8e5c6ffd2cdb"
+  "jetbrains-mono-400.woff2|7c53386f55c866c1b4c9309c4bcf74eda10896aab3a1780b0af5cc4976e27a27"
+  "jetbrains-mono-700.woff2|ed8b8f71b22bf3b6e1ec1cf9b24dd999785aae33d6256950c1f86c97e423b6ef"
+)
+
+font_sha256() {
+  python3 -c 'import hashlib,sys,pathlib; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "$1" 2>/dev/null
+}
+
+install_panel_fonts() {
+  local force="${1:-0}" missing=() name base
+  install -d -o hy2-aio -g caddy -m 2750 "$PANEL_FONT_DIR"
+
+  # 已经齐全就不重复下载：repair 很频繁，每次都拉 91KB 没必要
+  if [ "$force" != "1" ]; then
+    for entry in "${PANEL_FONT_FILES[@]}"; do
+      name="${entry%%|*}"
+      [ -s "${PANEL_FONT_DIR}/${name}" ] || missing+=("$entry")
+    done
+    [ "${#missing[@]}" -eq 0 ] && return 0
+  else
+    missing=("${PANEL_FONT_FILES[@]}")
+  fi
+
+  # 本地仓库检出（开发模式）优先用仓库里的副本，免去一次网络往返；
+  # 正式安装时 modules 目录里也带着 assets/fonts，同样能命中。
+  local local_dir="${SCRIPT_DIR:-/usr/local/lib/hy2-aio/modules}/assets/fonts"
+  local tmp ok=0 want got
+  for entry in "${missing[@]}"; do
+    name="${entry%%|*}"
+    want="${entry##*|}"
+    # 先试本地副本
+    if [ -s "${local_dir}/${name}" ] && [ "$(font_sha256 "${local_dir}/${name}")" = "$want" ]; then
+      install -m 0640 -o hy2-aio -g caddy "${local_dir}/${name}" "${PANEL_FONT_DIR}/${name}"
+      ok=$((ok + 1))
+      continue
+    fi
+    # 再试远程（按当前 commit 钉住，避免 CDN 缓存旧文件）
+    [ -n "${HY2_REPO_URL:-}" ] || continue
+    tmp="$(mktemp)"
+    if _bootstrap_curl "${HY2_REPO_URL}/assets/fonts/${name}?nocache=$(date +%s)" -o "$tmp" 2>/dev/null \
+      && [ -s "$tmp" ] \
+      && head -c4 "$tmp" | grep -q 'wOF2'; then
+      got="$(font_sha256 "$tmp")"
+      if [ "$got" = "$want" ]; then
+        install -m 0640 -o hy2-aio -g caddy "$tmp" "${PANEL_FONT_DIR}/${name}"
+        ok=$((ok + 1))
+      else
+        warn "字体 ${name} 校验不符（期望 ${want:0:12}… 实际 ${got:0:12}…），已丢弃"
+      fi
+    fi
+    rm -f "$tmp"
+  done
+
+  if [ "$ok" -eq "${#missing[@]}" ]; then
+    log "面板字体就绪（Inter + JetBrains Mono）"
+  else
+    # 不 die：字体是可选的，缺了只是回退到系统字体
+    warn "面板字体未装全（$(( ${#missing[@]} - ok ))/${#missing[@]} 失败），将回退到系统字体"
+  fi
+  return 0
+}
+
 write_panel() {
   install -d -o hy2-aio -g caddy -m 2750 "$WEB_DIR" "$WEB_DIR/downloads"
   log "写入面板：${WEB_DIR}/index.html"
@@ -14,13 +97,34 @@ write_panel() {
 <title>HY2 AIO</title>
 <script>try{var t=localStorage.getItem("hy2-aio-theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t);else if(window.matchMedia&&window.matchMedia("(prefers-color-scheme: dark)").matches)document.documentElement.setAttribute("data-theme","dark")}catch(e){}</script>
 <style>
+/* 自托管字体，同源加载（CSP default-src 'self' 下唯一可行的方式）。
+   font-display:swap 让文字先用系统字体渲染、字体到位后再替换，
+   避免小机器上首次打开出现白屏等字体。 */
+@font-face{
+  font-family:"Inter";font-style:normal;font-weight:400;font-display:swap;
+  src:url("fonts/inter-400.woff2") format("woff2");
+}
+@font-face{
+  font-family:"Inter";font-style:normal;font-weight:600;font-display:swap;
+  src:url("fonts/inter-600.woff2") format("woff2");
+}
+@font-face{
+  font-family:"JetBrains Mono";font-style:normal;font-weight:400;font-display:swap;
+  src:url("fonts/jetbrains-mono-400.woff2") format("woff2");
+}
+@font-face{
+  font-family:"JetBrains Mono";font-style:normal;font-weight:700;font-display:swap;
+  src:url("fonts/jetbrains-mono-700.woff2") format("woff2");
+}
 :root{
   --bg:#ffffff;--surface:#ffffff;--surface-2:#f5f5f4;--surface-3:#e9e9e7;
   --line:#e4e4e1;--text:#111111;--muted:#5c5c59;--faint:#8c8c88;
   --accent:#2a78d6;--bad:#d9463f;
   --radius:6px;--drawer:320px;
-  --font:Inter,-apple-system,"Segoe UI",system-ui,sans-serif;
-  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  /* 中文永远排在 webfont 之后：latin 子集不含汉字，浏览器会逐字回退到
+     系统中文（Win 微软雅黑 / Mac 苹方 / Linux Noto），不会出现豆腐块。 */
+  --font:Inter,-apple-system,"Segoe UI",system-ui,"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
   --shadow:0 8px 24px rgba(17,17,17,.08);
   color-scheme:light;
   font-family:var(--font);font-size:13.5px;line-height:1.45;
@@ -1738,4 +1842,6 @@ HTML
   chown -R hy2-aio:caddy "$WEB_DIR"
   find "$WEB_DIR" -type d -exec chmod 2750 {} \;
   find "$WEB_DIR" -type f -exec chmod 0640 {} \;
+  # 字体放在 HTML 写完之后：即使字体装不上，面板本身已经可用了
+  install_panel_fonts || true
 }

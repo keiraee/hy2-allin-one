@@ -192,6 +192,14 @@ fetch_modules() {
     "lib/deps.sh"
     "bin/hy2.sh"
   )
+  # 面板字体（二进制，不进 SHA256SUMS——那份清单只登记 shell 模块）。
+  # 单独下载，逐个校验后落到模块目录的 assets/fonts，由 panel.sh 复制到 WEB_DIR。
+  local assets=(
+    "assets/fonts/inter-400.woff2"
+    "assets/fonts/inter-600.woff2"
+    "assets/fonts/jetbrains-mono-400.woff2"
+    "assets/fonts/jetbrains-mono-700.woff2"
+  )
   local sums tmp f expected
   sums="$(mktemp)"
   _bootstrap_log "下载：SHA256SUMS"
@@ -216,6 +224,21 @@ if digest != expected:
 PY
     mv "$tmp" "${target_dir}/${f}"
   done
+
+  # 字体：失败只警告不中断——面板会退到系统字体，功能不受影响
+  mkdir -p "${target_dir}/assets/fonts"
+  for f in "${assets[@]}"; do
+    tmp="$(mktemp)"
+    if _bootstrap_curl "${REPO_URL}/${f}?nocache=$(date +%s)" -o "$tmp" 2>/dev/null \
+      && [ -s "$tmp" ] && head -c4 "$tmp" | grep -q 'wOF2'; then
+      mv "$tmp" "${target_dir}/${f}"
+      _bootstrap_log "下载：${f}"
+    else
+      rm -f "$tmp"
+      _bootstrap_log "跳过：${f}（面板将回退系统字体）"
+    fi
+  done
+
   rm -f "$sums"
 }
 
