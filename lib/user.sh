@@ -358,6 +358,16 @@ modify_user() {
   fi
   api_post sync >/dev/null || true
   write_access_file
+
+  # 禁用 / 删除 / 轮换密钥之后，把这个人已有的连接踢掉。
+  # users.json 只在重连时校验，不踢的话他能一直挂着不断。
+  # 必须放在配置重建和服务重启之后：此时新配置已生效，他重连会被拒。
+  case "$action" in
+    disable|remove-user|rotate-user)
+      kick_hysteria_user "$username" || true
+      ;;
+  esac
+
   log "用户操作完成：$action $username"
   if ! hy2_has_enabled_user; then
     log "已无启用用户，HY2 已关闭"

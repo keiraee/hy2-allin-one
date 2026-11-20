@@ -538,6 +538,33 @@ api_post() {
     -X POST "http://${BACKEND_HOST}:${BACKEND_PORT}/$1"
 }
 
+# 把用户踢下线（Hysteria POST /kick）。
+#
+# Hysteria 的 userpass 认证只在**建立连接时**校验，所以光把 users.json 里的
+# disabled 置 true 是不够的 —— 已经挂着的人不断线就能一直用。这个函数负责
+# 主动断开他的现有连接。日志里记录 disconnected 后会立刻断。
+#
+# 失败不算错误：Hysteria 没在跑 / 统计端口没开 / secret 不对，都只是没踢成，
+# 不该让 disable 这类操作失败。调用方用 `|| true` 兜。
+kick_hysteria_user() {
+  local username="${1:-}" port="${STATS_PORT:-9999}" secret="${API_SECRET:-}"
+  [ -n "$username" ] || return 1
+  [ -n "$secret" ] || return 1
+  [ -f "${HY2_OFF_FILE:-/etc/hy2-aio/hy2.off}" ] && return 1
+
+  # body 是 JSON 字符串数组：["name"]
+  local body
+  body="$(printf '%s' "$username" | python3 -c 'import json,sys; print(json.dumps([sys.stdin.read().strip()]))' 2>/dev/null)" || return 1
+  [ -n "$body" ] || return 1
+
+  curl -fsS --connect-timeout 3 --max-time 8 \
+    -H "Authorization: ${secret}" \
+    -H "Content-Type: application/json" \
+    -X POST --data "$body" \
+    "http://127.0.0.1:${port}/kick" >/dev/null 2>&1 || return 1
+  log "已断开 ${username} 的现有连接"
+}
+
 detect_public_ipv4() {
   local ip="" endpoint
   for endpoint in \

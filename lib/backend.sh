@@ -293,11 +293,40 @@ def net_counters(iface: str) -> tuple[int, int]:
 
 
 def counter_delta(current: int, last: int) -> int:
+    """两个累计计数器之间的新增量。
+
+    只用于「同一个进程内」比较。Hysteria 重启后它自己的计数器会从 0 重来，
+    拿新值和旧值比就完全没意义了（新值可能大于旧值 → 只算差额，几乎全丢），
+    所以调用方必须先确认进程没换，换了就把基线清零。
+    """
     current = max(int(current or 0), 0)
     last = max(int(last or 0), 0)
     if current >= last:
         return current - last
     return current
+
+
+def hysteria_instance_marker() -> str:
+    """Hysteria 进程的启动标识，用来判断它是否重启过。
+
+    读 /proc/<pid>/stat 的第 22 列（starttime，开机以来的 jiffies）。
+    配合 PID 一起用：只有 PID 和 starttime 都一样才算同一个进程
+    （PID 会被复用，单看 PID 不可靠）。取不到就返回空串，调用方退化处理。
+    """
+    try:
+        pid = subprocess.run(
+            ["systemctl", "show", "hysteria-server.service", "-p", "MainPID", "--value"],
+            capture_output=True, text=True, timeout=3, check=False,
+        ).stdout.strip()
+        if not pid.isdigit() or int(pid) <= 0:
+            return ""
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        # comm 字段可能含空格，从最后一个 ')' 之后开始切
+        fields = stat[stat.rindex(")") + 2 :].split()
+        starttime = fields[19]  # 相对 split 后的索引，对应第 22 列
+        return f"{pid}@{starttime}"
+    except Exception:
+        return ""
 
 
 def accumulate_user_traffic(user_state: dict[str, Any], raw: dict[str, Any]) -> tuple[int, int]:
@@ -326,24 +355,77 @@ def is_transient_hysteria_error(error: BaseException) -> bool:
     return "connection refused" in text or "timed out" in text or "temporarily unavailable" in text
 
 
-def hysteria_api(path: str, secret: str, *, attempts: int = 10, delay: float = 0.3) -> Any:
+def hysteria_api(
+    path: str,
+    secret: str,
+    *,
+    attempts: int = 10,
+    delay: float = 0.3,
+    method: str = "GET",
+    body: Any = None,
+) -> Any:
+    """调用 Hysteria 流量统计 API。
+
+    Hysteria 用 Authorization 头做鉴权（不是 Bearer）。POST /kick 是唯一的
+    写接口，body 直接是一个用户名字符串的 JSON 数组。
+    """
     stats_port = load_env().get("STATS_PORT", "9999")
     url = f"http://127.0.0.1:{stats_port}" + path
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
     last_error: Optional[BaseException] = None
     for attempt in range(max(attempts, 1)):
-        request = urllib.request.Request(
-            url,
-            headers={"Authorization": secret, "Accept": "application/json"},
-        )
+        headers = {"Authorization": secret, "Accept": "application/json"}
+        if data is not None:
+            headers["Content-Type"] = "application/json"
+        request = urllib.request.Request(url, data=data, headers=headers, method=method)
         try:
             with urllib.request.urlopen(request, timeout=5) as response:
-                return json.load(response)
+                payload = response.read()
+                if not payload.strip():
+                    return {}
+                return json.loads(payload)
         except Exception as error:
             last_error = error
             if attempt + 1 >= attempts or not is_transient_hysteria_error(error):
                 raise
             time.sleep(delay)
     raise last_error or RuntimeError(f"Hysteria API 失败：{path}")
+
+
+def kick_user_safely(username: str) -> int:
+    """尽力踢掉一个用户，返回实际踢掉的人数（0 表示没踢）。
+
+    这是「加分项」而不是主流程：Hysteria 没在跑、API secret 不对、
+    或者功能已关闭，都不该让禁用/删除操作失败。所以这里吞掉所有异常，
+    只打日志。
+    """
+    try:
+        if hy2_is_off():
+            return 0
+        env = load_env()
+        secret = str(env.get("API_SECRET") or "").strip()
+        if not secret:
+            return 0
+        return kick_users([username], secret)
+    except Exception as error:
+        print(f"[hy2-aio] kick {username} failed: {error}", flush=True)
+        return 0
+
+
+def kick_users(usernames: list[str], secret: str) -> int:
+    """把用户踢下线，返回实际提交的人数。
+
+    注意 Hysteria 官方文档的提醒：客户端自带重连逻辑，踢掉之后会立刻重连。
+    所以「踢人」必须和「验证后端已屏蔽该用户」一起做 —— 我们的验证后端就是
+    users.json 的 disabled 字段。调用方必须先落盘再踢，顺序不能反。
+    """
+    names = [str(name).strip() for name in usernames if str(name).strip()]
+    if not names:
+        return 0
+    hysteria_api("/kick", secret, method="POST", body=names, attempts=3, delay=0.2)
+    return len(names)
 
 
 def service_status(name: str) -> str:
@@ -858,6 +940,22 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
         traffic: dict[str, Any] = {}
         online: dict[str, Any] = {}
         stream_dump: list[Any] = []
+
+        # Hysteria 重启后，它自己的 per-user 计数器从 0 重来。如果还拿新值跟
+        # 旧值比差额，要么少算（新值 > 旧值 → 只记差额）、要么把重启后的全部
+        # 当新增。这里用「PID@starttime」识别进程是否换过，换过就把所有用户
+        # 的 last_tx/last_rx 基线清零，下次采集从 0 起算，不会再算错。
+        instance = hysteria_instance_marker() if hy2_enabled else ""
+        if instance and state.get("hysteria_instance") not in (None, "", instance):
+            for user_state in state.get("users", {}).values():
+                if isinstance(user_state, dict):
+                    user_state["last_tx"] = 0
+                    user_state["last_rx"] = 0
+            # stream 缓存按「用户:connection:stream」做键，重启后全失效
+            state["stream_bytes"] = {}
+        if instance:
+            state["hysteria_instance"] = instance
+
         if hy2_enabled:
             try:
                 # Snapshot only. Clearing here would drop bytes if we crash before persist.
@@ -2800,6 +2898,16 @@ class Handler(BaseHTTPRequestHandler):
         }
         if action in ("disable", "remove") and not response["hy2_enabled"]:
             response["message"] = "已无启用用户，HY2 已关闭"
+
+        # 禁用/删除/轮换密钥之后，这个人可能还挂着已经建立的 QUIC 连接。
+        # users.json 只在重连时校验，所以必须主动踢一次才算真正生效。
+        # 顺序很重要：上面的 apply_user_change 已经把 disabled 落盘了，
+        # 现在踢掉，他重连时就会被验证后端拒绝，不会踢了又连回来。
+        if action in ("disable", "remove", "rotate"):
+            kicked = kick_user_safely(username)
+            if kicked:
+                response["kicked"] = kicked
+
         self.send_json(200, response)
         if apply_pending:
             schedule_apply_and_collect()
