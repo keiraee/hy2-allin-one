@@ -1131,6 +1131,45 @@ port_cmd() {
   for p in "$panel_port" "$stats_port" "$BACKEND_PORT"; do
     [ "$new_port" = "$p" ] && die "端口冲突：$new_port 与内部端口 $p 相同"
   done
+
+  # HY2 端口跳跃的 UDP 范围与 VLESS 的 TCP 端口必须错开。
+  # 虽然 UDP/TCP 同号在系统层面不冲突，但：
+  #   - 客户端配置里两个节点端口撞车极易配错
+  #   - 端口跳跃的 NAT 规则会 REDIRECT 整段 dport，范围含 VLESS 端口时
+  #     防火墙规则多了难以排查
+  # 更重要的是：把 VLESS 换到 HY2 范围里，HY2 的 REDIRECT 规则会把它算进
+  # 自己管辖的段（实测就是这么踩到的隐藏 bug）。
+  local hy2_lo="${HY2_PORT:-}" hy2_hi=""
+  local hop_rng="${PORT_HOP_RANGE:-}"
+  if [ -n "$hop_rng" ]; then
+    hy2_lo="${hop_rng%%-*}"
+    hy2_hi="${hop_rng##*-}"
+  fi
+  # 单端口情况也检查（PORT_HOP_RANGE 可能只写一个数字）
+  if [ -n "$hy2_hi" ] && [ "$hy2_hi" = "$hy2_lo" ]; then
+    hy2_hi="$hy2_lo"
+  fi
+  if [ -n "$hy2_hi" ]; then
+    case "$target" in
+      vless)
+        if [ "$new_port" -ge "$hy2_lo" ] && [ "$new_port" -le "$hy2_hi" ]; then
+          die "端口冲突：VLESS $new_port 落在 HY2 端口跳跃范围 ${hy2_lo}-${hy2_hi}（UDP）内。
+换一个范围外的端口，例如：sudo hy2 port vless $((hy2_hi + 1))"
+        fi
+        ;;
+      hy2)
+        if [[ "$value" == *-* ]]; then
+          local vless_now="${XRAY_PORT:-}"
+          local new_hi="${value##*-}"
+          if [ -n "$vless_now" ] && [ "$vless_now" -ge "$new_port" ] && [ "$vless_now" -le "$new_hi" ]; then
+            die "端口冲突：HY2 范围 $value 包含当前 VLESS 端口 $vless_now。
+先把 VLESS 挪出该范围：sudo hy2 port vless $((new_hi + 1))"
+          fi
+        fi
+        ;;
+    esac
+  fi
+
   case "$target" in
     hy2)
       # HY2 是 UDP；VLESS 是 TCP，理论可同号但容易混淆，禁止相同

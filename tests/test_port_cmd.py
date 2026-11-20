@@ -23,7 +23,7 @@ class PortCmdTests(unittest.TestCase):
     def setUpClass(cls):
         cls.src = CONFIG.read_text(encoding="utf-8")
         start = cls.src.index("port_cmd()")
-        cls.body = cls.src[start : start + 6000]
+        cls.body = cls.src[start : start + 12000]
 
     def test_defined(self):
         self.assertIn("port_cmd()", self.src)
@@ -154,6 +154,39 @@ class RestartSyncsPortTests(unittest.TestCase):
         xray = body.index("restart_hy2_xray_or_die")
         self.assertLess(sync, xray, "必须先重建再拉 Xray")
 
+
+
+
+class HopRangeConflictTests(unittest.TestCase):
+    """VLESS 端口不能落在 HY2 端口跳跃范围内。
+
+    小k 实测踩到的隐藏 bug：把 VLESS 换到 HY2 跳跃区间内的端口时，
+    HY2 的 NAT REDIRECT 规则覆盖整段 dport，两个服务端口撞在一起，
+    排查困难。现在换端口时自动识别并提示。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        src = CONFIG.read_text(encoding="utf-8")
+        start = src.index("# HY2 端口跳跃的 UDP 范围与 VLESS 的 TCP 端口必须错开")
+        cls.body = src[start : start + 2000]
+
+    def test_checks_vless_against_hop_range(self):
+        self.assertIn("落在 HY2 端口跳跃范围", self.body)
+
+    def test_checks_new_range_against_vless(self):
+        self.assertIn("包含当前 VLESS 端口", self.body)
+
+    def test_reads_hop_range_from_env(self):
+        self.assertIn("PORT_HOP_RANGE", self.body)
+
+    def test_suggests_alternative_port(self):
+        """报错要给可直接复制的下一步命令，不能只说"冲突了"。"""
+        self.assertIn("sudo hy2 port vless", self.body)
+
+    def test_handles_single_port_range(self):
+        """PORT_HOP_RANGE 只写一个数字时也要能比。"""
+        self.assertIn("hy2_hi\" = \"$hy2_lo", self.body)
 
 if __name__ == "__main__":
     unittest.main()
