@@ -316,5 +316,45 @@ class ClashDeeplinkTests(unittest.TestCase):
         self.assertIn(chr(34) + "subscription-singbox" + chr(34), self.body)
         self.assertIn(chr(34) + "subscription" + chr(34), self.body)
 
+
+
+class CmaDeepLinkTests(unittest.TestCase):
+    """ClashMetaForAndroid 的深链参数（扒 app/src/main 源码确认）。
+
+    AndroidManifest.xml 的 intent-filter：
+        <data android:scheme="clash"/><data android:scheme="clashmeta"/>
+        <data android:host="install-config"/>
+
+    ExternalControlActivity.kt 里读的参数：
+        url            （必填，没有就 finish）
+        name           （缺省用 R.string.new_profile）
+        type           （url / file，缺省 Url）
+        update-interval（分钟，coerceAtLeast(15)）
+
+    注意 update-interval 小于 15 会被抬到 15 —— 传 1 不会"更勤快"。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        js = js_block()
+        body = js[js.index("async function openQr("):]
+        cls.body = body[: body.index(chr(10) + "}" + chr(10))]
+
+    def test_scheme_matches_cma_manifest(self):
+        self.assertIn("clash://install-config", self.body)
+
+    def test_name_param_present(self):
+        self.assertIn("&name=", self.body)
+
+    def test_type_param_is_url(self):
+        self.assertIn("&type=url", self.body)
+
+    def test_update_interval_at_least_15_minutes(self):
+        """CMA 会 coerceAtLeast(15)，所以传的值不该小于 15。"""
+        import re
+        m = re.search(r"update-interval=(\d+)", self.body)
+        self.assertIsNotNone(m, "深链里没有 update-interval")
+        self.assertGreaterEqual(int(m.group(1)), 15)
+
 if __name__ == "__main__":
     unittest.main()

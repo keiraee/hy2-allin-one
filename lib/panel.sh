@@ -1825,8 +1825,12 @@ async function openQr(username, kind){
               + "#" + encodeURIComponent(displayName);
   }else if(kind === "subscription"){
     // Clash 系：注意名字是查询参数，不能用 # —— 那边只读 &name=
+    // CMA 的 ExternalControlActivity 还认 type / update-interval：
+    //   update-interval 单位是分钟，且 coerceAtLeast(15) —— 小于 15 会被抬到 15。
+    // 带上它，导入后客户端会自动按这个周期刷新订阅，不用手点。
     qrPayload = "clash://install-config?url=" + encodeURIComponent(url)
-              + "&name=" + encodeURIComponent(displayName);
+              + "&name=" + encodeURIComponent(displayName)
+              + "&type=url&update-interval=1440";
   }
   $("qrHint").textContent = username + " · " + label;
   $("qrUrlText").textContent = url;
