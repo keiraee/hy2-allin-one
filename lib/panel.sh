@@ -1816,12 +1816,16 @@ async function copyCredential(username,kind){
 // 给，避免前端自己拼 URL 拼错（尤其 fmt 参数和 panel_path 前缀）。
 let qrCurrentUrl = "";
 // ---- 端口设置 ----
+// 记住打开弹窗时的原值，用于判断用户实际改了哪个 —— 只提交改动过的，
+// 避免「只想改 VLESS 却把 HY2 也一起提交」。
+let portOriginal={hy2:"",vless:""};
 function setPortModal(open){
   $("portModal").classList.toggle("open",open);
   if(open){
     const p=(window.__lastData||{}).server&&window.__lastData.server.ports||{};
     $("portHy2").value=p.hy2||"";
     $("portVless").value=p.vless||"";
+    portOriginal={hy2:(p.hy2||"").trim(),vless:(p.vless||"").trim()};
     const msg=$("portMsg"); msg.hidden=true; msg.textContent="";
     $("portSave").disabled=false;
     setTimeout(()=>$("portHy2").focus(),50);
@@ -1829,20 +1833,30 @@ function setPortModal(open){
 }
 async function applyPorts(){
   const hy2=$("portHy2").value.trim(), vless=$("portVless").value.trim();
-  if(!hy2&&!vless){toast("至少填一个端口");return}
-  const msg=$("portMsg"); msg.hidden=false; msg.textContent="应用中…（重建配置并重启，约 10~20 秒）";
+  const changedHy2=hy2&&hy2!==portOriginal.hy2;
+  const changedVless=vless&&vless!==portOriginal.vless;
+  if(!changedHy2&&!changedVless){
+    toast("没有改动（两个端口都和当前一致）");
+    return;
+  }
+  const msg=$("portMsg"); msg.hidden=false;
+  const targets=[];
+  if(changedHy2)targets.push("HY2");
+  if(changedVless)targets.push("VLESS");
+  msg.textContent="正在改 "+targets.join(" 和 ")+"…（重建配置并重启，约 10~20 秒）";
   $("portSave").disabled=true;
+  // 只提交改动过的那个，另一个保持原样 —— 用户常常只想动一个
   const jobs=[];
-  if(hy2)jobs.push(apiPost("api/ports",{target:"hy2",value:hy2}));
-  if(vless)jobs.push(apiPost("api/ports",{target:"vless",value:vless}));
+  if(changedHy2)jobs.push(apiPost("api/ports",{target:"hy2",value:hy2}));
+  if(changedVless)jobs.push(apiPost("api/ports",{target:"vless",value:vless}));
   try{
     await Promise.all(jobs);
-    msg.textContent="已应用。请在客户端重新导入订阅。";
-    toast("端口已更新");
+    msg.textContent="已应用（"+targets.join("、")+"）。请在客户端重新导入订阅。";
+    toast("端口已更新："+targets.join("、"));
     await load();
-    setTimeout(()=>setPortModal(false),1200);
+    setTimeout(()=>setPortModal(false),1500);
   }catch(error){
-    msg.textContent="失败："+error.message;
+    msg.textContent="失败："+error.message+"（可以看 hy2 logs 里的后端日志）";
     $("portSave").disabled=false;
   }
 }
