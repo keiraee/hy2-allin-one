@@ -295,6 +295,13 @@ PY
   install_caddy_v12
   ensure_reality_env
   read_env
+
+  # 刷新 Hysteria 证书：Caddy 可能刚续了 Let's Encrypt，或者这台机器是从
+  # 老版本升上来的（那时只有自签证书）。create_certificate 内部会优先复用
+  # Caddy 的真证书，拿不到才自签，所以这里无条件调用一次是安全的。
+  # 少了这一步，升级后 Hysteria 会一直用旧证书，客户端严格校验就过不去。
+  create_certificate || warn "证书刷新失败（沿用现有证书）"
+
   ensure_users_vless_ids
 
   write_rebuild_helper
