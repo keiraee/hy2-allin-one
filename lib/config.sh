@@ -1141,13 +1141,23 @@ port_cmd() {
       ;;
   esac
 
-  # 与现有监听冲突（排除自己当前占用的）
+  # 与现有监听冲突。排除「自己当前就占着这个口」的情况 ——
+  # 重复执行同一命令（比如中断后重试）不该报错，直接走幂等路径。
+  local port_owner=""
+  port_owner="$(ss -Hlntp 2>/dev/null | awk -v p=":$new_port" '$4 ~ p"$" {print $NF; exit}' | grep -oE '[a-z0-9-]+\)$' | tr -d '()')"
   if [ "$target" = "vless" ] && tcp_port_is_used "$new_port"; then
-    die "TCP $new_port 已被占用（ss 查看：ss -lntp | grep $new_port）"
+    case "$port_owner" in
+      xray) log "TCP $new_port 已由 Xray 监听（重复操作，走幂等路径）" ;;
+      *) die "TCP $new_port 已被 $port_owner 占用（ss -lntp | grep $new_port）" ;;
+    esac
   fi
   if [ "$target" = "hy2" ] && port_is_used "$new_port"; then
-    # 端口跳跃场景下 8444-9443 被自己占着是正常的，只拦完全相同的情况
-    [ "$new_port" = "${HY2_PORT:-}" ] || die "UDP $new_port 已被占用（ss 查看：ss -lunp | grep $new_port）"
+    port_owner="$(ss -Hlunp 2>/dev/null | awk -v p=":$new_port" '$4 ~ p"$" {print $NF; exit}' | grep -oE '[a-z0-9-]+\)$' | tr -d '()')"
+    case "$port_owner" in
+      hysteria) log "UDP $new_port 已由 Hysteria 监听（重复操作，走幂等路径）" ;;
+      "") ;;   # 端口跳跃范围被 NAT 转发占着，没有监听进程，不算冲突
+      *) die "UDP $new_port 已被 $port_owner 占用（ss -lunp | grep $new_port）" ;;
+    esac
   fi
 
   # ---- 写入 ----
