@@ -398,7 +398,10 @@ PY
   bash "$script" --local "$bin"
   rm -rf "$tmp"
   command -v hysteria >/dev/null 2>&1 || die "Hysteria 安装失败"
-  log "Hysteria 已安装：$(hysteria version 2>/dev/null | head -1 || true)"
+  # 同上：hysteria version 先打 ASCII banner，head -1 只会拿到空行。
+  local got=""
+  got="$(hysteria_installed_version 2>/dev/null || true)"
+  log "Hysteria 已安装：${got:+v${got}}"
 }
 
 ensure_low_memory_swap() {

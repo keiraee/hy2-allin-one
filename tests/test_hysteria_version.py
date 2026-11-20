@@ -281,5 +281,56 @@ class BootstrappingTests(unittest.TestCase):
         self.assertTrue(line)
         self.assertIn("HY2_UPGRADE_BANNER", line[0])
 
+
+
+class PostInstallLogTests(unittest.TestCase):
+    """安装成功后那行日志曾经也是空的。
+
+    Live output was "Hysteria 已安装：" with nothing after it -- same head -1
+    mistake as the already-installed branch, but in a different place.
+    """
+
+    def test_installed_log_uses_helper(self):
+        src = (ROOT / "lib" / "install.sh").read_text(encoding="utf-8")
+        body = src[src.index("install_hysteria() {"):]
+        tail = body[body.index("bash " + chr(34) + "$script" + chr(34)):]
+        self.assertIn("hysteria_installed_version", tail)
+        code = [l for l in tail.splitlines() if not l.lstrip().startswith("#")]
+        self.assertFalse(
+            any("hysteria version" in l and "head -1" in l for l in code),
+            "安装成功分支不许再用 head -1 取版本",
+        )
+
+
+class BackendReadyWaitTests(unittest.TestCase):
+    """api_post sync 在 backend 端口还没 listen 时会打 curl (7) 报错。
+
+    systemctl is-active 只表示进程在。Python 从启动到 bind 有 1~2 秒空档，
+    live output showed "curl: (7) Failed to connect to 127.0.0.1 port 18081"。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.core = (ROOT / "lib" / "core.sh").read_text(encoding="utf-8")
+        cls.backup = (ROOT / "lib" / "backup.sh").read_text(encoding="utf-8")
+
+    def test_helper_defined(self):
+        self.assertIn("wait_backend_ready()", self.core)
+
+    def test_helper_has_timeout(self):
+        body = self.core[self.core.index("wait_backend_ready()"):]
+        self.assertIn("timeout", body[:600])
+
+    def test_repair_waits_before_sync(self):
+        body = self.backup[self.backup.index("repair_cmd() {"):]
+        wait = body.index("wait_backend_ready")
+        sync = body.index("api_post sync")
+        self.assertLess(wait, sync, "必须等端口通了再 sync")
+
+    def test_helper_survives_missing_curl(self):
+        body = self.core[self.core.index("wait_backend_ready()"):]
+        seg = body[: body.index("return 1")]
+        self.assertIn("command -v curl", seg)
+
 if __name__ == "__main__":
     unittest.main()

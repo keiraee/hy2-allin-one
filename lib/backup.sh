@@ -349,6 +349,11 @@ PY
 
   sleep 2
   systemctl is-active --quiet hy2-aio.service || die "HY2 AIO 后端未运行"
+
+  # is-active 通过只代表进程在，HTTP 端口可能还没开始监听（Python 起来要
+  # 1~2 秒）。等端口通了再调 sync，否则会白打一行
+  # "curl: (7) Failed to connect to 127.0.0.1 port 18081"，看着像失败。
+  wait_backend_ready 10 || true
   api_post sync >/dev/null || true
   write_access_file
 

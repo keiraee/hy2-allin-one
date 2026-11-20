@@ -593,6 +593,25 @@ api_post() {
     -X POST "http://${BACKEND_HOST}:${BACKEND_PORT}/$1"
 }
 
+# 等后端 HTTP 端口真正开始监听；最多等 $1 秒（默认 10）。
+#
+# systemctl is-active 只表示进程在，Python 从启动到 bind 端口有 1~2 秒空档。
+# 这段空档里调 api_post 会打出 "curl: (7) Failed to connect ..."，
+# 虽然被 || true 吞了，但日志里看着像出错（真机上就是这么出现的）。
+# 没有 curl 时退回 sleep，不阻塞安装。
+wait_backend_ready() {
+  local timeout="${1:-10}" waited=0 host="${BACKEND_HOST:-127.0.0.1}" port="${BACKEND_PORT:-18081}"
+  command -v curl >/dev/null 2>&1 || { sleep 2; return 0; }
+  while [ "$waited" -lt "$timeout" ]; do
+    if curl -fsS -o /dev/null --connect-timeout 1 --max-time 2          "http://${host}:${port}/health" 2>/dev/null        || curl -sS -o /dev/null --connect-timeout 1 --max-time 2          "http://${host}:${port}/" 2>/dev/null; then
+      return 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  return 1
+}
+
 # 把用户踢下线（Hysteria POST /kick）。
 #
 # Hysteria 的 userpass 认证只在**建立连接时**校验，所以光把 users.json 里的
