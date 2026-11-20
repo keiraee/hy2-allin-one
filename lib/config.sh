@@ -1140,7 +1140,14 @@ port_cmd() {
   # 更重要的是：把 VLESS 换到 HY2 范围里，HY2 的 REDIRECT 规则会把它算进
   # 自己管辖的段（实测就是这么踩到的隐藏 bug）。
   local hy2_lo="${HY2_PORT:-}" hy2_hi=""
-  local hop_rng="${PORT_HOP_RANGE:-}"
+  local hop_rng=""
+  # 只有端口跳跃【启用时】才把范围算进来 —— 关闭时 PORT_HOP_RANGE 可能
+  # 还留着历史值（或已清空），拿它判定会误拦（实测踩过，hop off 后
+  # 仍报「落在范围内」）。
+  if command -v port_hop_enabled >/dev/null 2>&1 && port_hop_enabled; then
+    hop_rng="$(port_hop_ports 2>/dev/null || true)"
+    [ -n "$hop_rng" ] || hop_rng="${PORT_HOP_RANGE:-}"
+  fi
   if [ -n "$hop_rng" ]; then
     hy2_lo="${hop_rng%%-*}"
     hy2_hi="${hop_rng##*-}"

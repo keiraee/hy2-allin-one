@@ -184,6 +184,14 @@ class HopRangeConflictTests(unittest.TestCase):
         """报错要给可直接复制的下一步命令，不能只说"冲突了"。"""
         self.assertIn("sudo hy2 port vless", self.body)
 
+    def test_only_checks_when_hopping_enabled(self):
+        """端口跳跃关闭时不该拿 PORT_HOP_RANGE 的历史值误拦。
+
+        实测踩到：hy2 hop off 之后 PORT_HOP_ENABLED=false 但 env 里
+        PORT_HOP_RANGE 可能还留着，检查逻辑照旧拦人。
+        """
+        self.assertIn("port_hop_enabled", self.body)
+
     def test_handles_single_port_range(self):
         """PORT_HOP_RANGE 只写一个数字时也要能比。"""
         self.assertIn("hy2_hi\" = \"$hy2_lo", self.body)
