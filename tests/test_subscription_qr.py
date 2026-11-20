@@ -42,6 +42,16 @@ class CspAllowsImagesTests(unittest.TestCase):
     def setUpClass(cls):
         cls.cfg = CONFIG.read_text(encoding="utf-8")
 
+    def test_script_src_allows_self(self):
+        """script-src 必须带 'self'，否则同源 <script src> 被拦。
+
+        这条是真机踩出来的：img-src 修好之后二维码仍然显示「库没装好」，
+        因为 script-src 只有 'unsafe-inline' —— 内联脚本能跑，但
+        vendor/qrcode.min.js 这种同源外部脚本会被 CSP 直接拒绝。
+        qrcode 变量因此一直是 undefined，openQr 走 fallback 分支。
+        """
+        self.assertIn("script-src 'self'", self.cfg)
+
     def test_img_src_not_none(self):
         self.assertNotIn("img-src 'none'", self.cfg)
 
