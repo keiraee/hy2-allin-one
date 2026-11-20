@@ -101,6 +101,31 @@ restart_cmd() {
     wait_hysteria_stats_api
   fi
   systemctl restart hy2-aio.service
+
+  # config.env 里的 XRAY_PORT 可能被手工改过（比如端口被运营商干扰需要换口），
+  # 但 xray.json 只在用户变更时重建 —— 单纯 restart 不会刷新，导致「改了 env
+  # 却不生效」。这里比对两者，不一致就触发一次重建（走后端 sync，它会重读
+  # config.env 并调 rebuild_xray.py），再拉起 Xray。
+  local want_xray_port got_xray_port
+  want_xray_port="${XRAY_PORT:-}"
+  if [ -n "$want_xray_port" ] && [ -f "${XRAY_CONFIG:-/etc/hy2-aio/xray.json}" ]; then
+    got_xray_port="$(python3 - "$XRAY_CONFIG" <<'PY'
+import json, sys
+try:
+    inbounds = json.load(open(sys.argv[1], encoding="utf-8")).get("inbounds", [])
+    ports = {str(i.get("port")) for i in inbounds if i.get("port")}
+    print(next(iter(ports)) if len(ports) == 1 else "")
+except Exception:
+    print("")
+PY
+)"
+    if [ -n "$got_xray_port" ] && [ "$got_xray_port" != "$want_xray_port" ]; then
+      log "检测到 Xray 端口配置变化（$got_xray_port → $want_xray_port），重建配置"
+      api_post sync >/dev/null 2>&1 || true
+      sleep 1
+    fi
+  fi
+
   if hy2_has_enabled_user 2>/dev/null; then
     restart_hy2_xray_or_die
   fi
