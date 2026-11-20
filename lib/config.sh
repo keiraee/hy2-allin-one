@@ -1265,14 +1265,16 @@ PY
 
   # ---- 重建 + 重启 ----
   read_env
-  # 顺序很关键：后端进程启动时读一次 config.env 并常驻内存。
-  # 如果先 api_post sync（让【旧后端】重建），它内存里还是旧端口，
-  # rebuild 出来的配置就是旧端口 —— 这就是"env 改了但 xray.json 没变"。
-  # 正确顺序：先重启后端（加载新 env）→ 再让它重建 → 再拉起内核。
-  log "重启后端（加载新端口配置）..."
-  systemctl restart hy2-aio.service
-  wait_backend_ready 15 || warn "后端重启耗时较长，继续尝试重建"
-
+  # 注意：不要在这里 systemctl restart hy2-aio.service！
+  #
+  # 面板点"应用"时，root 侧的请求正是【由 hy2-aio 后端进程发起】的
+  # （后端写 cmd 文件 → path unit → control 脚本 → 这里）。此时重启
+  # hy2-aio 等于把正在处理该请求的进程杀掉 → Caddy 拿到 502 →
+  # 用户看到第一次点失败、第二次才成功（真机实测 502/200 交替）。
+  #
+  # 而且这一步本就是多余的：后端的 load_env() 每次都从磁盘重读
+  # config.env，没有任何内存缓存，无需重启就能看到新端口。
+  # config.env 已在上面写好了，直接重建即可。
   log "重建配置..."
   api_post sync >/dev/null 2>&1 || warn "sync 重建失败，尝试用本地 rebuild"
   # 双保险：无论 sync 成败，本地 rebuild 都跑一遍（幂等）

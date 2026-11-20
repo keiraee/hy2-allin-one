@@ -211,5 +211,47 @@ class PortOwnerParseTests(unittest.TestCase):
     def setUpClass(cls):
         cls.src = CONFIG.read_text(encoding="utf-8")
 
+
+
+class NoSelfRestartTests(unittest.TestCase):
+    """port_cmd 重建期间不能重启 hy2-aio（会杀掉正在处理请求的自己）。
+
+    真机现象：面板点"应用"第一次 502、第二次才 200。
+    Caddy 日志里 502/200 交替出现。
+
+    根因：面板改端口走的是
+      后端 → cmd 文件 → path unit → control 脚本 → hy2 port
+    root 侧的 hy2 port 里若执行 systemctl restart hy2-aio.service，
+    等于把【正在等这个响应】的后端进程杀掉 → 连接断开 → 502。
+
+    而且这一步本就多余：后端 load_env() 每次都从磁盘重读 config.env，
+    没有内存缓存，不重启也能看到新端口。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.src = CONFIG.read_text(encoding="utf-8")
+        i = cls.src.index("port_cmd() {")
+        cls.body = cls.src[i : cls.src.index(chr(10) + "}", i)]
+
+    def test_does_not_restart_backend_inside_port_cmd(self):
+        code = [ln for ln in self.body.splitlines()
+                if not ln.lstrip().startswith("#")]
+        for ln in code:
+            self.assertNotIn(
+                "systemctl restart hy2-aio",
+                ln,
+                "port_cmd 里不能重启 hy2-aio（会杀掉请求方自己）",
+            )
+
+    def test_explains_why(self):
+        """注释里要留原因，避免以后有人又加回去。"""
+        self.assertIn("502", self.body)
+
+    def test_still_rebuilds(self):
+        """不重启后端，但重建/重启内核这些步骤要保留。"""
+        self.assertIn("rebuild", self.body)
+        self.assertIn("restart_hy2_xray_or_die", self.body)
+
 if __name__ == "__main__":
     unittest.main()

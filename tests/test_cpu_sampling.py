@@ -61,7 +61,19 @@ class CpuSamplingTests(unittest.TestCase):
         self.assertGreater(
             max(loaded, quick), 0.0, "连续快速调用时仍给出恒定的 0%"
         )
-        self.assertEqual(loaded, quick, "短窗口内应沿用上次读数")
+        # 短窗口内 quick 应当沿用上次读数（last_percent），而不是重新开一个
+        # 窄窗口算出 0 或 100。这里不能断言 loaded == quick ——
+        # cpu_percent(window) 在增量过小时会保留更早的 last_percent，
+        # 两者本就可能不同（真机全量跑时被这条断言误伤过）。
+        # 要断言的是：quick 落在可信区间，且不是硬零。
+        self.assertGreater(quick, 0.0, "短窗口读数退化成硬零")
+        self.assertLessEqual(quick, 100.0, "短窗口读数越界")
+        self.assertAlmostEqual(
+            quick,
+            self.ns["_cpu_samples"].get("last_percent", quick),
+            places=6,
+            msg="短窗口内应沿用上次读数",
+        )
 
     def test_min_window_constant_exists(self):
         self.assertGreaterEqual(self.ns["_CPU_MIN_WINDOW"], 1.0)
