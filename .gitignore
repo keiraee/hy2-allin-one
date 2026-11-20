@@ -20,3 +20,5 @@ __pycache__/
 .alma-snapshots
 # 图标源素材（未压缩，160KB）。产物在 assets/icons/*.webp，源图不入库。
 /assets/icon/
+tests/.*.js
+tests/.*.mjs
