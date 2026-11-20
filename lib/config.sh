@@ -1191,20 +1191,29 @@ PY
 
   # ---- 重建 + 重启 ----
   read_env
-  log "重建配置..."
-  if ! api_post sync >/dev/null 2>&1; then
-    die "配置重建失败（后端未运行？）"
-  fi
-  sleep 1
+  # 顺序很关键：后端进程启动时读一次 config.env 并常驻内存。
+  # 如果先 api_post sync（让【旧后端】重建），它内存里还是旧端口，
+  # rebuild 出来的配置就是旧端口 —— 这就是"env 改了但 xray.json 没变"。
+  # 正确顺序：先重启后端（加载新 env）→ 再让它重建 → 再拉起内核。
+  log "重启后端（加载新端口配置）..."
+  systemctl restart hy2-aio.service
+  wait_backend_ready 15 || warn "后端重启耗时较长，继续尝试重建"
 
-  log "重启服务（在线用户会短暂断开）..."
+  log "重建配置..."
+  api_post sync >/dev/null 2>&1 || warn "sync 重建失败，尝试用本地 rebuild"
+  # 双保险：无论 sync 成败，本地 rebuild 都跑一遍（幂等）
+  [ -x "$REBUILD_FILE" ] && "$REBUILD_FILE" >/dev/null 2>&1 || true
+  [ -x "$XRAY_REBUILD_FILE" ] && "$XRAY_REBUILD_FILE" >/dev/null 2>&1 || true
+  chown hysteria:hysteria "$HYSTERIA_CONFIG" 2>/dev/null || true
+  chmod 0660 "$HYSTERIA_CONFIG" 2>/dev/null || true
+
+  log "重启内核（在线用户会短暂断开）..."
   if ! hy2_is_off; then
     systemctl stop hysteria-server.service 2>/dev/null || true
     clean_hysteria_nat_rules >/dev/null 2>&1 || true
     systemctl start hysteria-server.service
     wait_hysteria_stats_api
   fi
-  systemctl restart hy2-aio.service
   if hy2_has_enabled_user 2>/dev/null; then
     restart_hy2_xray_or_die
   fi
