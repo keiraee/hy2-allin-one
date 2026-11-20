@@ -309,5 +309,62 @@ class RealSingboxBinaryTests(unittest.TestCase):
         finally:
             tmp.unlink(missing_ok=True)
 
+
+
+class Hy2UriPortTests(unittest.TestCase):
+    """HY2 直链的端口跳跃必须走 mport，不能塞进 host:port。
+
+    真机现象：v2ray 扫码后第一个 HY2 节点「没端口没服务器」。
+    原因是我们生成 hysteria2://auth@ip:8443-9443/?... ——
+    "8443-9443" 不是合法 URI 端口，客户端按 Uri 解析直接失败，
+    Address/Port 双双落空。
+
+    依据 2dust/v2rayN ServiceLib/Handler/Fmt/Hysteria2Fmt.cs：
+        item.Port = url.Port == -1 ? 443 : url.Port;
+        Ports     = GetQueryDecoded(query, "mport");
+        dicQuery.Add("mport", Ports.Replace(':', '-'));
+    """
+
+    def setUp(self):
+        self.ns = load_ns()
+
+    def link(self, hop_enabled: str) -> str:
+        env = make_env(PORT_HOP_ENABLED=hop_enabled)
+        return self.ns["direct_link"](env, "alice", "pw123")
+
+    def test_port_is_plain_integer(self):
+        import urllib.parse
+        for hop in ("true", "false"):
+            with self.subTest(hop=hop):
+                uri = self.link(hop)
+                parsed = urllib.parse.urlsplit(uri)
+                self.assertIsInstance(parsed.port, int, f"端口解析失败：{uri[:80]}")
+                self.assertEqual(8443, parsed.port)
+
+    def test_no_dash_in_authority(self):
+        """authority 里出现 - 就说明范围又塞回去了。"""
+        uri = self.link("true")
+        authority = uri.split("//", 1)[1].split("/", 1)[0]
+        self.assertNotIn("-", authority.split("@", 1)[1], authority)
+
+    def test_range_moved_to_mport(self):
+        import urllib.parse
+        parsed = urllib.parse.urlsplit(self.link("true"))
+        q = urllib.parse.parse_qs(parsed.query)
+        self.assertEqual(["8443-9443"], q.get("mport"))
+
+    def test_no_mport_when_hop_disabled(self):
+        import urllib.parse
+        parsed = urllib.parse.urlsplit(self.link("false"))
+        q = urllib.parse.parse_qs(parsed.query)
+        self.assertNotIn("mport", q)
+
+    def test_clash_yaml_still_uses_ports_field(self):
+        """Clash 的写法本来就是对的（port + ports），别被这次改动带坏。"""
+        env = make_env()
+        yaml_text = self.ns["subscription_yaml"](env, "alice", "pw123", {}).decode()
+        self.assertIn("port: 8443", yaml_text)
+        self.assertIn("ports:", yaml_text)
+
 if __name__ == "__main__":
     unittest.main()

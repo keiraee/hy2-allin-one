@@ -155,12 +155,23 @@ class SubscriptionYamlTests(unittest.TestCase):
         self.assertIn('    ports: "8443-9443"', text)
         self.assertIn("    hop-interval: 20", text)
 
-    def test_port_hop_direct_link_uses_range(self):
+    def test_port_hop_direct_link_uses_mport_not_authority(self):
+        """端口范围不能塞进 host:port。
+
+        这条原来断言的是 ":8443-9443/"，等于把 bug 当成了期望值 ——
+        "8443-9443" 不是合法 URI 端口，v2rayN/CMA 解析时 Address 和 Port
+        双双落空，真机上表现为「没端口没服务器」。
+
+        正确形态：主端口取区间起点，范围放 mport 查询参数。
+        （依据 v2rayN Hysteria2Fmt.cs 的 Parse 分支）
+        """
         self.enable_hop()
         text = self.namespace["direct_links"](
             self.env, "alice", "p4ss", {"vless_id": self.vless_id}
         )
-        self.assertIn(":8443-9443/", text)
+        self.assertIn(":8443/?", text)
+        self.assertIn("mport=8443-9443", text)
+        self.assertNotIn(":8443-9443/", text)
 
     def test_invalid_hop_range_falls_back_to_single_port(self):
         self.enable_hop(PORT_HOP_RANGE="500-600")

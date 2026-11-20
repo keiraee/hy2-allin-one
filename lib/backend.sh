@@ -635,6 +635,17 @@ def flag_prefix(env: dict[str, str]) -> str:
 
 
 def direct_link(env: dict[str, str], username: str, password: str) -> str:
+    """单节点 HY2 直链。
+
+    端口跳跃时不能把范围塞进 host:port —— "8443-9443" 不是合法 URI 端口，
+    v2rayN / CMA 按 Uri 解析会直接失败，服务器和端口都变成空（真机上就看到
+    「没端口没服务器」）。端口范围必须走 mport 查询参数。
+
+    依据 v2rayN ServiceLib/Handler/Fmt/Hysteria2Fmt.cs：
+        item.Port  = url.Port == -1 ? 443 : url.Port;      // 主端口单独给
+        Ports       = GetQueryDecoded(query, "mport");      // 范围走这里
+        dicQuery.Add("mport", Ports.Replace(':', '-'));     // 起始-结束
+    """
     auth = urllib.parse.quote(f"{username}:{password}", safe="")
     query_items: dict[str, str] = {
         "sni": env.get("SNI", "www.amazon.sg"),
@@ -644,10 +655,16 @@ def direct_link(env: dict[str, str], username: str, password: str) -> str:
         query_items["obfs-password"] = env["OBFS_PASSWORD"]
     if client_insecure(env):
         query_items["insecure"] = "1"
+    # 端口跳跃：主端口用区间起点，范围额外写进 mport
+    hop = port_hop_ports(env)
+    if hop:
+        query_items["mport"] = hop
+        port = hop.split("-", 1)[0]
+    else:
+        port = env.get("HY2_PORT", "443")
     query = urllib.parse.urlencode(query_items)
     name = urllib.parse.quote(flag_prefix(env) + f"HY2-{username}", safe="")
-    ports = port_hop_ports(env) or env.get("HY2_PORT", "443")
-    return f"hysteria2://{auth}@{env['PUBLIC_IP']}:{ports}/?{query}#{name}"
+    return f"hysteria2://{auth}@{env['PUBLIC_IP']}:{port}/?{query}#{name}"
 
 
 def xray_port(env: dict[str, str]) -> str:
