@@ -1151,12 +1151,30 @@ port_cmd() {
   fi
 
   # ---- 写入 ----
-  local old_value
+  # 「无变化」判定不能只看 config.env —— 上次操作可能 env 写了但重建没
+  # 跑完（中断/断连），此时 env 已是新值、实际配置还是旧的。要比对
+  # xray.json 里真实生效的端口，不一致就照常走重建。
+  local old_value current_actual=""
   case "$target" in
     hy2)   old_value="${HY2_PORT:-}" ;;
     vless) old_value="${XRAY_PORT:-}" ;;
   esac
-  if [ "$new_port" = "$old_value" ]; then
+  if [ "$target" = "vless" ] && [ -f "${XRAY_CONFIG:-/etc/hy2-aio/xray.json}" ]; then
+    current_actual="$(python3 - "$XRAY_CONFIG" <<'PY'
+import json, sys
+try:
+    inbounds = json.load(open(sys.argv[1], encoding="utf-8")).get("inbounds", [])
+    ports = {str(i.get("port")) for i in inbounds if i.get("port")}
+    print(next(iter(ports)) if len(ports) == 1 else "")
+except Exception:
+    print("")
+PY
+)"
+    if [ "$new_port" = "$old_value" ] && [ "$current_actual" != "$new_port" ]; then
+      warn "config.env 已是 $new_port 但实际监听配置是 ${current_actual:-未知}（上次操作未完成），继续重建"
+    fi
+  fi
+  if [ "$new_port" = "$old_value" ] && { [ "$target" != "vless" ] || [ "$current_actual" = "$new_port" ]; }; then
     log "端口未变化（$target = $new_port），无需操作"
     return 0
   fi
