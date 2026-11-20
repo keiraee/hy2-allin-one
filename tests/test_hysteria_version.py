@@ -268,11 +268,11 @@ class BootstrappingTests(unittest.TestCase):
         self.assertIn("Hysteria 需要升级", self.head)
 
     def test_still_skips_when_already_current(self):
-        self.assertIn("Hysteria 已存在", self.head)
+        self.assertIn("Hysteria 已是最新", self.head)
 
-    def test_force_still_short_circuits_comparison(self):
-        # force=1 时不进比较分支，直接往下走去重装
-        self.assertIn(chr(34) + "$force" + chr(34) + " != " + chr(34) + "1" + chr(34), self.head)
+    def test_force_no_longer_skips_comparison(self):
+        """force=1 不再绕过版本比较（否则每次 upgrade 都白下 25MB）。"""
+        self.assertNotIn(chr(34) + "$force" + chr(34) + " != " + chr(34) + "1" + chr(34), self.head)
 
     def test_repair_dispatch_falls_back_to_upgrade_flag(self):
         """兜底：旧版 bin 传裸 repair 时，靠 HY2_UPGRADE_BANNER 认出这是升级。"""
@@ -331,6 +331,41 @@ class BackendReadyWaitTests(unittest.TestCase):
         body = self.core[self.core.index("wait_backend_ready()"):]
         seg = body[: body.index("return 1")]
         self.assertIn("command -v curl", seg)
+
+
+
+class NoRedundantReinstallTests(unittest.TestCase):
+    """hy2 upgrade 每次都传 force=1, so every upgrade re-downloaded the
+    25 MB binary even when the installed version was already current.
+
+    The live box showed exactly that at 08:22 -- already on v2.14.0,
+    still reinstalled. Version comparison must win over the force flag.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        src = (ROOT / "lib" / "install.sh").read_text(encoding="utf-8")
+        cls.head = src[src.index("install_hysteria() {"):]
+        cls.head = cls.head[: cls.head.index("local version tag arch")]
+
+    def test_version_check_not_gated_on_force(self):
+        """比较分支不能挂在 [ "$force" != "1" ] 后面。"""
+        self.assertNotIn(chr(34) + "$force" + chr(34) + " != " + chr(34) + "1" + chr(34), self.head)
+
+    def test_upgrades_when_older(self):
+        self.assertIn("version_is_newer", self.head)
+        self.assertIn("Hysteria 需要升级", self.head)
+
+    def test_skips_when_current_even_with_force(self):
+        self.assertIn("Hysteria 已是最新", self.head)
+
+    def test_explicit_reinstall_escape_hatch(self):
+        """怀疑二进制损坏时仍能强制重装，但要显式要求。"""
+        self.assertIn("HYSTERIA_FORCE_REINSTALL", self.head)
+
+    def test_does_not_downgrade(self):
+        """已装版本更新时跳过，不能把用户降级。"""
+        self.assertNotIn("version_is_newer " + chr(34) + "$have" + chr(34), self.head)
 
 if __name__ == "__main__":
     unittest.main()

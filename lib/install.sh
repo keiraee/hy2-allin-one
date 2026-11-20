@@ -345,20 +345,32 @@ install_hysteria() {
   local want
   want="$(version_extract "${HYSTERIA_VERSION:-v2.14.0}")"
 
-  if [ "$force" != "1" ] && command -v hysteria >/dev/null 2>&1; then
+  local have=""
+  if command -v hysteria >/dev/null 2>&1; then
     # hysteria version 先打 ASCII banner，版本行在很后面 —— 不能用 head -1，
     # 那样只会拿到一个空行（真机上就是这么打出「已存在：」后面空着的）。
-    local have=""
     have="$(hysteria_installed_version 2>/dev/null || true)"
-    # 已装版本比内置默认版本旧 → 直接升级，不再依赖调用方传 force。
-    # 这条兜底是为了破「自举陷阱」：hy2 upgrade 跑的是【已安装】的
-    # bin/hy2.sh，那行传参是老代码写的。只改 bin/hy2.sh 的话，
-    # 新版传参要等下一次 upgrade 才生效，而下一次用的还是旧的 ——
-    # 真机上就是这么连着两轮没升上去的。
+
+    # 版本已达标就跳过，即使 force=1 也一样。
+    #
+    # force 原本的语义是「无条件重装」，但 hy2 upgrade 是【每次】都传 1 的，
+    # 于是每次升级都会重下 25MB 二进制重装一遍 —— 明明已经是最新版
+    # （真机上 08:22 那次就是这样，纯属浪费带宽和磁盘 IO）。
+    #
+    # 现在的判断只看版本：旧了就升、同版或不旧就跳过。
+    # 真要强制重装（比如怀疑二进制损坏），把 HYSTERIA_FORCE_REINSTALL=1
+    # 传给脚本，那是显式意图，不该由 upgrade 顺带触发。
+    #
+    # 这条版本比较还兼着破「自举陷阱」的作用：hy2 upgrade 跑的是【已安装】的
+    # bin/hy2.sh，那行传参是老代码写的。只改 bin/hy2.sh 的话，新版传参
+    # 要等下一次 upgrade 才生效，而下一次用的还是旧的 —— 真机上连着两轮
+    # 都没升上去。让被调用方自己判断版本，才是唯一可靠的做法。
     if [ -n "$have" ] && [ -n "$want" ] && version_is_newer "$want" "$have"; then
       log "Hysteria 需要升级：v${have} → v${want}"
+    elif [ "${HYSTERIA_FORCE_REINSTALL:-0}" = "1" ]; then
+      log "Hysteria 强制重装：v${have:-未知}"
     else
-      log "Hysteria 已存在：${have:+v${have}}"
+      log "Hysteria 已是最新：${have:+v${have}}"
       return
     fi
   fi
