@@ -196,5 +196,20 @@ class HopRangeConflictTests(unittest.TestCase):
         """PORT_HOP_RANGE 只写一个数字时也要能比。"""
         self.assertIn("hy2_hi\" = \"$hy2_lo", self.body)
 
+
+
+class PortOwnerParseTests(unittest.TestCase):
+    """从 ss 输出抠进程名的管道不能因无匹配而炸掉 set -e。
+
+    真机 bug：面板改端口提示"成功"，实际什么都没改。
+    根因是 port_owner 的取值管道用了永远匹配不上的 grep 正则 ——
+    ss 的输出行尾有大量空白且以 )) 收尾 → grep 返回 1 →
+    pipefail 让整条管道返回 1 → 裸赋值触发 set -e → 静默退出。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.src = CONFIG.read_text(encoding="utf-8")
+
 if __name__ == "__main__":
     unittest.main()

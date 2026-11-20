@@ -1203,7 +1203,12 @@ port_cmd() {
   # 与现有监听冲突。排除「自己当前就占着这个口」的情况 ——
   # 重复执行同一命令（比如中断后重试）不该报错，直接走幂等路径。
   local port_owner=""
-  port_owner="$(ss -Hlntp 2>/dev/null | awk -v p=":$new_port" '$4 ~ p"$" {print $NF; exit}' | grep -oE '[a-z0-9-]+\)$' | tr -d '()')"
+  # 从 ss 的 users:(("xray",pid=123,fd=3)) 里抠出进程名。
+  # 早先用 grep -oE '[a-z0-9-]+\)$' 是错的：ss 行尾有大量空白、
+  # 且以 )) 收尾，那个正则永远匹配不上 → grep 返回 1 →
+  # pipefail + set -e 让整个函数静默退出：面板显示"成功"，
+  # 实际什么都没改。这是真机上踩到的 bug。
+  port_owner="$(ss -Hlntp 2>/dev/null | awk -v p=":$new_port" '$4 ~ p"$" { s=$NF; if (match(s, /[(][(]"/)) { s=substr(s, RSTART+3); if (match(s, /"/)) { print substr(s, 1, RSTART-1); exit } } }' || true)"
   if [ "$target" = "vless" ] && tcp_port_is_used "$new_port"; then
     case "$port_owner" in
       xray) log "TCP $new_port 已由 Xray 监听（重复操作，走幂等路径）" ;;
@@ -1211,7 +1216,7 @@ port_cmd() {
     esac
   fi
   if [ "$target" = "hy2" ] && port_is_used "$new_port"; then
-    port_owner="$(ss -Hlunp 2>/dev/null | awk -v p=":$new_port" '$4 ~ p"$" {print $NF; exit}' | grep -oE '[a-z0-9-]+\)$' | tr -d '()')"
+    port_owner="$(ss -Hlunp 2>/dev/null | awk -v p=":$new_port" '$4 ~ p"$" { s=$NF; if (match(s, /[(][(]"/)) { s=substr(s, RSTART+3); if (match(s, /"/)) { print substr(s, 1, RSTART-1); exit } } }' || true)"
     case "$port_owner" in
       hysteria) log "UDP $new_port 已由 Hysteria 监听（重复操作，走幂等路径）" ;;
       "") ;;   # 端口跳跃范围被 NAT 转发占着，没有监听进程，不算冲突
