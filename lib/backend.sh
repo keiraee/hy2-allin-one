@@ -3005,6 +3005,26 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 self.send_json(200, {"ok": True, **data})
                 return
+            if path == "/user/kick":
+                # 只断开现有连接，不动 users.json —— 跟他重连还会成功。
+                # 跟「禁用」的区别就在这里：禁用是先屏蔽再踢（回不来），
+                # 这个是纯踢（想让他换个 IP 重连就用这个）。
+                payload = self.read_body()
+                username = str(payload.get("username", "")).strip()
+                if not USERNAME_PATTERN.fullmatch(username):
+                    self.send_json(400, {"ok": False, "error": "用户名格式错误"})
+                    return
+                if username not in load_users():
+                    self.send_json(400, {"ok": False, "error": "用户不存在"})
+                    return
+                kicked = kick_user_safely(username)
+                if kicked:
+                    self.send_json(200, {"ok": True, "kicked": kicked})
+                else:
+                    self.send_json(
+                        200, {"ok": True, "kicked": 0, "message": "没有可断开的连接（或 Hysteria 未运行）"}
+                    )
+                return
             if path in (
                 "/user/note",
                 "/user/disable",

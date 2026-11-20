@@ -214,6 +214,8 @@ tr.disabled td{opacity:.55}
   border-radius:4px;font:inherit;cursor:pointer;color:var(--text)}
 .menu button:hover{background:var(--surface-2)}
 .menu button.bad{color:var(--bad)}
+.menu button.disabled{color:var(--muted);cursor:not-allowed;opacity:.5}
+.menu button.disabled:hover{background:transparent}
 .menu .sep{height:1px;background:var(--line);margin:4px}
 .notice,.error{display:none;margin:0 0 14px;padding:10px 12px;border-radius:var(--radius);font-size:13px;line-height:1.45;border:1px solid var(--line);position:relative;padding-right:36px}
 .notice.show,.error.show{display:block}
@@ -1625,7 +1627,7 @@ async function saveNote(){
 }
 async function toggleUser(username,disabled){
   closeMenus();
-  if(!disabled&&!confirm("确认禁用 "+username+"？该用户将立即无法连接，数据保留。"))return;
+  if(!disabled&&!confirm("确认禁用 "+username+"？\n\n他会被立即踢下线，重连也过不去。流量与数据保留。"))return;
   await runMutate(null,async()=>{
     try{
       const result=await apiPost(disabled?"api/user/enable":"api/user/disable",{username});
@@ -1637,9 +1639,26 @@ async function toggleUser(username,disabled){
     }
   },disabled?"正在启用用户…":"正在禁用用户…");
 }
+async function kickUser(username){
+  closeMenus();
+  if(!confirm("确认把 "+username+" 踢下线？\n\n只断开现有连接，不会禁用。他重连仍可连上（适合让他换 IP）。"))return;
+  await runMutate(null,async()=>{
+    try{
+      const result=await apiPost("api/user/kick",{username});
+      if(result&&result.kicked){
+        toast("已踢下线："+username);
+      }else{
+        toast((result&&result.message)||"没有可断开的连接");
+      }
+      await load();
+    }catch(error){
+      toast("踢下线失败："+error.message);
+    }
+  },"正在踢下线…");
+}
 async function removeUser(username){
   closeMenus();
-  if(!confirm("确认删除用户 "+username+"？此操作不可恢复。"))return;
+  if(!confirm("确认删除用户 "+username+"？\n\n他会立即断线，且此操作不可恢复。"))return;
   await runMutate(null,async()=>{
     try{
       await apiPost("api/user/remove",{username});
@@ -1657,7 +1676,7 @@ async function removeUser(username){
 }
 async function rotateUser(username){
   closeMenus();
-  if(!confirm("确认轮换 "+username+" 的密码与订阅 token？旧订阅将失效。"))return;
+  if(!confirm("确认轮换 "+username+" 的密码与订阅 token？\n\n旧订阅立即失效，他会断线需重新配置。"))return;
   await runMutate(null,async()=>{
     try{
       await apiPost("api/user/rotate",{username});
@@ -1747,8 +1766,17 @@ async function toggleHy2(){
     }catch(error){toast("操作失败："+error.message)}
   },enabled?"正在关闭 HY2…":"正在开启 HY2…");
 }
-function menuItem(text,handler,bad){
-  return el("button",{type:"button",className:bad?"bad":"",text,onclick:handler});
+function menuItem(text,handler,bad,disabled){
+  // 注意第三个参数是「危险操作标红」，不是「禁用」。要置灰请传第四个参数。
+  // 之前把两件事混在一个参数上，结果「离线用户不能踢」变成了「离线用户标红」。
+  const node=el("button",{type:"button",className:bad?"bad":"",text,onclick:handler});
+  if(disabled){
+    node.disabled=true;
+    node.classList.add("disabled");
+    node.title="当前不可用";
+    node.onclick=null;
+  }
+  return node;
 }
 function renderUsers(users){
   if(users)userList=users;
@@ -1793,6 +1821,7 @@ function renderUsers(users){
       menuItem("流量分析",()=>{closeMenus();openTraffic(user.username)}),
       menuItem("改备注",()=>{closeMenus();setNoteModal(true,user.username,note)}),
       menuItem("轮换密钥",()=>rotateUser(user.username)),
+      menuItem("踢下线",()=>kickUser(user.username),false,!user.online),
       menuItem(user.disabled?"启用":"禁用",()=>toggleUser(user.username,!!user.disabled),!user.disabled),
       el("div",{className:"sep"}),
       menuItem("删除",()=>removeUser(user.username),true)
