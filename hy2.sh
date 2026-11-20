@@ -789,6 +789,9 @@ HY2 AIO v${AIO_VERSION}
   hy2 hop on|off               # 开启/关闭端口跳跃（会重启 Hysteria）
   hy2 hop check                # 自检：防火墙工具、CAP_NET_ADMIN、监听与重定向规则
   hy2 hop range 8443-9443      # 设置范围（必须从 HY2_PORT 开始，跨度 ≤2000）
+  hy2 port show                # 查看 HY2 / VLESS 当前端口
+  hy2 port hy2 8443-9443       # 改 HY2 端口（范围=开启端口跳跃）
+  hy2 port vless 2083          # 改 VLESS 端口（端口被干扰时换口）
   hy2 hop interval 30          # 设置跳跃间隔（5-3600 秒）
   hy2 deps                     # 运行环境自检（缺哪些命令）
   hy2 deps fix                 # 缺什么按发行版自动装什么
@@ -915,6 +918,7 @@ main() {
     uninstall)  uninstall_cmd ;;
     obfs)       obfs_cmd "${2:-show}" ;;
     hop)        hop_cmd "${2:-show}" "${3:-}" ;;
+    port)       port_cmd "${2:-show}" "${3:-}" ;;
     deps)       deps_cmd "${2:-check}" ;;
     help|-h|--help|-help) usage ;;
     *)          usage; exit 1 ;;

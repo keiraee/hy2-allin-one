@@ -406,6 +406,15 @@ case "$cmd" in
   restart)
     /bin/systemctl restart hysteria-server.service
     ;;
+  port:*)
+    # 格式 port:<hy2|vless>:<端口或范围>
+    # 面板改端口走这里（root 权限）：改 env → 重建 → 重启，含 NAT 链清理。
+    p_target=$(printf '%s' "$cmd" | cut -d: -f2)
+    p_value=$(printf '%s' "$cmd" | cut -d: -f3-)
+    if [ -x /usr/local/bin/hy2 ]; then
+      /usr/local/bin/hy2 port "$p_target" "$p_value" >/dev/null 2>&1 || :
+    fi
+    ;;
   *)
     /bin/systemctl restart hysteria-server.service
     ;;
@@ -1052,6 +1061,139 @@ hop_check_cmd() {
   fi
   warn "本机自检有 ${failures} 项未通过，先修掉再让用户用"
   return 1
+}
+
+# port_cmd - 查看与修改 HY2 / VLESS 端口
+#
+# 背景：端口经常需要换 —— 运营商 DPI 会针对某些端口做选择性干扰
+# （实测 8443 的 TLS 握手被掐、2083 正常）。而原来改端口只能手工
+# sed config.env + 手动跑 rebuild，改完还容易遇到「restart 不生效」的坑。
+#
+# 这条命令统一处理：
+#   校验端口布局（不能与面板/统计/后端冲突、不能被占用）
+#   写 config.env
+#   触发配置重建（hysteria + xray）
+#   重启服务（HY2 走 stop→clean→start，防 NAT 链残留）
+#   提示用户重新导入订阅
+port_cmd() {
+  need_root port
+  read_env
+  local target="${1:-show}" value="${2:-}"
+
+  case "$target" in
+    show|status|"")
+      local hop_info=""
+      if command -v port_hop_enabled >/dev/null 2>&1 && port_hop_enabled; then
+        hop_info="（端口跳跃 $(hop_range)，间隔 ${PORT_HOP_INTERVAL:-30}s）"
+      fi
+      echo "HY2 UDP：${HY2_PORT:-443} ${hop_info}"
+      echo "VLESS TCP：${XRAY_PORT:-}（实际监听以 ss 为准）"
+      echo "面板 HTTPS：${PANEL_PORT:-443} / 统计：${STATS_PORT:-9999}"
+      echo
+      echo "修改："
+      echo "  sudo hy2 port hy2 8443          # HY2 单端口（或 范围 如 8443-9443 开启跳跃）"
+      echo "  sudo hy2 port vless 2083        # VLESS 端口"
+      echo "改动会自动重建配置并重启服务，在线用户会短暂断开。"
+      echo "改完需要【重新导入订阅】。"
+      return 0
+      ;;
+    hy2|vless)
+      ;;
+    *)
+      die "未知目标：$target（可用：hy2 / vless / show）"
+      ;;
+  esac
+
+  local key
+  case "$target" in
+    hy2)   key="HY2_PORT" ;;
+    vless) key="XRAY_PORT" ;;
+  esac
+
+  [ -n "$value" ] || die "缺少端口值。用法：sudo hy2 port $target <端口或范围>"
+
+  # ---- 校验 ----
+  local new_port="$value"
+  if [ "$target" = "vless" ]; then
+    port_number_is_valid "$new_port" || die "端口无效：$new_port（必须是 1-65535 的整数）"
+  else
+    # HY2 允许范围（端口跳跃）；单端口也走 range 校验的宽松分支
+    if [[ "$new_port" == *-* ]]; then
+      hop_range_is_valid "$new_port" || die "端口范围无效：$new_port（如 8443-9443，须在 1-65535 内且起点<=终点）"
+      new_port="${new_port%%-*}"
+    else
+      port_number_is_valid "$new_port" || die "端口无效：$new_port"
+    fi
+  fi
+
+  # 与其他角色的端口冲突
+  local panel_port="${PANEL_PORT:-443}" stats_port="${STATS_PORT:-9999}"
+  for p in "$panel_port" "$stats_port" "$BACKEND_PORT"; do
+    [ "$new_port" = "$p" ] && die "端口冲突：$new_port 与内部端口 $p 相同"
+  done
+  case "$target" in
+    hy2)
+      # HY2 是 UDP；VLESS 是 TCP，理论可同号但容易混淆，禁止相同
+      [ "$new_port" = "${XRAY_PORT:-}" ] && die "端口冲突：HY2 与 VLESS 不能同为 $new_port"
+      ;;
+    vless)
+      [ "$new_port" = "${HY2_PORT:-}" ] && die "端口冲突：VLESS 与 HY2 不能同为 $new_port"
+      ;;
+  esac
+
+  # 与现有监听冲突（排除自己当前占用的）
+  if [ "$target" = "vless" ] && tcp_port_is_used "$new_port"; then
+    die "TCP $new_port 已被占用（ss 查看：ss -lntp | grep $new_port）"
+  fi
+  if [ "$target" = "hy2" ] && port_is_used "$new_port"; then
+    # 端口跳跃场景下 8444-9443 被自己占着是正常的，只拦完全相同的情况
+    [ "$new_port" = "${HY2_PORT:-}" ] || die "UDP $new_port 已被占用（ss 查看：ss -lunp | grep $new_port）"
+  fi
+
+  # ---- 写入 ----
+  local old_value
+  case "$target" in
+    hy2)   old_value="${HY2_PORT:-}" ;;
+    vless) old_value="${XRAY_PORT:-}" ;;
+  esac
+  if [ "$new_port" = "$old_value" ]; then
+    log "端口未变化（$target = $new_port），无需操作"
+    return 0
+  fi
+
+  log "回滚快照：$(snapshot_before_change)"
+  if [ "$target" = "hy2" ] && [[ "$value" == *-* ]]; then
+    # 范围形式：关掉旧跳跃语义，直接用 PORT_HOP_RANGE 承载
+    set_config_env_var HY2_PORT "$new_port"
+    set_config_env_var PORT_HOP_RANGE "$value"
+    set_config_env_var PORT_HOP_ENABLED true
+  else
+    set_config_env_var "$key" "$new_port"
+  fi
+
+  # ---- 重建 + 重启 ----
+  read_env
+  log "重建配置..."
+  if ! api_post sync >/dev/null 2>&1; then
+    die "配置重建失败（后端未运行？）"
+  fi
+  sleep 1
+
+  log "重启服务（在线用户会短暂断开）..."
+  if ! hy2_is_off; then
+    systemctl stop hysteria-server.service 2>/dev/null || true
+    clean_hysteria_nat_rules >/dev/null 2>&1 || true
+    systemctl start hysteria-server.service
+    wait_hysteria_stats_api
+  fi
+  systemctl restart hy2-aio.service
+  if hy2_has_enabled_user 2>/dev/null; then
+    restart_hy2_xray_or_die
+  fi
+
+  echo
+  log "端口已更新：$target = $value"
+  warn "订阅内容已变化，请在客户端【重新导入订阅】"
 }
 
 hop_cmd() {

@@ -1321,6 +1321,12 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
                     "Caddy": service_status("caddy.service"),
                 },
                 "hy2_enabled": hy2_enabled,
+                # 端口：面板「端口设置」弹窗要显示当前值。
+                # HY2 范围（端口跳跃）优先展示完整范围。
+                "ports": {
+                    "hy2": str(port_hop_ports(env) or env.get("HY2_PORT", "443") or ""),
+                    "vless": str(xray_port(env) or ""),
+                },
                 # 归属地只在这里解析一次，落盘给访问资料文件复用（见 lib/access.sh）：
                 # 节点名的国旗必须处处一致，CLI 那边不能自己再发一遍网络请求。
                 "country_code": server_country_code(env),
@@ -1587,6 +1593,32 @@ def _unlink_quiet(path: Path) -> None:
             path.unlink()
     except OSError:
         pass
+
+
+def request_port_change(target: str, value: str) -> bool:
+    """让 root 侧执行 hy2 port（面板无权写 config.env，走 cmd 文件机制）。
+
+    复用 hysteria 的 cmd 文件 + path unit：内容写 port:<target>:<value>，
+    hysteria-control.sh 认出 port: 前缀后以 root 跑 `hy2 port`。
+    返回是否在超时内完成（flag 消失 = root 侧处理完了）。
+    """
+    if target not in ("hy2", "vless"):
+        raise ValueError(f"未知端口目标：{target}")
+    value = str(value or "").strip()
+    if not value:
+        raise ValueError("端口值不能为空")
+    # 只放行安全字符：数字、短横线（范围）
+    import re as _re
+    if not _re.fullmatch(r"[0-9]+(?:-[0-9]+)?", value):
+        raise ValueError("端口格式无效")
+    _unlink_quiet(HYSTERIA_RELOAD_FLAG)
+    HYSTERIA_CMD_FILE.write_text(f"port:{target}:{value}" + chr(10), encoding="utf-8")
+    HYSTERIA_RELOAD_FLAG.write_text(str(time.time()), encoding="utf-8")
+    for _ in range(150):          # 最多 30 秒：改端口含重建+重启，比普通 restart 慢
+        time.sleep(0.2)
+        if not HYSTERIA_RELOAD_FLAG.exists():
+            return True
+    return False
 
 
 def request_hysteria(action: str) -> None:
@@ -3204,6 +3236,25 @@ class Handler(BaseHTTPRequestHandler):
                         "hy2_enabled": False,
                         "generated_at": data["generated_at"],
                     },
+                )
+                return
+            if path == "/ports":
+                payload = self.read_body()
+                target = str(payload.get("target", "")).strip().lower()
+                value = str(payload.get("value", "")).strip()
+                try:
+                    ok_done = request_port_change(target, value)
+                except ValueError as error:
+                    self.send_json(400, {"ok": False, "error": str(error)})
+                    return
+                if not ok_done:
+                    self.send_json(500, {"ok": False, "error": "端口变更超时（root 侧未响应）"})
+                    return
+                # 后端被 port 流程重启过，读一下最新状态回给前端
+                data = collect()
+                self.send_json(
+                    200,
+                    {"ok": True, "target": target, "value": value, "generated_at": data["generated_at"]},
                 )
                 return
             if path == "/hy2/on":

@@ -193,6 +193,7 @@ HY2 AIO v${AIO_VERSION}
   hy2 hop on|off          # 开启/关闭端口跳跃（需重启 Hysteria）
   hy2 hop check           # 端口跳跃自检
   hy2 hop range <起-止>   # 设置端口范围（必须从代理端口起）
+  hy2 port show                # 查看 HY2 / VLESS 当前端口
   hy2 hop interval <秒>   # 设置跳跃间隔（5-3600）
   hy2 deps                # 运行环境自检（缺哪些命令）
   hy2 deps fix            # 缺什么按发行版自动装什么
@@ -230,6 +231,7 @@ case "$command" in
   uninstall)  uninstall_cmd ;;
   obfs)       obfs_cmd "${2:-show}" ;;
   hop)        hop_cmd "${2:-show}" "${3:-}" ;;
+  port)       port_cmd "${2:-show}" "${3:-}" ;;
   deps)       deps_cmd "${2:-check}" ;;
   help|-h|--help|-help) usage ;;
   *)          usage; exit 1 ;;

@@ -612,7 +612,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
     <section class="section">
       <div class="section-h">
         <h2><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-server"/></svg>服务</h2>
-        <button id="hy2Toggle" class="btn" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-power"/></svg>关闭 HY2</button>
+        <div style="display:flex;gap:8px"><button id="portBtn" class="btn" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-server"/></svg>端口</button><button id="hy2Toggle" class="btn" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-power"/></svg>关闭 HY2</button></div>
       </div>
       <div id="services" class="pills"></div>
     </section>
@@ -710,6 +710,28 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
   </div>
 </div>
 
+<div id="portModal" class="modal-scrim" role="dialog" aria-modal="true" aria-labelledby="portTitle">
+  <div class="modal port-modal">
+    <div class="qr-head">
+      <div>
+        <h3 id="portTitle">端口设置</h3>
+        <p class="hint">改动会自动重建配置并重启服务，在线用户会短暂断开。改完需重新导入订阅。</p>
+      </div>
+      <button id="portClose" class="btn ghost" type="button" aria-label="关闭"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="stack">
+      <label class="hint">HY2 UDP 端口（可填范围开启端口跳跃，如 8443-9443）</label>
+      <input id="portHy2" class="input" type="text" placeholder="8443 或 8443-9443" autocomplete="off">
+      <label class="hint">VLESS TCP 端口（被运营商干扰时换个冷门口，如 2083）</label>
+      <input id="portVless" class="input" type="text" placeholder="2083" autocomplete="off">
+      <p id="portMsg" class="hint" hidden></p>
+    </div>
+    <div class="modal-actions">
+      <button id="portCancel" class="btn" type="button">取消</button>
+      <button id="portSave" class="btn primary" type="button">应用</button>
+    </div>
+  </div>
+</div>
 <div id="noteModal" class="modal-scrim" role="dialog" aria-modal="true" aria-labelledby="noteTitle">
   <div class="modal">
     <h3 id="noteTitle">修改备注</h3>
@@ -1793,6 +1815,37 @@ async function copyCredential(username,kind){
 // 为什么要问后端：订阅链接带 token，面板不持有明文凭据，统一由 api/user/credentials
 // 给，避免前端自己拼 URL 拼错（尤其 fmt 参数和 panel_path 前缀）。
 let qrCurrentUrl = "";
+// ---- 端口设置 ----
+function setPortModal(open){
+  $("portModal").classList.toggle("open",open);
+  if(open){
+    const p=(window.__lastData||{}).server&&window.__lastData.server.ports||{};
+    $("portHy2").value=p.hy2||"";
+    $("portVless").value=p.vless||"";
+    const msg=$("portMsg"); msg.hidden=true; msg.textContent="";
+    $("portSave").disabled=false;
+    setTimeout(()=>$("portHy2").focus(),50);
+  }
+}
+async function applyPorts(){
+  const hy2=$("portHy2").value.trim(), vless=$("portVless").value.trim();
+  if(!hy2&&!vless){toast("至少填一个端口");return}
+  const msg=$("portMsg"); msg.hidden=false; msg.textContent="应用中…（重建配置并重启，约 10~20 秒）";
+  $("portSave").disabled=true;
+  const jobs=[];
+  if(hy2)jobs.push(apiPost("api/ports",{target:"hy2",value:hy2}));
+  if(vless)jobs.push(apiPost("api/ports",{target:"vless",value:vless}));
+  try{
+    await Promise.all(jobs);
+    msg.textContent="已应用。请在客户端重新导入订阅。";
+    toast("端口已更新");
+    await load();
+    setTimeout(()=>setPortModal(false),1200);
+  }catch(error){
+    msg.textContent="失败："+error.message;
+    $("portSave").disabled=false;
+  }
+}
 async function openQr(username, kind){
   closeMenus();
   const label = kind==="subscription"?"Clash":kind==="subscription-v2ray"?"v2ray":kind==="subscription-singbox"?"sing-box":"订阅";
@@ -2176,7 +2229,7 @@ async function load(){
   try{
     const response=await fetch("data.json?t="+Date.now(),{cache:"no-store"});
     if(!response.ok)throw new Error("HTTP "+response.status);
-    const data=await response.json(),t=data.server.traffic;
+    const data=await response.json();window.__lastData=data;const t=data.server.traffic;
     const ver=String(data.version||"").replace(/^v/i,"").trim();
     const ageText=dataAgeText(data.generated_at);
     $("time").textContent=(ver&&ver!=="unknown"?("v"+ver+" · "):"")+"更新 "+data.generated_at+(ageText?"（"+ageText+"）":"")+" · "+data.server.ip+" · "+data.server.domain;
@@ -2237,6 +2290,11 @@ if($("qrCopy"))$("qrCopy").onclick=async()=>{
   catch(error){ toast("复制失败："+error.message); }
 };
 $("qrModal").onclick=function(event){ if(event.target===this)closeQr(); };
+$("portBtn").onclick=()=>setPortModal(true);
+$("portClose").onclick=()=>setPortModal(false);
+$("portCancel").onclick=()=>setPortModal(false);
+$("portSave").onclick=applyPorts;
+$("portModal").onclick=function(event){ if(event.target===this)setPortModal(false); };
 $("drawerClose").onclick=()=>setDrawer(false);
 $("scrim").onclick=()=>setDrawer(false);
 $("addBtn").onclick=addUser;
