@@ -232,5 +232,45 @@ class GlyphIconTests(unittest.TestCase):
         self.assertIn('id="i-qr"', text)
 
 
+
+
+class SingboxDeeplinkTests(unittest.TestCase):
+    """sing-box 扫码必须给深链，不能给裸 https URL。
+
+    小k 真机报错 "Not a valid sing-box remote profile URI" —— 因为二维码里
+    编码的是订阅地址，而 SFI/SFM 只认
+      sing-box://import-remote-profile?url=<encoded>#<name>
+    格式见官方 docs/clients/general.md。
+
+    深链的 #name 顺带解决了「扫完名字空着」的问题。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = js_block()
+
+    def test_singbox_uses_deeplink(self):
+        body = self.js[self.js.index("async function openQr("):]
+        body = body[: body.index(chr(10) + "}" + chr(10))]
+        self.assertIn("sing-box://import-remote-profile", body)
+
+    def test_other_formats_keep_plain_url(self):
+        """只有 sing-box 走深链；Clash/v2ray 扫裸 URL 是对的。"""
+        body = self.js[self.js.index("async function openQr("):]
+        body = body[: body.index(chr(10) + "}" + chr(10))]
+        self.assertIn(chr(34) + "subscription-singbox" + chr(34), body)
+        self.assertIn("qrPayload = url", body)
+
+    def test_name_is_url_encoded(self):
+        body = self.js[self.js.index("async function openQr("):]
+        body = body[: body.index(chr(10) + "}" + chr(10))]
+        self.assertIn("encodeURIComponent(url)", body)
+        self.assertIn("encodeURIComponent(displayName)", body)
+
+    def test_payload_used_for_canvas(self):
+        body = self.js[self.js.index("async function openQr("):]
+        body = body[: body.index(chr(10) + "}" + chr(10))]
+        self.assertIn("drawQr(canvas, qrPayload)", body)
+
 if __name__ == "__main__":
     unittest.main()

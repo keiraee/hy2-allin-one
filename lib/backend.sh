@@ -771,7 +771,10 @@ def subscription_singbox(
     if hop_ports:
         # sing-box 1.11+ 用 server_ports（端口范围），跟 Clash 的 ports 语义一致
         hy2["server_ports"] = [hop_ports.replace("-", ":")]
-        hy2["hop_interval"] = port_hop_interval(env) or "30s"
+        # sing-box 的 hop_interval 要带时间单位（"30s"），裸数字 "30" 会报
+        # time: missing unit in duration。Clash 那边才是裸秒数。
+        _hop = str(port_hop_interval(env) or "30").strip()
+        hy2["hop_interval"] = _hop if _hop.endswith("s") else _hop + "s"
     else:
         hy2["server_port"] = int(env.get("HY2_PORT", "443") or 443)
     if obfs_enabled(env):
@@ -812,13 +815,18 @@ def subscription_singbox(
 
     config = {
         "log": {"level": "info"},
+        # DNS 用 sing-box 1.12+ 的新格式（type + server），旧写法
+        # {"address": "https://1.1.1.1/dns-query"} 在 1.14.0 已彻底移除，
+        # 导入会直接报「legacy DNS server formats are deprecated」。
+        # 官方 migration 文档：https://sing-box.sagernet.org/migration/
         "dns": {
             "servers": [
-                {"tag": "cloudflare", "address": "https://1.1.1.1/dns-query", "detour": "proxy"},
-                {"tag": "google", "address": "https://8.8.8.8/dns-query", "detour": "proxy"},
-                {"tag": "local", "address": "local", "detour": "direct"},
+                {"type": "https", "tag": "cloudflare", "server": "1.1.1.1"},
+                {"type": "https", "tag": "google", "server": "8.8.8.8"},
+                {"type": "local", "tag": "local"},
             ],
-            "rules": [{"outbound": "any", "server": "local"}],
+            # 不再写 dns.rules[{outbound,server}] —— sing-box 1.12 起废弃、
+            # 1.14 起移除。域名解析交给 route.default_domain_resolver。
             "final": "local",
         },
         "inbounds": [
@@ -833,11 +841,12 @@ def subscription_singbox(
         "outbounds": outbounds,
         "route": {
             "rules": [
-                {"protocol": "dns", "outbound": "dns-out"},
                 {"ip_is_private": True, "outbound": "direct"},
             ],
             "final": "proxy",
             "auto_detect_interface": True,
+            # 替代已废弃的 dns.rules[].outbound
+            "default_domain_resolver": "local",
         },
     }
     return json.dumps(config, ensure_ascii=False, indent=2).encode("utf-8")

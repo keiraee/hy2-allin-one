@@ -1805,6 +1805,17 @@ async function openQr(username, kind){
     return;
   }
   qrCurrentUrl = url;
+  // 二维码内容不一定等于订阅 URL：
+  //   sing-box 客户端只认深链 sing-box://import-remote-profile?url=...#名字，
+  //   直接扫一个 https 链接会报 "Not a valid sing-box remote profile URI"。
+  //   深链里的 #name 就是导入后的配置名，正好解决「扫完名字空着」。
+  const isSingbox = kind === "subscription-singbox";
+  const displayName = username + " (" + label + ")";
+  let qrPayload = url;
+  if(isSingbox){
+    qrPayload = "sing-box://import-remote-profile?url=" + encodeURIComponent(url)
+              + "#" + encodeURIComponent(displayName);
+  }
   $("qrHint").textContent = username + " · " + label;
   $("qrUrlText").textContent = url;
   const wrap = $("qrCanvasWrap");
@@ -1817,7 +1828,7 @@ async function openQr(username, kind){
     fallback.hidden = false;
   }else{
     try{
-      drawQr(canvas, url);
+      drawQr(canvas, qrPayload);
       wrap.hidden = false;
       fallback.hidden = true;
     }catch(error){

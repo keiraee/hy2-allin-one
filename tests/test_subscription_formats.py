@@ -87,6 +87,30 @@ class SingBoxTests(unittest.TestCase):
         for key in ("log", "dns", "inbounds", "outbounds", "route"):
             self.assertIn(key, self.cfg)
 
+    def test_dns_uses_new_server_format(self):
+        """sing-box 1.12 起 DNS server 必须用 type+server，旧 address 写法
+        在 1.14 已彻底移除。"""
+        servers = self.cfg["dns"]["servers"]
+        for s in servers:
+            self.assertNotIn("address", s, f"还在用废弃的 address 字段: {s}")
+            self.assertIn("type", s)
+            if s["type"] in ("https", "tls", "quic", "h3", "udp", "tcp"):
+                self.assertIn("server", s)
+
+    def test_no_deprecated_dns_rules(self):
+        """dns.rules[].outbound 在 1.12 废弃、1.14 移除。"""
+        self.assertNotIn("rules", self.cfg["dns"])
+
+    def test_route_has_default_domain_resolver(self):
+        """替代废弃的 dns.rules[].outbound。"""
+        self.assertIn("default_domain_resolver", self.cfg["route"])
+
+    def test_hop_interval_has_unit(self):
+        """sing-box 要 "30s"，裸数字 "30" 报 missing unit in duration。"""
+        hy = self.cfg["outbounds"][0]
+        if "hop_interval" in hy:
+            self.assertTrue(str(hy["hop_interval"]).endswith("s"), hy["hop_interval"])
+
     def test_hysteria2_outbound(self):
         hy = self.cfg["outbounds"][0]
         self.assertEqual("hysteria2", hy["type"])
@@ -103,7 +127,7 @@ class SingBoxTests(unittest.TestCase):
     def test_port_range_uses_colon_form(self):
         """sing-box 的 server_ports 用 起始:结束，不是 Clash 的 起始-结束。"""
         self.assertEqual(["8443:9443"], self.cfg["outbounds"][0]["server_ports"])
-        self.assertEqual("30", str(self.cfg["outbounds"][0]["hop_interval"]))
+        self.assertEqual("30s", str(self.cfg["outbounds"][0]["hop_interval"]))
 
     def test_single_port_when_hop_disabled(self):
         ns = load_ns()
@@ -239,6 +263,51 @@ class DefensivePathTests(unittest.TestCase):
         body = body[: body.index("def do_HEAD")]
         self.assertIn('getattr(self, "path"', body)
 
+
+
+
+class RealSingboxBinaryTests(unittest.TestCase):
+    """用真 sing-box 二进制校验生成的配置。
+
+    纸面推断不够 —— 这套配置连报四个错才修干净：
+      legacy DNS server formats（address → type+server）
+      hop_interval 缺单位（"30" → "30s"）
+      outbound DNS rule item 废弃（dns.rules → route.default_domain_resolver）
+    每一条都是 check 出来的，不是看文档猜的。
+    """
+
+    BIN_CANDIDATES = (
+        "/tmp/sbx/sing-box",
+        "sing-box",
+    )
+
+    def find_bin(self):
+        import shutil
+        for cand in self.BIN_CANDIDATES:
+            if Path(cand).exists() and Path(cand).is_file():
+                return cand
+            found = shutil.which(cand)
+            if found:
+                return found
+        return None
+
+    def test_config_passes_check(self):
+        import base64
+        import subprocess
+        bin_path = self.find_bin()
+        if not bin_path:
+            self.skipTest("sing-box 二进制不可用")
+        ns = load_ns()
+        env = make_env(REALITY_PUBLIC_KEY=base64.b64encode(bytes(range(32))).decode().rstrip("="))
+        body = ns["subscription_singbox"](env, "alice", "pw123", INFO)
+        tmp = ROOT / "tests" / ".sb_check.json"
+        tmp.write_bytes(body)
+        try:
+            r = subprocess.run([bin_path, "check", "-c", str(tmp)],
+                               capture_output=True, text=True, check=False)
+            self.assertEqual(0, r.returncode, f"sing-box 校验失败：{r.stderr[:800]}")
+        finally:
+            tmp.unlink(missing_ok=True)
 
 if __name__ == "__main__":
     unittest.main()
