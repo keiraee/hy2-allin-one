@@ -6,3 +6,7 @@ SHA256SUMS text eol=lf
 *.woff binary
 *.ttf binary
 *.otf binary
+*.webp binary
+*.png binary
+*.jpg binary
+*.ico binary

@@ -26,6 +26,60 @@ PANEL_FONT_FILES=(
   "jetbrains-mono-700.woff2|ed8b8f71b22bf3b6e1ec1cf9b24dd999785aae33d6256950c1f86c97e423b6ef"
 )
 
+# 客户端图标（Clash / v2ray / sing-box），给订阅菜单用。
+#
+# 和字体一样是可选资源：下载失败就退回内置的 sprite 图标，功能不受影响。
+# 32px 给普通屏，64px 给 Retina；两个尺寸都带，避免高分屏糊成一团。
+PANEL_ICON_DIR="${WEB_DIR}/icons"
+PANEL_ICON_FILES=(
+  "clash-32.webp|1482f12264af701d839c618859bf740ae768b03cfb64e6a837116b3c5b77f57c"
+  "clash-64.webp|5a657f2c7353ce218e86839faecfc0fd4783d8d7da51dff1ac0ff259ee79e7f3"
+  "v2ray-32.webp|98751a83cc4ac3a47fcd3a88c595959cc1fcd2190704d7345cea9d1b2414e948"
+  "v2ray-64.webp|8650d0b9af6425df7ef897968ba256522d3356f3e52717bd2f602ce879e6fede"
+  "singbox-32.webp|66aef8aab28d4a213c9705d693ac516c7c207c44b9168ba1c5ea1aa6273d1fea"
+  "singbox-64.webp|221d3ffa1e803d60c4ca94d905b524d8f13384c25be13da3226ce5145798a367"
+)
+
+install_panel_icons() {
+  local force="${1:-0}" missing=() name want got tmp ok=0
+  install -d -o hy2-aio -g caddy -m 2750 "$PANEL_ICON_DIR" 2>/dev/null || return 1
+
+  if [ "$force" != "1" ]; then
+    for entry in "${PANEL_ICON_FILES[@]}"; do
+      name="${entry%%|*}"
+      [ -s "${PANEL_ICON_DIR}/${name}" ] || missing+=("$entry")
+    done
+    [ "${#missing[@]}" -eq 0 ] && return 0
+  else
+    missing=("${PANEL_ICON_FILES[@]}")
+  fi
+
+  local local_dir="${SCRIPT_DIR:-/usr/local/lib/hy2-aio/modules}/assets/icons"
+  for entry in "${missing[@]}"; do
+    name="${entry%%|*}"; want="${entry##*|}"
+    if [ -s "${local_dir}/${name}" ] && [ "$(font_sha256 "${local_dir}/${name}")" = "$want" ]; then
+      install -m 0640 -o hy2-aio -g caddy "${local_dir}/${name}" "${PANEL_ICON_DIR}/${name}"
+      ok=$((ok + 1))
+      continue
+    fi
+    [ -n "${HY2_REPO_URL:-}" ] || continue
+    tmp="$(mktemp)"
+    # WebP 魔数：RIFF....WEBP
+    if _bootstrap_curl "${HY2_REPO_URL}/assets/icons/${name}?nocache=$(date +%s)" -o "$tmp" 2>/dev/null       && [ -s "$tmp" ] && head -c4 "$tmp" | grep -q 'RIFF'; then
+      got="$(font_sha256 "$tmp")"
+      if [ "$got" = "$want" ]; then
+        install -m 0640 -o hy2-aio -g caddy "$tmp" "${PANEL_ICON_DIR}/${name}"
+        ok=$((ok + 1))
+      else
+        warn "图标 ${name} 校验不符，已丢弃"
+      fi
+    fi
+    rm -f "$tmp"
+  done
+  [ "$ok" -gt 0 ] && log "面板图标就绪（Clash / v2ray / sing-box）"
+  return 0
+}
+
 font_sha256() {
   python3 -c 'import hashlib,sys,pathlib; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "$1" 2>/dev/null
 }
@@ -213,6 +267,8 @@ tr.disabled td{opacity:.55}
 .menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;
   border-radius:4px;font:inherit;cursor:pointer;color:var(--text)}
 .menu button .ico{width:15px;height:15px;flex:none;opacity:.75}
+/* 客户端真图标：不透明度别压，否则猫脸/盒子看不出来；轻轻圆角 */
+.menu button img.client-ico{opacity:1;border-radius:3px;object-fit:contain}
 .menu button:hover{background:var(--surface-2)}
 .menu button.bad{color:var(--bad)}
 .menu button.disabled{color:var(--muted);cursor:not-allowed;opacity:.5}
@@ -1090,6 +1146,22 @@ function svgNode(name,attrs,text){
   if(text!=null&&text!=="")node.append(document.createTextNode(String(text)));
   return node;
 }
+// 客户端图标：优先用 icons/<name>-32.webp（1x）+ srcset 带 64（2x）。
+// 图标文件是可选资源，装不上就 onerror 退回内置 sprite，绝不留空白。
+function clientIcon(name){
+  const img=document.createElement("img");
+  img.className="ico client-ico";
+  img.alt="";
+  img.width=15; img.height=15;
+  img.src="icons/"+name+"-32.webp";
+  img.srcset="icons/"+name+"-32.webp 1x, icons/"+name+"-64.webp 2x";
+  img.loading="lazy";
+  img.onerror=function(){
+    const svg=iconSvg(name);
+    img.replaceWith(svg);
+  };
+  return img;
+}
 function iconSvg(name){
   const svg=svgNode("svg",{class:"ico",viewBox:"0 0 24 24","aria-hidden":"true"});
   svg.append(svgNode("use",{href:"#i-"+name}));
@@ -1771,13 +1843,15 @@ async function toggleHy2(){
     }catch(error){toast("操作失败："+error.message)}
   },enabled?"正在关闭 HY2…":"正在开启 HY2…");
 }
+const SUB_ICONS=new Set(["clash","v2ray","singbox"]);
 function menuItem(text,handler,bad,disabled,icon){
   // 注意第三个参数是「危险操作标红」，不是「禁用」。要置灰请传第四个参数。
   // 之前把两件事混在一个参数上，结果「离线用户不能踢」变成了「离线用户标红」。
   // 第五个参数是图标名（sprite id 去掉 i- 前缀）。
   const node=el("button",{type:"button",className:bad?"bad":"",onclick:handler});
   if(icon){
-    node.append(iconSvg(icon));
+    // 订阅项用真客户端图标；其余菜单项仍用 sprite
+    node.append(SUB_ICONS.has(icon) ? clientIcon(icon) : iconSvg(icon));
     node.append(el("span",{text}));
   }else{
     node.textContent=text;
@@ -1977,4 +2051,5 @@ HTML
   find "$WEB_DIR" -type f -exec chmod 0640 {} \;
   # 字体放在 HTML 写完之后：即使字体装不上，面板本身已经可用了
   install_panel_fonts || true
+  install_panel_icons || true
 }

@@ -192,13 +192,19 @@ fetch_modules() {
     "lib/deps.sh"
     "bin/hy2.sh"
   )
-  # 面板字体（二进制，不进 SHA256SUMS——那份清单只登记 shell 模块）。
-  # 单独下载，逐个校验后落到模块目录的 assets/fonts，由 panel.sh 复制到 WEB_DIR。
+  # 面板字体与客户端图标（二进制，不进 SHA256SUMS——那份清单只登记 shell 模块）。
+  # 单独下载，逐个校验后落到模块目录的 assets/，由 panel.sh 复制到 WEB_DIR。
   local assets=(
     "assets/fonts/inter-400.woff2"
     "assets/fonts/inter-600.woff2"
     "assets/fonts/jetbrains-mono-400.woff2"
     "assets/fonts/jetbrains-mono-700.woff2"
+    "assets/icons/clash-32.webp"
+    "assets/icons/clash-64.webp"
+    "assets/icons/v2ray-32.webp"
+    "assets/icons/v2ray-64.webp"
+    "assets/icons/singbox-32.webp"
+    "assets/icons/singbox-64.webp"
   )
   local sums tmp f expected
   sums="$(mktemp)"
@@ -225,17 +231,23 @@ PY
     mv "$tmp" "${target_dir}/${f}"
   done
 
-  # 字体：失败只警告不中断——面板会退到系统字体，功能不受影响
-  mkdir -p "${target_dir}/assets/fonts"
+  # 字体与图标：失败只警告不中断——面板会退到系统字体/内置 SVG，功能不受影响
+  mkdir -p "${target_dir}/assets/fonts" "${target_dir}/assets/icons"
   for f in "${assets[@]}"; do
     tmp="$(mktemp)"
+    # 按扩展名选魔数：woff2 是 wOF2，webp 是 RIFF
+    case "$f" in
+      *.woff2) magic='wOF2' ;;
+      *.webp)  magic='RIFF' ;;
+      *)       magic='' ;;
+    esac
     if _bootstrap_curl "${REPO_URL}/${f}?nocache=$(date +%s)" -o "$tmp" 2>/dev/null \
-      && [ -s "$tmp" ] && head -c4 "$tmp" | grep -q 'wOF2'; then
+      && [ -s "$tmp" ] && { [ -z "$magic" ] || head -c4 "$tmp" | grep -q "$magic"; }; then
       mv "$tmp" "${target_dir}/${f}"
       _bootstrap_log "下载：${f}"
     else
       rm -f "$tmp"
-      _bootstrap_log "跳过：${f}（面板将回退系统字体）"
+      _bootstrap_log "跳过：${f}（面板将回退内置样式）"
     fi
   done
 
