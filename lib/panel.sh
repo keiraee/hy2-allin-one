@@ -40,6 +40,54 @@ PANEL_ICON_FILES=(
   "singbox-64.webp|221d3ffa1e803d60c4ca94d905b524d8f13384c25be13da3226ce5145798a367"
 )
 
+# 二维码库（qrcode-generator，MIT）。
+#
+# 为什么放成独立文件而不是内联进 HTML：
+#   - 内联会让每次加载面板都多传 20KB（面板本身才 92KB）
+#   - 独立文件同源加载，CSP 的 script-src 'self' 允许
+#   - 浏览器会缓存它，第二次打开就不用再传
+#
+# 为什么不用服务端生成：目标机是 4GB 小机器，不能为了二维码去装
+# qrcode/Pillow 这类依赖。浏览器端生成，服务端零改动。
+PANEL_VENDOR_DIR="${WEB_DIR}/vendor"
+PANEL_VENDOR_FILES=(
+  "4ee9e4db9666ed5c38c508c0cb57512465fcbc5a653ebf9fa33c0c37c71b15bf  qrcode.min.js"
+)
+
+install_panel_vendor() {
+  local force="${1:-0}" name want got tmp ok=0
+  install -d -o hy2-aio -g caddy -m 2750 "$PANEL_VENDOR_DIR" 2>/dev/null || return 1
+
+  for entry in "${PANEL_VENDOR_FILES[@]}"; do
+    want="${entry%% *}"; name="${entry##* }"
+    if [ "$force" != "1" ] && [ -s "${PANEL_VENDOR_DIR}/${name}" ] \
+      && [ "$(font_sha256 "${PANEL_VENDOR_DIR}/${name}")" = "$want" ]; then
+      continue
+    fi
+    local local_dir="${SCRIPT_DIR:-/usr/local/lib/hy2-aio/modules}/assets/vendor"
+    if [ -s "${local_dir}/${name}" ] && [ "$(font_sha256 "${local_dir}/${name}")" = "$want" ]; then
+      install -m 0640 -o hy2-aio -g caddy "${local_dir}/${name}" "${PANEL_VENDOR_DIR}/${name}"
+      ok=$((ok + 1))
+      continue
+    fi
+    [ -n "${HY2_REPO_URL:-}" ] || continue
+    tmp="$(mktemp)"
+    if _bootstrap_curl "${HY2_REPO_URL}/assets/vendor/${name}?nocache=$(date +%s)" -o "$tmp" 2>/dev/null  \
+      && [ -s "$tmp" ] && head -c 200 "$tmp" | grep -q 'qrcode'; then
+      got="$(font_sha256 "$tmp")"
+      if [ "$got" = "$want" ]; then
+        install -m 0640 -o hy2-aio -g caddy "$tmp" "${PANEL_VENDOR_DIR}/${name}"
+        ok=$((ok + 1))
+      else
+        warn "二维码库校验不符，已丢弃（二维码功能将不可用）"
+      fi
+    fi
+    rm -f "$tmp"
+  done
+  [ "$ok" -gt 0 ] && log "面板依赖就绪（二维码）"
+  return 0
+}
+
 install_panel_icons() {
   local force="${1:-0}" missing=() name want got tmp ok=0
   install -d -o hy2-aio -g caddy -m 2750 "$PANEL_ICON_DIR" 2>/dev/null || return 1
@@ -274,6 +322,31 @@ tr.disabled td{opacity:.55}
 .menu button.disabled{color:var(--muted);cursor:not-allowed;opacity:.5}
 .menu button.disabled:hover{background:transparent}
 .menu .sep{height:1px;background:var(--line);margin:4px}
+/* 可展开的菜单项：父项是按钮，子动作默认收起 */
+.mi-group{width:100%}
+.mi-head{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;
+  background:transparent;padding:8px 10px;border-radius:4px;font:inherit;cursor:pointer;color:var(--text)}
+.mi-head:hover{background:var(--surface-2)}
+.mi-head .ico{width:15px;height:15px;flex:none;opacity:.75}
+.mi-head img.client-ico{opacity:1;border-radius:3px;object-fit:contain}
+.mi-caret{margin-left:auto;color:var(--muted);transition:transform .15s ease;display:inline-block}
+.mi-group.open>.mi-head .mi-caret{transform:rotate(90deg)}
+.mi-sub{display:none;padding:2px 0 4px 0}
+.mi-group.open>.mi-sub{display:block}
+.mi-sub-item{display:flex;align-items:center;gap:7px;width:100%;text-align:left;border:0;
+  background:transparent;padding:6px 10px 6px 33px;border-radius:4px;font:inherit;
+  cursor:pointer;color:var(--text);font-size:13px}
+.mi-sub-item:hover{background:var(--surface-2)}
+.mi-sub-item .ico{width:13px;height:13px;flex:none;opacity:.7}
+/* 二维码弹窗 */
+.qr-modal{width:min(360px,92vw)}
+.qr-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:10px}
+.qr-head h3{margin:0;font-size:15px}
+.qr-body{display:flex;flex-direction:column;align-items:center;gap:10px}
+.qr-canvas-wrap{padding:12px;background:#fff;border-radius:8px;line-height:0}
+.qr-canvas-wrap canvas{display:block}
+.qr-tip{text-align:center;max-width:280px}
+.qr-modal code{word-break:break-all;font-size:12px}
 .notice,.error{display:none;margin:0 0 14px;padding:10px 12px;border-radius:var(--radius);font-size:13px;line-height:1.45;border:1px solid var(--line);position:relative;padding-right:36px}
 .notice.show,.error.show{display:block}
 .notice{background:var(--surface-2);color:var(--muted)}
@@ -492,6 +565,8 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
   <symbol id="i-memory" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="1.5"/><path d="M7 7v10M17 7v10M11 10h2M11 14h2"/></symbol>
   <symbol id="i-disk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V8l4-4h12v16z"/><path d="M8 20v-6h8v6M8 4v4h7"/></symbol>
   <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14h1M14 20h3M20 17v4"/></symbol>
   <symbol id="i-clash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5-9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></symbol>
   <symbol id="i-v2ray" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 20 4"/><path d="M4 4h6v6"/><path d="M14 20h6v-6"/></symbol>
   <symbol id="i-singbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12h8"/><path d="M12 8v8"/></symbol>
@@ -611,6 +686,29 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
     </div>
   </div>
 </aside>
+
+<div id="qrModal" class="modal-scrim" role="dialog" aria-modal="true" aria-labelledby="qrTitle">
+  <div class="modal qr-modal">
+    <div class="qr-head">
+      <div>
+        <h3 id="qrTitle">扫码导入</h3>
+        <p id="qrHint" class="hint"></p>
+      </div>
+      <button id="qrClose" class="btn ghost" type="button" aria-label="关闭"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg></button>
+    </div>
+    <div class="qr-body">
+      <div id="qrCanvasWrap" class="qr-canvas-wrap">
+        <canvas id="qrCanvas" width="240" height="240"></canvas>
+      </div>
+      <p id="qrFallback" class="hint" hidden>二维码库没装好，请改用「复制链接」。地址：<code id="qrUrlText"></code></p>
+      <p class="hint qr-tip">用手机客户端扫这个码即可导入订阅。链接里含你的专属 token，别外传。</p>
+    </div>
+    <div class="modal-actions">
+      <button id="qrCopy" class="btn" type="button">复制链接</button>
+      <button id="qrDone" class="btn primary" type="button">关闭</button>
+    </div>
+  </div>
+</div>
 
 <div id="noteModal" class="modal-scrim" role="dialog" aria-modal="true" aria-labelledby="noteTitle">
   <div class="modal">
@@ -780,6 +878,8 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
 </div>
 <div id="toast" class="toast"></div>
 
+<!-- 二维码库：同源加载（CSP script-src self）。装不上时 openQr 会退回纯文字链接。 -->
+<script src="vendor/qrcode.min.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 const bytes=value=>{let n=Number(value||0),i=0;const u=["B","KB","MB","GB","TB"];while(n>=1000&&i<u.length-1){n/=1000;i++}return n.toFixed(i<2?2:1)+" "+u[i]};
@@ -1688,6 +1788,84 @@ async function copyCredential(username,kind){
     toast(label?("已复制 "+label+" 订阅链接"):"已复制");
   }catch(error){toast("复制失败："+error.message)}
 }
+// 打开二维码弹窗：先问后端拿这个用户对应格式的订阅链接，再在 Canvas 上画码。
+//
+// 为什么要问后端：订阅链接带 token，面板不持有明文凭据，统一由 api/user/credentials
+// 给，避免前端自己拼 URL 拼错（尤其 fmt 参数和 panel_path 前缀）。
+let qrCurrentUrl = "";
+async function openQr(username, kind){
+  closeMenus();
+  const label = kind==="subscription"?"Clash":kind==="subscription-v2ray"?"v2ray":kind==="subscription-singbox"?"sing-box":"订阅";
+  let url = "";
+  try{
+    const result = await apiPost("api/user/credentials",{username,kind});
+    url = String(result.value||"");
+  }catch(error){
+    toast("获取订阅链接失败："+error.message);
+    return;
+  }
+  qrCurrentUrl = url;
+  $("qrHint").textContent = username + " · " + label;
+  $("qrUrlText").textContent = url;
+  const wrap = $("qrCanvasWrap");
+  const fallback = $("qrFallback");
+  const canvas = $("qrCanvas");
+
+  // 二维码库没加载成功（文件没装/被拦）就只给文字链接，不假装能扫
+  if(typeof qrcode !== "function"){
+    wrap.hidden = true;
+    fallback.hidden = false;
+  }else{
+    try{
+      drawQr(canvas, url);
+      wrap.hidden = false;
+      fallback.hidden = true;
+    }catch(error){
+      wrap.hidden = true;
+      fallback.hidden = false;
+    }
+  }
+  $("qrModal").classList.add("open");
+  setTimeout(()=>$("qrDone").focus(),50);
+}
+
+// 用 qrcode-generator 取模块矩阵，自己画到 canvas。
+// 不依赖库自带的图片输出：那要 <img src=data:>，虽然 CSP 允许 data:，
+// 但 canvas 更可控（清晰度、留白、配色都能定）。
+function drawQr(canvas, text){
+  const qr = qrcode(0, "M");          // 0 = 自动选版本，M = 15% 容错
+  qr.addData(text);
+  qr.make();
+  const count = qr.getModuleCount();
+  const quiet = 4;                     // 静区，QR 规范要求至少 4 格
+  const total = count + quiet * 2;
+  const scale = Math.max(2, Math.floor(240 / total));
+  const px = total * scale;
+  canvas.width = px;
+  canvas.height = px;
+  const ctx = canvas.getContext("2d");
+  // 用不透明底：透明背景在深色主题下会跟底色糊在一起，手机扫不出来
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, px, px);
+  ctx.fillStyle = "#000000";
+  for(let r = 0; r < count; r++){
+    for(let c = 0; c < count; c++){
+      if(qr.isDark(r, c)){
+        ctx.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
+      }
+    }
+  }
+  // 逻辑尺寸交给 CSS，位图按 scale 放大，保证高分屏不糊
+  canvas.style.width = "240px";
+  canvas.style.height = "240px";
+  canvas.style.imageRendering = "pixelated";
+}
+
+function closeQr(){
+  $("qrModal").classList.remove("open");
+  qrCurrentUrl = "";
+}
+
 async function saveNote(){
   const username=noteUser;
   const note=String($("noteInput").value||"").trim();
@@ -1864,6 +2042,41 @@ function menuItem(text,handler,bad,disabled,icon){
   }
   return node;
 }
+// 可展开的菜单项：点一下展开子动作（复制链接 / 二维码导入）。
+// 父项本身不直接执行动作——订阅对用户来说总是「要么复制要么扫码」，
+// 直接点击要猜他想要哪个，不如让他选。
+function menuItemExpandable(text, icon, children){
+  const wrap=el("div",{className:"mi-group"});
+  const head=el("button",{type:"button",className:"mi-head"});
+  head.append(SUB_ICONS.has(icon) ? clientIcon(icon) : iconSvg(icon));
+  head.append(el("span",{text}));
+  head.append(el("span",{className:"mi-caret",text:"›"}));
+  const sub=el("div",{className:"mi-sub"});
+  children.forEach(node=>sub.append(node));
+  head.onclick=function(event){
+    event.stopPropagation();
+    const open=wrap.classList.toggle("open");
+    head.setAttribute("aria-expanded", open?"true":"false");
+  };
+  wrap.append(head, sub);
+  return wrap;
+}
+
+// 一个订阅项：展开后给「复制链接」和「二维码导入」两个动作。
+function subMenu(username, label, kind, icon){
+  return menuItemExpandable(label, icon, [
+    menuSubItem("复制链接", ()=>copyCredential(username, kind), "copy"),
+    menuSubItem("二维码导入", ()=>openQr(username, kind), "qr"),
+  ]);
+}
+
+function menuSubItem(text, handler, icon){
+  const node=el("button",{type:"button",className:"mi-sub-item",onclick:handler});
+  if(icon) node.append(iconSvg(icon));
+  node.append(el("span",{text}));
+  return node;
+}
+
 function renderUsers(users){
   if(users)userList=users;
   const root=$("users");clearNode(root);
@@ -1900,9 +2113,9 @@ function renderUsers(users){
       }
     };
     menu.append(
-      menuItem("Clash 订阅",()=>copyCredential(user.username,"subscription"),false,false,"clash"),
-      menuItem("v2ray 订阅",()=>copyCredential(user.username,"subscription-v2ray"),false,false,"v2ray"),
-      menuItem("sing-box 订阅",()=>copyCredential(user.username,"subscription-singbox"),false,false,"singbox"),
+      subMenu(user.username,"Clash 订阅","subscription","clash"),
+      subMenu(user.username,"v2ray 订阅","subscription-v2ray","v2ray"),
+      subMenu(user.username,"sing-box 订阅","subscription-singbox","singbox"),
       el("div",{className:"sep"}),
       menuItem("复制直链",()=>copyCredential(user.username,"direct")),
       menuItem("复制密码",()=>copyCredential(user.username,"password")),
@@ -1988,6 +2201,15 @@ $("backupBtn").onclick=async function(){
   },"正在备份…");
 };
 $("menuBtn").onclick=()=>setDrawer(true);
+// 二维码弹窗的事件绑定
+if($("qrClose"))$("qrClose").onclick=closeQr;
+if($("qrDone"))$("qrDone").onclick=closeQr;
+if($("qrCopy"))$("qrCopy").onclick=async()=>{
+  if(!qrCurrentUrl)return;
+  try{ await copyText(qrCurrentUrl); toast("已复制订阅链接"); }
+  catch(error){ toast("复制失败："+error.message); }
+};
+$("qrModal").onclick=function(event){ if(event.target===this)closeQr(); };
 $("drawerClose").onclick=()=>setDrawer(false);
 $("scrim").onclick=()=>setDrawer(false);
 $("addBtn").onclick=addUser;
@@ -2052,4 +2274,5 @@ HTML
   # 字体放在 HTML 写完之后：即使字体装不上，面板本身已经可用了
   install_panel_fonts || true
   install_panel_icons || true
+  install_panel_vendor || true
 }
