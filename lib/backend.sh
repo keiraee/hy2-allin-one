@@ -648,6 +648,23 @@ def flag_prefix(env: dict[str, str]) -> str:
     return flag + " " if flag else ""
 
 
+def subscription_sni(env: dict[str, str]) -> str:
+    """订阅里给客户端的 SNI。
+
+    优先用域名 —— 因为 create_certificate 会把 Caddy 的 Let's Encrypt 证书
+    复制给 Hysteria，证书 SAN 就是 DOMAIN。这样客户端 sni=域名 +
+    insecure=false 能真校验通过。
+
+    只有纯 IP 部署（DOMAIN 为空或等于 IP）才退回旧的自定义 SNI，
+    否则退到 IP（自签证书的 SAN）。
+    """
+    explicit = str(env.get("SNI") or "").strip()
+    domain = str(env.get("DOMAIN") or "").strip()
+    public_ip = str(env.get("PUBLIC_IP") or "").strip()
+    if domain and domain != public_ip:
+        return domain
+    return explicit or public_ip
+
 def direct_link(env: dict[str, str], username: str, password: str) -> str:
     """单节点 HY2 直链。
 
@@ -672,7 +689,7 @@ def direct_link(env: dict[str, str], username: str, password: str) -> str:
         + urllib.parse.quote(str(password), safe="")
     )
     query_items: dict[str, str] = {
-        "sni": env.get("SNI", "www.amazon.sg"),
+        "sni": subscription_sni(env),
     }
     if obfs_enabled(env):
         query_items["obfs"] = "salamander"
@@ -1028,7 +1045,7 @@ proxies:
     server: {q(env["PUBLIC_IP"])}
     port: {env.get('HY2_PORT', '443')}
 {rate_lines}    password: {q(username + ":" + password)}
-{obfs_lines}{hop_lines}    sni: {q(env.get("SNI", "www.amazon.sg"))}
+{obfs_lines}{hop_lines}    sni: {q(subscription_sni(env))}
     skip-cert-verify: {"true" if client_insecure(env) else "false"}
     udp: true
     keepalive: 5s

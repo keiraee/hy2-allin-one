@@ -482,5 +482,86 @@ class Hy2UriAuthTests(unittest.TestCase):
         self.assertIn(chr(34) + ":" + chr(34), src)
         self.assertNotIn(chr(34) + "{username}:{password}" + chr(34) + ", safe=", src)
 
+
+
+class SniSelectionTests(unittest.TestCase):
+    """订阅里的 SNI 必须跟 Hysteria 实际用的证书对得上。
+
+    真机故障：v2rayNG 报
+      "certificate is not valid for any names, but wanted to match www.amazon.sg"
+    因为 Hysteria 用的是 openssl 自签证书，SAN 只有 IP，而 SNI 设成了 amazon。
+
+    后来 create_certificate 改成复用 Caddy 的 Let's Encrypt 证书（SAN=DOMAIN），
+    所以订阅侧也要跟着用域名当 SNI，客户端才能 insecure=false 通过校验。
+    """
+
+    def setUp(self):
+        self.ns = load_ns()
+        self.fn = self.ns["subscription_sni"]
+
+    def test_domain_wins_over_explicit_sni(self):
+        """有域名时优先用域名 —— 证书 SAN 就是它。"""
+        got = self.fn({
+            "DOMAIN": "156-231-141-107.sslip.io",
+            "PUBLIC_IP": "156.231.141.107",
+            "SNI": "www.amazon.sg",
+        })
+        self.assertEqual("156-231-141-107.sslip.io", got)
+
+    def test_bare_ip_falls_back_to_explicit_sni(self):
+        got = self.fn({"DOMAIN": "", "PUBLIC_IP": "1.2.3.4", "SNI": "www.amazon.sg"})
+        self.assertEqual("www.amazon.sg", got)
+
+    def test_bare_ip_without_explicit_uses_ip(self):
+        """自签证书的 SAN 是 IP，所以 SNI 也得是 IP。"""
+        got = self.fn({"DOMAIN": "", "PUBLIC_IP": "1.2.3.4", "SNI": ""})
+        self.assertEqual("1.2.3.4", got)
+
+    def test_domain_equal_to_ip_treated_as_bare(self):
+        got = self.fn({"DOMAIN": "1.2.3.4", "PUBLIC_IP": "1.2.3.4", "SNI": "x.com"})
+        self.assertEqual("x.com", got)
+
+    def test_direct_link_uses_it(self):
+        env = make_env(DOMAIN="156-231-141-107.sslip.io", PUBLIC_IP="156.231.141.107")
+        link = self.ns["direct_link"](env, "alice", "pw")
+        self.assertIn("sni=156-231-141-107.sslip.io", link)
+        self.assertNotIn("amazon", link)
+
+
+class CaddyCertReuseTests(unittest.TestCase):
+    """create_certificate 要优先复用 Caddy 的 Let's Encrypt 证书。
+
+    原来一律 openssl 自签（SAN 只有 IP），导致所有严格校验的客户端
+    只能靠 insecure 硬连。Caddy 那边本来就有真证书。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        src = (ROOT / "lib" / "cert.sh").read_text(encoding="utf-8")
+        cls.src = src
+        cls.body = src[src.index("reuse_caddy_certificate()"):]
+
+    def test_helper_defined(self):
+        self.assertIn("reuse_caddy_certificate()", self.src)
+
+    def test_tries_both_caddy_layouts(self):
+        self.assertIn("/certificates/*/", self.body)
+        self.assertIn(".local/share/caddy/certificates", self.body)
+
+    def test_rejects_caddy_local_authority(self):
+        """Caddy 自己的本地 CA 不算受信任证书，必须跳过。"""
+        self.assertIn("[Cc]addy", self.body)
+        self.assertIn("[Aa]uthority", self.body)
+
+    def test_create_prefers_reuse(self):
+        body = self.src[self.src.index("create_certificate()"):]
+        reuse = body.index("reuse_caddy_certificate")
+        sign = body.index("openssl req")
+        self.assertLess(reuse, sign, "必须先尝试复用，再退回自签")
+
+    def test_copies_with_correct_ownership(self):
+        self.assertIn("hysteria", self.body)
+        self.assertIn("-m 0640", self.body)
+
 if __name__ == "__main__":
     unittest.main()

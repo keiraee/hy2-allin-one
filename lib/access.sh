@@ -133,7 +133,12 @@ for username, info in sorted(users.items()):
         + urllib.parse.quote(str(password), safe="")
     )
     query_items = {
-        "sni": env.get("SNI", "www.amazon.sg"),
+        # 与 backend 同规则：有域名就用域名（证书 SAN 就是它）
+        "sni": (lambda d, i, e: d if d and d != i else (e or i))(
+            str(env.get("DOMAIN") or "").strip(),
+            str(env.get("PUBLIC_IP") or "").strip(),
+            str(env.get("SNI") or "").strip(),
+        ),
     }
     obfs_raw = str(env.get("OBFS_ENABLED", "true")).strip().lower()
     if obfs_raw in ("1", "true", "yes", "on"):
