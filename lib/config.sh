@@ -1041,12 +1041,25 @@ hop_check_cmd() {
 
   # 第 7 项：残留的 NAT 链。Hysteria 被秒杀时会留下 HYSTERIA-PR-/hysteria_，
   # 下次启动撞名直接 FATAL。这里只报告，不动手（改动交给 hy2 restart）。
-  local leftovers
+  #
+  # 判定前提：**Hysteria 正在运行时链本来就该存在**，那不是残留。
+  # 早期版本只看「链是否存在」，导致服务正常时 5/7 说「规则已存在」、
+  # 7/7 又说「有残留」，两条自相矛盾，把正常机器判成坏的。
+  local leftovers svc_active=1
+  if ! systemctl is-active --quiet hysteria-server.service 2>/dev/null; then
+    svc_active=0
+  fi
   leftovers="$(hysteria_nat_leftovers 2>/dev/null || true)"
-  if [ -z "$leftovers" ]; then
-    log "自检 7/7 通过：没有残留的 NAT 重定向链"
+  if [ "$svc_active" = "1" ]; then
+    log "自检 7/7 跳过：Hysteria 正在运行，重定向链属正常状态"
+    if [ -n "$leftovers" ]; then
+      log "  （运行中的链：$(printf '%s' "$leftovers" | tr '
+' ' ')）"
+    fi
+  elif [ -z "$leftovers" ]; then
+    log "自检 7/7 通过：服务已停止且没有残留的 NAT 重定向链"
   else
-    warn "自检 7/7 失败：发现残留的重定向规则（Hysteria 重启时会因「链已存在」起不来）"
+    warn "自检 7/7 失败：服务已停止但仍有残留重定向规则（下次启动会「链已存在」）"
     printf '%s\n' "$leftovers" | sed 's/^/    • /' >&2
     warn "修复：sudo hy2 restart（会先清理再启动）"
     failures=$((failures + 1))

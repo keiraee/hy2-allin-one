@@ -193,5 +193,48 @@ class HopCliEntryTests(unittest.TestCase):
         self.assertIn("hy2 hop on|off", text)
 
 
+
+
+class HopCheckLeftoverTests(unittest.TestCase):
+    """hop check 第 7 项的判定前提：服务运行时链本来就该存在。
+
+    真机踩到：hy2 hop check 同时输出
+      "5/7 通过：iptables 重定向规则已存在"
+      "7/7 失败：发现残留的重定向规则"
+    —— 两条自相矛盾，把正常运行的机器判成坏的。
+    原因是 7/7 只看「链是否存在」，没考虑服务正在运行。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        src = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
+        start = src.index("# 第 7 项：残留的 NAT 链")
+        cls.body = src[start : start + 1400]
+
+    def test_checks_service_state(self):
+        self.assertIn("systemctl is-active", self.body)
+
+    def test_skips_when_service_running(self):
+        self.assertIn("Hysteria 正在运行", self.body)
+
+    def test_reports_leftover_only_when_stopped(self):
+        self.assertIn("服务已停止但仍有残留", self.body)
+
+    def test_service_state_gates_the_judgement(self):
+        """svc_active 必须真的作为分支条件，不能只是注释里提一句。"""
+        import re
+        # 找到 svc_active 被用作 if 条件的行
+        self.assertRegex(
+            self.body,
+            r'if\s+\[\s*"\$svc_active"\s*=\s*"1"\s*\]',
+            "svc_active 没有作为分支条件使用",
+        )
+
+    def test_fail_branch_requires_service_stopped(self):
+        """失败分支必须在 elif（即服务未运行）里，不能在顶层。"""
+        import re
+        m = re.search(r'elif\s+\[\s+-z\s+"\$leftovers"\s*\].*?else', self.body, re.S)
+        self.assertIsNotNone(m, "失败分支没有挂在 elif 上")
+
 if __name__ == "__main__":
     unittest.main()
