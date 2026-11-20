@@ -66,6 +66,28 @@ log() { printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "$*"; }
 warn() { printf '\033[1;33m[WARN]\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
 
+# 当前安装的 Hysteria 版本，形如 v2.14.0；读不到就输出空。
+hysteria_installed_version() {
+  local bin="${HYSTERIA_BIN:-/usr/local/bin/hysteria}" line
+  [ -x "$bin" ] || bin="$(command -v hysteria 2>/dev/null || true)"
+  [ -n "$bin" ] || return 1
+  line="$("$bin" version 2>/dev/null | sed -n 's/^Version[p ]*[: ]*//p' | head -n1)"
+  [ -n "$line" ] || return 1
+  printf '%s' "${line#v}"
+}
+
+# 把两个点分版本号比大小：$1 > $2 返回 0。
+version_is_newer() {
+  local a="${1#v}" b="${2#v}"
+  local IFS=. ; set -- $a ; local a1="${1:-0}" a2="${2:-0}" a3="${3:-0}"
+  set -- $b ; local b1="${1:-0}" b2="${2:-0}" b3="${3:-0}"
+  [ "$a1" -gt "$b1" ] && return 0
+  [ "$a1" -lt "$b1" ] && return 1
+  [ "$a2" -gt "$b2" ] && return 0
+  [ "$a2" -lt "$b2" ] && return 1
+  [ "$a3" -gt "$b3" ]
+}
+
 print_welcome_banner() {
   printf '\033[1;36m'
   cat <<'EOF'
@@ -312,7 +334,9 @@ validate_hop_interval() {
 # 或 nft 表 hysteria_<hash>，正常退出时会删掉。但它刚起来 1 秒就被 systemctl
 # 杀掉（重启、部署时的典型情形）时，清理可能没跑完，链就留下来了。下次启动
 # `iptables -N` 撞上同名链直接 FATAL：「Chain already exists」，服务永远起不来。
-# （Hysteria 2.12.1 的已知脆弱点，2.14.0 才修。）
+# 2.12.1 上实测复现过；2.12.3 修了「端口跳跃规则误重定向出站 UDP」的同类问题，
+# 我们默认装 2.14.0，但这段清理仍然保留 —— 被 kill -9 时链一样会残留，
+# 而且不能指望用户都在最新版上。
 #
 # 安全性：只按 HYSTERIA-PR- / hysteria_ 前缀精确匹配，绝不 `iptables -F`
 # 全清，不碰任何其他规则、不碰 users.json / state.json / 流量统计。

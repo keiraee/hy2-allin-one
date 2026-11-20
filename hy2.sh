@@ -815,7 +815,7 @@ HY2 AIO v${AIO_VERSION}
   HY2_REPO_REF        Git 分支/tag/commit；upgrade 空值=已记住的轨道或 latest
   HY2_YES             设为 1 跳过卸载确认
   HY2_PURGE           已废弃（卸载默认即完全删除，保留此变量仅为兼容）
-  HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.12.1
+  HYSTERIA_VERSION    钉死的 Hysteria 版本，默认 v2.14.0
   XRAY_VERSION        钉死的 Xray-core 版本，默认 v26.3.27
   CADDY_VERSION       钉死的 Caddy 版本（非 apt 回退），默认 v2.11.4
 EOF

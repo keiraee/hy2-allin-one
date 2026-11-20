@@ -348,7 +348,7 @@ install_hysteria() {
   fi
 
   local version tag arch asset tmp hashes bin script expected
-  version="${HYSTERIA_VERSION:-v2.12.1}"
+  version="${HYSTERIA_VERSION:-v2.14.0}"
   version="${version#app/}"
   tag="app/${version}"
   case "$(uname -m)" in
