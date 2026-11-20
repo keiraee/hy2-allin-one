@@ -193,6 +193,25 @@ class UpgradeForcesKernelTests(unittest.TestCase):
         src = (ROOT / "hy2.sh").read_text(encoding="utf-8")
         self.assertIn("upgrade)    repair_cmd 1", src)
 
+    def test_repair_dispatch_forwards_argument(self):
+        """repair 必须把第二个参数传给 repair_cmd。
+
+        真正的升级链路是 bin/hy2.sh -> bash 新版 hy2.sh repair 1 ->
+        repair 分支。第一轮我只改了 upgrade) 分支，结果根本走不到 ——
+        hy2 upgrade 在 bin/hy2.sh 第 13 行就被拦截了，dispatch 里的
+        upgrade) 分支对用户命令完全不可达。真机上因此白等了一轮。
+        """
+        src = (ROOT / "hy2.sh").read_text(encoding="utf-8")
+        line = [l for l in src.splitlines() if l.strip().startswith("repair)")]
+        self.assertTrue(line, "找不到 repair dispatch")
+        self.assertIn("${2:-0}", line[0], "repair 分支没转发参数")
+
+    def test_bin_entrypoint_passes_force(self):
+        """bin/hy2.sh 重新执行新版 hy2.sh 时必须带 1。"""
+        src = (ROOT / "bin" / "hy2.sh").read_text(encoding="utf-8")
+        self.assertIn('bash "$tmp/hy2.sh" repair 1', src)
+
+
     def test_plain_repair_does_not_force_kernel(self):
         """hy2 repair 是「补缺失」，不该顺手换掉用户当前内核。"""
         src = (ROOT / "hy2.sh").read_text(encoding="utf-8")

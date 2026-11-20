@@ -129,9 +129,12 @@ if [ "${1:-}" = "upgrade" ]; then
   if printf '%s' "$fetch_ref" | grep -qiE '^[0-9a-f]{40}$'; then
     fetch_commit="$fetch_ref"
   fi
+  # 末尾那个 1 不能省：repair 默认「缺什么补什么」，已装的 Hysteria 会原样
+  # 保留 —— 那样 hy2 upgrade 只更新脚本、永远不升内核，而 status 又提示
+  # 「可升级到 vX」，形成死循环（真机上卡了整整一轮才找到这里）。
   HY2_REPO="$REPO_SLUG" HY2_REPO_REF="$ref" HY2_REPO_URL="${HY2_REPO_URL:-$raw_base}" \
     HY2_PERSIST_TRACK="$persist" HY2_UPGRADE_BANNER=1 HY2_FETCH_COMMIT="$fetch_commit" \
-    bash "$tmp/hy2.sh" repair
+    bash "$tmp/hy2.sh" repair 1
   exit $?
 fi
 
