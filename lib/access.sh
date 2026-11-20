@@ -140,13 +140,23 @@ for username, info in sorted(users.items()):
     elif insecure_raw in ("1", "true", "yes", "on"):
         insecure = True
     else:
-        domain = str(env.get("DOMAIN", ""))
-        insecure = domain.endswith("sslip.io") or domain == str(env.get("PUBLIC_IP", ""))
+        # 只有裸 IP 当域名才需要跳过验证。sslip.io 也能拿 Let's Encrypt
+        # 正式证书（实测 issuer=Let's Encrypt，verify code 0），
+        # 之前一律判 insecure 是误判，还撞上 Clash 系禁用 allowInsecure 的警告。
+        domain = str(env.get("DOMAIN", "")).strip()
+        insecure = bool(domain) and domain == str(env.get("PUBLIC_IP", "")).strip()
     if insecure:
         query_items["insecure"] = "1"
-    query = urllib.parse.urlencode(query_items)
     node = urllib.parse.quote(f"{FLAG}HY2-{username}", safe="")
-    direct = f"hysteria2://{auth}@{env['PUBLIC_IP']}:{HOP_PORTS or env.get('HY2_PORT', '443')}/?{query}#{node}"
+    # 端口范围不能塞进 host:port（"8443-9443" 不是合法 URI 端口，
+    # v2rayN/CMA 解析后 Address/Port 会双双落空）。范围走 mport。
+    if HOP_PORTS:
+        query_items["mport"] = HOP_PORTS
+        hy2_port = HOP_PORTS.split("-", 1)[0]
+    else:
+        hy2_port = env.get("HY2_PORT", "443")
+    query = urllib.parse.urlencode(query_items)
+    direct = f"hysteria2://{auth}@{env['PUBLIC_IP']}:{hy2_port}/?{query}#{node}"
     xray_port = str(env.get("XRAY_PORT") or "").strip()
     if not xray_port:
         hy2 = str(env.get("HY2_PORT") or "8443")

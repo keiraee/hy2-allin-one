@@ -520,14 +520,28 @@ def memory_info() -> dict[str, Any]:
 
 
 def client_insecure(env: dict[str, str]) -> bool:
+    """订阅里要不要带 insecure / skip-cert-verify。
+
+    只有【真的没有可信证书】时才该打开：
+      - 用裸 IP 当域名（Let's Encrypt 签不了 IP）
+      - 证书申请失败、用户手动塞了自签证书
+
+    注意 sslip.io 不算这一类。它是通配 DNS，解析到 IP，但 Caddy 照样能
+    拿到 Let's Encrypt 的正式证书（实测 156-231-141-107.sslip.io 的
+    issuer 是 Let's Encrypt，verify return code 0）。之前把 sslip.io
+    一律当"需要跳过验证"是误判 —— 白白让客户端关掉证书校验，
+    还撞上 Clash 系 2026.8.1 要禁用 allowInsecure 的警告。
+
+    用户仍然可以显式覆盖：CLIENT_INSECURE=1 / 0。
+    """
     raw = str(env.get("CLIENT_INSECURE", "")).strip().lower()
     if raw in ("0", "false", "no", "off"):
         return False
     if raw in ("1", "true", "yes", "on"):
         return True
-    domain = str(env.get("DOMAIN", ""))
-    public_ip = str(env.get("PUBLIC_IP", ""))
-    return domain.endswith("sslip.io") or domain == public_ip
+    domain = str(env.get("DOMAIN", "")).strip()
+    public_ip = str(env.get("PUBLIC_IP", "")).strip()
+    return bool(domain) and domain == public_ip
 
 
 def obfs_enabled(env: dict[str, str]) -> bool:

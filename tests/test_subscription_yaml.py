@@ -435,11 +435,20 @@ class AccessFileFlagTests(unittest.TestCase):
         self.assertIn("#" + urllib.parse.quote("🇺🇸 HY2-alice", safe=""), text)
 
     def test_port_hop_range_in_access_file(self):
+        """账号文件里的直链同样不能把范围塞进 host:port。
+
+        这条原来断言 ":8443-9443/" —— 和 backend 那条一样，把 bug 固化成了
+        期望值。真正的形态：主端口是区间起点，范围在 mport 参数里。
+        """
         text = self.render_access(
             extra_env="PORT_HOP_ENABLED=true\nPORT_HOP_RANGE=8443-9443\n"
         )
+        # 人读的那行保留范围（那是给人看的说明，不是 URI）
         self.assertIn("HY2 端口：8443-9443/UDP（端口跳跃）", text)
-        self.assertIn(":8443-9443/", text)
+        # 但 URI 必须是合法端口 + mport
+        self.assertIn(":8443/?", text)
+        self.assertIn("mport=8443-9443", text)
+        self.assertNotIn(":8443-9443/", text)
 
     def test_invalid_hop_range_falls_back_in_access_file(self):
         text = self.render_access(

@@ -366,5 +366,58 @@ class Hy2UriPortTests(unittest.TestCase):
         self.assertIn("port: 8443", yaml_text)
         self.assertIn("ports:", yaml_text)
 
+
+
+class InsecureDefaultTests(unittest.TestCase):
+    """只有真的没有可信证书时才该带 insecure / skip-cert-verify。
+
+    真机告警：「将在 2026.8.1 禁用跳过证书验证 allowInsecure，
+    请尽快改用证书指纹」。背景是 Clash 系要淘汰 allowInsecure。
+
+    我们原来把 sslip.io 域名一律判成「需要跳过验证」，属于误判：
+    sslip.io 是通配 DNS，解析到 IP，但 Caddy 照样能拿到 Let's Encrypt
+    正式证书（实测 156-231-141-107.sslip.io 的 issuer 是 Let's Encrypt,
+    verify return code 0）。白白关掉证书校验既没必要，又撞上这个弃用警告。
+    """
+
+    def setUp(self):
+        self.ns = load_ns()
+        self.fn = self.ns["client_insecure"]
+
+    def test_sslip_domain_is_secure_by_default(self):
+        self.assertFalse(self.fn({
+            "DOMAIN": "156-231-141-107.sslip.io",
+            "PUBLIC_IP": "156.231.141.107",
+        }))
+
+    def test_real_domain_is_secure(self):
+        self.assertFalse(self.fn({"DOMAIN": "example.com", "PUBLIC_IP": "1.2.3.4"}))
+
+    def test_bare_ip_needs_insecure(self):
+        """Let's Encrypt 签不了裸 IP，这种才必须跳过验证。"""
+        self.assertTrue(self.fn({"DOMAIN": "1.2.3.4", "PUBLIC_IP": "1.2.3.4"}))
+
+    def test_empty_domain_is_secure(self):
+        self.assertFalse(self.fn({"DOMAIN": "", "PUBLIC_IP": "1.2.3.4"}))
+
+    def test_explicit_override_still_wins(self):
+        base = {"DOMAIN": "example.com", "PUBLIC_IP": "1.2.3.4"}
+        for value in ("1", "true", "yes", "on"):
+            with self.subTest(value=value):
+                self.assertTrue(self.fn({**base, "CLIENT_INSECURE": value}))
+        for value in ("0", "false", "no", "off"):
+            with self.subTest(value=value):
+                self.assertFalse(self.fn({**base, "CLIENT_INSECURE": value}))
+
+    def test_yaml_skip_cert_verify_false_for_sslip(self):
+        env = make_env(DOMAIN="156-231-141-107.sslip.io", PUBLIC_IP="156.231.141.107")
+        yaml_text = self.ns["subscription_yaml"](env, "alice", "pw", {}).decode()
+        self.assertIn("skip-cert-verify: false", yaml_text)
+
+    def test_direct_link_has_no_insecure_for_sslip(self):
+        env = make_env(DOMAIN="156-231-141-107.sslip.io", PUBLIC_IP="156.231.141.107")
+        link = self.ns["direct_link"](env, "alice", "pw")
+        self.assertNotIn("insecure", link)
+
 if __name__ == "__main__":
     unittest.main()
