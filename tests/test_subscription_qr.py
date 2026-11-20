@@ -272,5 +272,49 @@ class SingboxDeeplinkTests(unittest.TestCase):
         body = body[: body.index(chr(10) + "}" + chr(10))]
         self.assertIn("drawQr(canvas, qrPayload)", body)
 
+
+
+class ClashDeeplinkTests(unittest.TestCase):
+    """Clash 系的深链格式和 sing-box 完全不同。
+
+    源码核对（clash-verge-rev src-tauri/src/utils/resolve/scheme.rs）：
+      scheme 必须是 "clash" 或 "clash-verge"
+      名字走查询参数 &name=，不是 #fragment
+
+    所以不能一套格式通用 —— 之前只做了 sing-box 的 #fragment 写法，
+    Clash 扫码后名字自然是空的。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.js = js_block()
+        body = cls.js[cls.js.index("async function openQr("):]
+        cls.body = body[: body.index(chr(10) + "}" + chr(10))]
+
+    def test_clash_uses_install_config_scheme(self):
+        code = [l for l in self.body.splitlines() if not l.lstrip().startswith("//")]
+        self.assertTrue(
+            any("clash://install-config?url=" in l for l in code),
+            "代码里（非注释）必须有 clash:// 深链",
+        )
+
+    def test_clash_name_is_query_param(self):
+        """Clash 读 &name=；写成 #fragment 会被忽略。"""
+        self.assertIn("&name=" + chr(34) + " + encodeURIComponent(displayName)", self.body)
+
+    def test_singbox_keeps_fragment_form(self):
+        """sing-box 反过来：名字在 #fragment 里。"""
+        self.assertIn("sing-box://import-remote-profile?url=", self.body)
+        self.assertIn("#" + chr(34) + " + encodeURIComponent(displayName)", self.body)
+
+    def test_v2ray_stays_bare_url(self):
+        """v2ray 系没有这类深链，扫裸 URL，名字由客户端自己生成。"""
+        self.assertIn("qrPayload = url", self.body)
+        self.assertNotIn("v2ray://", self.body)
+
+    def test_two_schemes_are_distinct(self):
+        self.assertIn(chr(34) + "subscription-singbox" + chr(34), self.body)
+        self.assertIn(chr(34) + "subscription" + chr(34), self.body)
+
 if __name__ == "__main__":
     unittest.main()

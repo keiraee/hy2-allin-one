@@ -1809,12 +1809,24 @@ async function openQr(username, kind){
   //   sing-box 客户端只认深链 sing-box://import-remote-profile?url=...#名字，
   //   直接扫一个 https 链接会报 "Not a valid sing-box remote profile URI"。
   //   深链里的 #name 就是导入后的配置名，正好解决「扫完名字空着」。
-  const isSingbox = kind === "subscription-singbox";
+  // 各家客户端的「带名字导入」深链格式完全不同，都从源码核过：
+  //   Clash Verge  src-tauri/src/utils/resolve/scheme.rs
+  //        clash://install-config?url=<enc>&name=<enc>
+  //        scheme 必须是 clash 或 clash-verge；名字走 &name= 查询参数
+  //   sing-box     官方 docs/clients/general.md
+  //        sing-box://import-remote-profile?url=<enc>#<enc 名字>
+  //        名字走 #fragment
+  // v2ray 系（v2rayNG / Shadowrocket / NekoBox）没有这类深链，
+  // 直接用裸 URL 扫，名字由客户端按域名/末段自己生成。
   const displayName = username + " (" + label + ")";
   let qrPayload = url;
-  if(isSingbox){
+  if(kind === "subscription-singbox"){
     qrPayload = "sing-box://import-remote-profile?url=" + encodeURIComponent(url)
               + "#" + encodeURIComponent(displayName);
+  }else if(kind === "subscription"){
+    // Clash 系：注意名字是查询参数，不能用 # —— 那边只读 &name=
+    qrPayload = "clash://install-config?url=" + encodeURIComponent(url)
+              + "&name=" + encodeURIComponent(displayName);
   }
   $("qrHint").textContent = username + " · " + label;
   $("qrUrlText").textContent = url;
