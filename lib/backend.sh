@@ -660,7 +660,17 @@ def direct_link(env: dict[str, str], username: str, password: str) -> str:
         Ports       = GetQueryDecoded(query, "mport");      // 范围走这里
         dicQuery.Add("mport", Ports.Replace(':', '-'));     // 起始-结束
     """
-    auth = urllib.parse.quote(f"{username}:{password}", safe="")
+    # userinfo 里的冒号必须是【分隔符】，不能一起编码。
+    # quote(f"{u}:{p}", safe="") 会把 : 编成 %3A，客户端解析
+    # "hysteria2://u%3Ap@host" 时 username 拿到 "u:p"、password 为空，
+    # 认证必然失败（真机上 v2ray 节点就是这么连不上的，Clash 走 YAML
+    # 直接给 password 字段所以不受影响）。
+    # 正确做法：用户名和密码各自编码，冒号原样保留。
+    auth = (
+        urllib.parse.quote(str(username), safe="")
+        + ":"
+        + urllib.parse.quote(str(password), safe="")
+    )
     query_items: dict[str, str] = {
         "sni": env.get("SNI", "www.amazon.sg"),
     }

@@ -126,7 +126,12 @@ for username, info in sorted(users.items()):
     password = str(info["password"])
     token = str(info["token"])
     subscription = f"{base}/s/{token}"
-    auth = urllib.parse.quote(f"{username}:{password}", safe="")
+    # 冒号是 userinfo 的分隔符，不能编码（同上，见 backend.sh 的说明）
+    auth = (
+        urllib.parse.quote(str(username), safe="")
+        + ":"
+        + urllib.parse.quote(str(password), safe="")
+    )
     query_items = {
         "sni": env.get("SNI", "www.amazon.sg"),
     }

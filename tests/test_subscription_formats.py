@@ -65,8 +65,19 @@ class V2RayBase64Tests(unittest.TestCase):
         self.assertTrue(any(l.startswith("vless://") for l in self.lines), self.lines)
 
     def test_username_password_in_authority(self):
+        """userinfo 是 用户名:密码，冒号不能编码成 %3A。
+
+        这条原来断言 "alice%3Apw123@" —— 那是编码后的写法，
+        客户端解出来密码为空、认证失败。改成断言字面冒号分隔。
+        """
+        import urllib.parse
         hy = next(l for l in self.lines if l.startswith("hysteria2://"))
-        self.assertIn("alice%3Apw123@", hy)
+        userinfo = hy.split("//", 1)[1].split("@", 1)[0]
+        self.assertIn(":", userinfo)
+        self.assertNotIn("%3A", userinfo.upper())
+        parsed = urllib.parse.urlsplit(hy)
+        self.assertEqual("alice", parsed.username)
+        self.assertEqual("pw123", parsed.password)
 
     def test_same_nodes_as_direct_links(self):
         """必须跟直链完全一致，不能各写一套。"""
@@ -418,6 +429,58 @@ class InsecureDefaultTests(unittest.TestCase):
         env = make_env(DOMAIN="156-231-141-107.sslip.io", PUBLIC_IP="156.231.141.107")
         link = self.ns["direct_link"](env, "alice", "pw")
         self.assertNotIn("insecure", link)
+
+
+
+class Hy2UriAuthTests(unittest.TestCase):
+    """HY2 直链的 userinfo 里，冒号必须是分隔符，不能编码。
+
+    真机现象：v2ray 客户端里 HY2 节点连不上（Clash 能测延迟）。
+
+    原因：quote(f"{username}:{password}", safe="") 把冒号编成 %3A，
+    生成 hysteria2://u%3Ap@host —— 客户端解析时 username 拿到 "u:p"、
+    password 为空，认证必然失败。
+
+    Clash 走 YAML 的 password 字段（整串直接给），所以不受影响 ——
+    这就是「Clash 能用、v2 不能用」的原因。
+    """
+
+    def setUp(self):
+        self.ns = load_ns()
+
+    def parse(self, username="alice", password="secret123"):
+        import urllib.parse
+        link = self.ns["direct_link"](make_env(), username, password)
+        return urllib.parse.urlsplit(link)
+
+    def test_username_parsed(self):
+        self.assertEqual("alice", self.parse().username)
+
+    def test_password_parsed(self):
+        self.assertEqual("secret123", self.parse().password)
+
+    def test_colon_is_literal_separator(self):
+        """编码过的 %3A 会让密码解析成 None。"""
+        link = self.ns["direct_link"](make_env(), "alice", "pw")
+        userinfo = link.split("//", 1)[1].split("@", 1)[0]
+        self.assertNotIn("%3A", userinfo.upper(), userinfo)
+        self.assertIn(":", userinfo)
+
+    def test_username_needing_encoding(self):
+        """用户名含特殊字符时各自编码；客户端解码后能还原。
+
+        注意 urlsplit().username 不做百分号解码（返回 "a%20b"），
+        这里按 RFC 3986 自行 unquote 后再比对 —— 客户端也是这么做的。
+        """
+        import urllib.parse
+        parsed = self.parse(username="a b", password="p@ss:w0rd")
+        self.assertEqual("a b", urllib.parse.unquote(parsed.username))
+        self.assertEqual("p@ss:w0rd", urllib.parse.unquote(parsed.password))
+
+    def test_access_sh_uses_same_rule(self):
+        src = (ROOT / "lib" / "access.sh").read_text(encoding="utf-8")
+        self.assertIn(chr(34) + ":" + chr(34), src)
+        self.assertNotIn(chr(34) + "{username}:{password}" + chr(34) + ", safe=", src)
 
 if __name__ == "__main__":
     unittest.main()
