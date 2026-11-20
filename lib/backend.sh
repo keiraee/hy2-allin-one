@@ -6,6 +6,7 @@ write_backend() {
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import base64
 import csv
 import hmac
 import ipaddress
@@ -710,6 +711,181 @@ def direct_links(env: dict[str, str], username: str, password: str, info: Option
     if extra:
         lines.append(extra)
     return "\n".join(lines)
+
+
+def subscription_base64(
+    env: dict[str, str],
+    username: str,
+    password: str,
+    info: Optional[dict[str, Any]] = None,
+) -> bytes:
+    """通用订阅：节点 URI 按行拼起来再整个 base64。
+
+    这是 v2ray 系的公共约定（v2rayN / v2rayNG / Shadowrocket / NekoBox
+    都认）：拿到响应先判断能不能 base64 解码，解出来按行解析每条链接。
+    v2rayN 的 SubscriptionHandler.cs 就是这么做的。
+
+    直接用已有的 direct_link/vless_link，保证三种格式的节点完全一致 ——
+    分叉成两份实现迟早会出现「Clash 能连、v2ray 连不上」这种鬼问题。
+    """
+    text = direct_links(env, username, password, info)
+    return base64.b64encode(text.encode("utf-8"))
+
+
+def subscription_singbox(
+    env: dict[str, str],
+    username: str,
+    password: str,
+    info: Optional[dict[str, Any]] = None,
+) -> bytes:
+    """sing-box 远程配置（Remote Profile）。
+
+    官方文档 docs/clients/general.md 写明：Remote Profile 代表一份远程
+    **sing-box 配置**，图形客户端用
+      sing-box://import-remote-profile?url=...#name
+    导入。所以这里给的是完整 JSON，不是 Clash YAML —— 给 YAML 会解析失败。
+
+    ⚠️ 认证差异（官方 hysteria2 文档专门警告过）：
+    服务端用 auth.type=userpass 时，密码实际是 <用户名>:<密码>；
+    sing-box 不提供 userpass 这层别名，必须把组合整个填进 password。
+    填错会一直认证失败且很难查，这里单独拎出来注释。
+    """
+    payload = info if isinstance(info, dict) else {}
+    tag_hy2 = flag_prefix(env) + "HY2-" + username
+    mode = mode_for_user(username)
+
+    outbounds: list[dict[str, Any]] = []
+
+    hy2: dict[str, Any] = {
+        "type": "hysteria2",
+        "tag": tag_hy2,
+        "server": env["PUBLIC_IP"],
+        "password": f"{username}:{password}",   # userpass 组合，不是裸密码
+        "tls": {
+            "enabled": True,
+            "server_name": reality_server_name(env),
+            "insecure": True,
+        },
+    }
+    hop_ports = port_hop_ports(env)
+    if hop_ports:
+        # sing-box 1.11+ 用 server_ports（端口范围），跟 Clash 的 ports 语义一致
+        hy2["server_ports"] = [hop_ports.replace("-", ":")]
+        hy2["hop_interval"] = port_hop_interval(env) or "30s"
+    else:
+        hy2["server_port"] = int(env.get("HY2_PORT", "443") or 443)
+    if obfs_enabled(env):
+        hy2["obfs"] = {"type": "salamander", "password": env["OBFS_PASSWORD"]}
+    if mode.get("mode") == "brutal":
+        hy2["up_mbps"] = int(float(mode["up_mbps"]))
+        hy2["down_mbps"] = int(float(mode["down_mbps"]))
+    outbounds.append(hy2)
+
+    vless_id = str(payload.get("vless_id") or "").strip()
+    public_key = str(env.get("REALITY_PUBLIC_KEY") or "").strip()
+    short_id = str(env.get("REALITY_SHORT_ID") or "").strip()
+    if vless_id and public_key and short_id:
+        outbounds.append(
+            {
+                "type": "vless",
+                "tag": VLESS_NODE_NAME,
+                "server": env["PUBLIC_IP"],
+                "server_port": int(xray_port(env)),
+                "uuid": vless_id,
+                "flow": "xtls-rprx-vision",
+                "tls": {
+                    "enabled": True,
+                    "server_name": reality_server_name(env),
+                    "utls": {"enabled": True, "fingerprint": "chrome"},
+                    "reality": {
+                        "enabled": True,
+                        "public_key": public_key,
+                        "short_id": short_id,
+                    },
+                },
+            }
+        )
+
+    tags = [item["tag"] for item in outbounds]
+    outbounds.append({"type": "selector", "tag": "proxy", "outbounds": tags, "default": tags[0]})
+    outbounds.append({"type": "direct", "tag": "direct"})
+
+    config = {
+        "log": {"level": "info"},
+        "dns": {
+            "servers": [
+                {"tag": "cloudflare", "address": "https://1.1.1.1/dns-query", "detour": "proxy"},
+                {"tag": "google", "address": "https://8.8.8.8/dns-query", "detour": "proxy"},
+                {"tag": "local", "address": "local", "detour": "direct"},
+            ],
+            "rules": [{"outbound": "any", "server": "local"}],
+            "final": "local",
+        },
+        "inbounds": [
+            {
+                "type": "tun",
+                "tag": "tun-in",
+                "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
+                "auto_route": True,
+                "strict_route": True,
+            }
+        ],
+        "outbounds": outbounds,
+        "route": {
+            "rules": [
+                {"protocol": "dns", "outbound": "dns-out"},
+                {"ip_is_private": True, "outbound": "direct"},
+            ],
+            "final": "proxy",
+            "auto_detect_interface": True,
+        },
+    }
+    return json.dumps(config, ensure_ascii=False, indent=2).encode("utf-8")
+
+
+def subscription_body(
+    fmt: str,
+    env: dict[str, str],
+    username: str,
+    password: str,
+    info: Optional[dict[str, Any]] = None,
+) -> tuple[bytes, str]:
+    """按格式返回 (内容, Content-Type)。fmt 已归一化。"""
+    if fmt == "singbox":
+        return subscription_singbox(env, username, password, info), "application/json; charset=utf-8"
+    if fmt == "v2ray":
+        return subscription_base64(env, username, password, info), "text/plain; charset=utf-8"
+    return subscription_yaml(env, username, password, info), "text/yaml; charset=utf-8"
+
+
+def subscription_format_from_ua(user_agent: str) -> str:
+    """按 User-Agent 猜客户端想要的格式。
+
+    顺序很重要：sing-box 的 UA 里也可能带 "v2ray" 之类的字样，必须先判它。
+    mihomo/clash 放前面是因为它们的 UA 很明确，且 Clash YAML 是默认格式。
+    """
+    ua = (user_agent or "").lower()
+    if not ua:
+        return "v2ray"          # 浏览器/curl：给通用 base64，兼容性最好
+    if "sing-box" in ua or "singbox" in ua or ua.startswith("sfa/") or ua.startswith("sfi/") or ua.startswith("sfm/"):
+        return "singbox"
+    if "clash" in ua or "mihomo" in ua or "flclash" in ua or "stash" in ua:
+        return "clash"
+    if "v2ray" in ua or "shadowrocket" in ua or "nekobox" in ua or "nekoray" in ua:
+        return "v2ray"
+    return "v2ray"
+
+
+def normalize_subscription_format(raw: str) -> str:
+    """把用户传的 ?fmt= 归一化成三种之一；认不出返回空串（不走强制）。"""
+    value = (raw or "").strip().lower().replace("-", "").replace("_", "")
+    if value in ("clash", "mihomo", "yaml", "meta"):
+        return "clash"
+    if value in ("v2ray", "v2rayn", "v2rayng", "base64", "b64", "mixed", "link"):
+        return "v2ray"
+    if value in ("singbox", "sb", "sfa", "sfi", "sfm", "json"):
+        return "singbox"
+    return ""
 
 
 def subscription_yaml(
@@ -2573,7 +2749,9 @@ def subscription_for_token(token: str):
 def user_credential_value(username: str, kind: str) -> str:
     if not USERNAME_PATTERN.fullmatch(username):
         raise ValueError("用户名格式错误")
-    if kind not in ("subscription", "direct", "password"):
+    # subscription 可带格式后缀：subscription / subscription-v2ray / subscription-singbox
+    # 面板按客户端分类复制时用得上，省得用户自己往链接后面拼 ?fmt=
+    if kind not in ("subscription", "subscription-v2ray", "subscription-singbox", "direct", "password"):
         raise ValueError("未知凭据类型")
     users = load_users()
     if username not in users:
@@ -2584,8 +2762,10 @@ def user_credential_value(username: str, kind: str) -> str:
     token = str(info["token"])
     if kind == "password":
         return password
-    if kind == "subscription":
-        return f"{public_base_url(env)}/s/{token}"
+    if kind.startswith("subscription"):
+        base = f"{public_base_url(env)}/s/{token}"
+        fmt = {"subscription-v2ray": "v2ray", "subscription-singbox": "singbox"}.get(kind, "")
+        return f"{base}?fmt={fmt}" if fmt else base
     return direct_links(env, username, password, info)
 
 
@@ -2788,7 +2968,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         try:
             env = load_env()
-            body = subscription_yaml(env, username, str(info["password"]), info)
+            # 格式优先级：?fmt= 显式指定 > User-Agent 自动识别。
+            # 显式参数永远优先 —— 有些客户端会伪造/缺省 UA，靠猜不可靠。
+            # 用 getattr 兜底：单测用 stub handler 时可能没有 path 属性，
+            # 真实运行时 do_GET/do_HEAD 一定有。缺了就当成没传 fmt。
+            raw_path = getattr(self, "path", "") or ""
+            query = urllib.parse.parse_qs(raw_path.split("?", 1)[1] if "?" in raw_path else "")
+            forced = normalize_subscription_format((query.get("fmt") or [""])[0])
+            fmt = forced or subscription_format_from_ua(self.headers.get("User-Agent", ""))
+            body, content_type = subscription_body(fmt, env, username, str(info["password"]), info)
             # Clash traffic bar must match panel "整机套餐" (NIC counters), not per-user HY2.
             cached = read_json(DATA_FILE, {})
             traffic = cached.get("server", {}).get("traffic", {})
@@ -2805,7 +2993,9 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self.send_response(200)
-        self.send_header("Content-Type", "text/yaml; charset=utf-8")
+        self.send_header("Content-Type", content_type)
+        # 文件名不给扩展名：部分客户端会拿扩展名反推格式，跟 Content-Type
+        # 打架反而导不进去。格式区分交给 Content-Type 和 ?fmt= 参数。
         self.send_header("Content-Disposition", f"attachment; filename=HY2-{username}")
         # 整机取网卡计数（rx/tx 为网卡收发），上下行无法真实拆分，仅和值有意义；
         # 命名沿用全站约定 upload≙tx。Hysteria 口径经上游 core/server 核对：

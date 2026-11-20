@@ -186,11 +186,17 @@ for username, info in sorted(users.items()):
         f"设备备注：{info.get('note', '') or '（无）'}",
         f"密码：{password}",
         f"速率模式：{mode_label(overrides.get(username, default_mode))}",
-        f"Clash 订阅（含 HY2 + VLESS，手动选择）：{subscription}",
-        f"HY2 直链：{direct}",
+        "",
+        "【订阅 · 按客户端选一个】",
+        f"  Clash / mihomo  →  {subscription}",
+        f"  v2ray 系        →  {subscription}?fmt=v2ray",
+        f"  sing-box        →  {subscription}?fmt=singbox",
+        "",
+        "【直链 · 手动配置用】",
+        f"  HY2：{direct}",
     ]
     if vless:
-        access_lines.append(f"VLESS 直链：{vless}")
+        access_lines.append(f"  VLESS：{vless}")
     access_lines.append("")
     lines.extend(access_lines)
 

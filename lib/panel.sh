@@ -210,8 +210,9 @@ tr.disabled td{opacity:.55}
   border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:4px;z-index:45;
   max-height:calc(100vh - 16px);overflow:auto}
 .menu.open{display:block}
-.menu button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;
+.menu button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;
   border-radius:4px;font:inherit;cursor:pointer;color:var(--text)}
+.menu button .ico{width:15px;height:15px;flex:none;opacity:.75}
 .menu button:hover{background:var(--surface-2)}
 .menu button.bad{color:var(--bad)}
 .menu button.disabled{color:var(--muted);cursor:not-allowed;opacity:.5}
@@ -435,6 +436,9 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
   <symbol id="i-memory" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="10" rx="1.5"/><path d="M7 7v10M17 7v10M11 10h2M11 14h2"/></symbol>
   <symbol id="i-disk" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V8l4-4h12v16z"/><path d="M8 20v-6h8v6M8 4v4h7"/></symbol>
   <symbol id="i-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></symbol>
+  <symbol id="i-clash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5-9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></symbol>
+  <symbol id="i-v2ray" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 20 4"/><path d="M4 4h6v6"/><path d="M14 20h6v-6"/></symbol>
+  <symbol id="i-singbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12h8"/><path d="M12 8v8"/></symbol>
   <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="3"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
 </svg>
 <div class="shell">
@@ -1608,7 +1612,8 @@ async function copyCredential(username,kind){
   try{
     const result=await apiPost("api/user/credentials",{username,kind});
     await copyText(result.value);
-    toast(kind==="direct"?"已复制 HY2 和 VLESS 两条直链":kind==="subscription"?"已复制订阅链接":"已复制");
+    const label=kind==="subscription"?"Clash":kind==="subscription-v2ray"?"v2ray":kind==="subscription-singbox"?"sing-box":null;
+    toast(label?("已复制 "+label+" 订阅链接"):"已复制");
   }catch(error){toast("复制失败："+error.message)}
 }
 async function saveNote(){
@@ -1766,10 +1771,17 @@ async function toggleHy2(){
     }catch(error){toast("操作失败："+error.message)}
   },enabled?"正在关闭 HY2…":"正在开启 HY2…");
 }
-function menuItem(text,handler,bad,disabled){
+function menuItem(text,handler,bad,disabled,icon){
   // 注意第三个参数是「危险操作标红」，不是「禁用」。要置灰请传第四个参数。
   // 之前把两件事混在一个参数上，结果「离线用户不能踢」变成了「离线用户标红」。
-  const node=el("button",{type:"button",className:bad?"bad":"",text,onclick:handler});
+  // 第五个参数是图标名（sprite id 去掉 i- 前缀）。
+  const node=el("button",{type:"button",className:bad?"bad":"",onclick:handler});
+  if(icon){
+    node.append(iconSvg(icon));
+    node.append(el("span",{text}));
+  }else{
+    node.textContent=text;
+  }
   if(disabled){
     node.disabled=true;
     node.classList.add("disabled");
@@ -1814,7 +1826,10 @@ function renderUsers(users){
       }
     };
     menu.append(
-      menuItem("复制订阅",()=>copyCredential(user.username,"subscription")),
+      menuItem("Clash 订阅",()=>copyCredential(user.username,"subscription"),false,false,"clash"),
+      menuItem("v2ray 订阅",()=>copyCredential(user.username,"subscription-v2ray"),false,false,"v2ray"),
+      menuItem("sing-box 订阅",()=>copyCredential(user.username,"subscription-singbox"),false,false,"singbox"),
+      el("div",{className:"sep"}),
       menuItem("复制直链",()=>copyCredential(user.username,"direct")),
       menuItem("复制密码",()=>copyCredential(user.username,"password")),
       el("div",{className:"sep"}),
