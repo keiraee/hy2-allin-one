@@ -167,8 +167,12 @@ a{color:inherit}button,input,select{font:inherit;color:inherit}
   display:flex;flex-direction:column}
 .metric .label{font-size:13.5px;font-weight:700}.metric .value{font-size:24px;font-weight:700;margin-top:6px;line-height:1.2}
 .metric .extra{font-size:13px;color:var(--faint);margin-top:4px}
-.metric .extra+.bar{margin-top:auto;padding-top:10px}
-.bar{height:4px;background:var(--surface-3);border-radius:2px;overflow:hidden;margin-top:10px}
+/* 进度条推到卡片底部（配合 .metric 的纵向弹性实现等高）。
+   间距必须加在前一个元素上：.bar 是 border-box，给它自己加 padding-top
+   会把 4px 高的条压成内高 0px，里面的 i{height:100%} 就画不出来（变成空线）。 */
+.metric .extra+.bar{margin-top:auto}
+.metric .extra:has(+ .bar){margin-bottom:10px}
+.bar{height:4px;flex:none;background:var(--surface-3);border-radius:2px;overflow:hidden;margin-top:10px}
 .bar i{display:block;height:100%;background:var(--accent);border-radius:2px}
 .section{margin-top:8px}
 .section-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px}

@@ -65,6 +65,35 @@ class MetricCardTests(unittest.TestCase):
         self.assertIn("flex-direction:column", body.replace(" ", ""))
 
 
+class MetricBarTests(unittest.TestCase):
+    """流量进度条必须是可见的 4px 蓝条。
+
+    曾经为了「卡片等高」给 .bar 加了 padding-top:10px，
+    但 .bar 是 border-box + height:4px，padding 把内容区压成 0px，
+    里面的 i{height:100%} 跟着变 0 —— 进度条整条消失，只剩灰底「空线」。
+    """
+
+    def test_bar_has_no_vertical_padding(self):
+        body = rule(panel_html(), ".bar")
+        padding = decl(body, "padding")
+        self.assertEqual("", padding, "不能在 .bar 自身上加 padding")
+        self.assertRegex(body, r"height:\s*4px")
+
+    def test_bar_not_shrinkable(self):
+        """卡片是 flex 纵向布局，不锁住的话 .bar 可能被压扁。"""
+        self.assertIn("flex:none", rule(panel_html(), ".bar"))
+
+    def test_spacing_moved_to_previous_sibling(self):
+        html = panel_html()
+        # 间距挂在 .extra 的下边距上，而不是 .bar 的 padding
+        self.assertIn(".metric .extra:has(+ .bar)", html)
+        self.assertIn("margin-bottom:10px", rule(html, ".metric .extra:has(+ .bar)"))
+
+    def test_bar_pushed_to_card_bottom(self):
+        """等高依赖 margin-top:auto，别为了修 padding 把它弄丢。"""
+        self.assertIn("margin-top:auto", rule(panel_html(), ".metric .extra+.bar"))
+
+
 class TableTests(unittest.TestCase):
     def test_cell_font_is_14px(self):
         html = panel_html()
