@@ -67,6 +67,50 @@ class VersionCompareTests(unittest.TestCase):
         self.assertTrue(self.compare("v2.14.0", "v2.12.1"))
 
 
+def shquote(value: str) -> str:
+    q = chr(39)
+    return q + value.replace(q, q + chr(92) + q + q) + q
+
+
+
+class VersionExtractTests(unittest.TestCase):
+    """version_extract must pull the version out of a dirty string.
+
+    The first implementation used a greedy sed substitution; on "v2.14.0"
+    it returned only "0". That is exactly how the live box printed a broken
+    version line: sed never matched and the whole line fell through.
+    """
+
+    def extract(self, value: str) -> str:
+        script = "set -u" + chr(10) + "source lib/core.sh" + chr(10)
+        script += "version_extract " + shquote(value) + chr(10)
+        return run_bash(script).stdout.strip()
+
+    def test_plain_version(self):
+        self.assertEqual("2.14.0", self.extract("v2.14.0"))
+
+    def test_leading_v_stripped(self):
+        self.assertEqual("2.12.1", self.extract("v2.12.1"))
+
+    def test_two_part_version(self):
+        self.assertEqual("2.14", self.extract("2.14"))
+
+    def test_dirty_line_with_extra_fields(self):
+        self.assertEqual("2.12.1", self.extract("v2.12.1 BuildDate: 2026"))
+
+    def test_prefixed_label(self):
+        self.assertEqual("2.12.1", self.extract("Version: v2.12.1"))
+
+    def test_rc_suffix_truncated(self):
+        self.assertEqual("2.14.0", self.extract("2.14.0-rc1"))
+
+    def test_surrounding_whitespace(self):
+        self.assertEqual("2.9.3", self.extract("  2.9.3  "))
+
+    def test_garbage_returns_empty(self):
+        self.assertEqual("", self.extract("abc"))
+        self.assertEqual("", self.extract(""))
+
 class InstalledVersionParseTests(unittest.TestCase):
     def test_parses_version_line(self):
         script = (
@@ -124,6 +168,57 @@ class ChangelogDrivenExpectations(unittest.TestCase):
             text = (ROOT / rel).read_text(encoding="utf-8")
             self.assertNotIn("v2.12.1}", text, f"{rel} 还留着旧默认版本")
 
+
+
+
+class UpgradeForcesKernelTests(unittest.TestCase):
+    """hy2 upgrade must actually install the pinned kernel.
+
+    repair_cmd called install_hysteria with no argument, so force defaulted
+    to 0 and the "already installed" branch returned early -- upgrade updated
+    the scripts but left the old kernel running forever. Observed on the live
+    box: hy2 status said "可升级到 v2.14.0" right after a successful upgrade.
+    """
+
+    def test_repair_cmd_accepts_force_flag(self):
+        src = (ROOT / "lib" / "backup.sh").read_text(encoding="utf-8")
+        body = src[src.index("repair_cmd() {"):]
+        self.assertIn("force_kernel", body[:400])
+
+    def test_repair_cmd_passes_flag_to_install(self):
+        src = (ROOT / "lib" / "backup.sh").read_text(encoding="utf-8")
+        self.assertIn("install_hysteria " + chr(34) + "$force_kernel" + chr(34), src)
+
+    def test_upgrade_command_forces_kernel(self):
+        src = (ROOT / "hy2.sh").read_text(encoding="utf-8")
+        self.assertIn("upgrade)    repair_cmd 1", src)
+
+    def test_plain_repair_does_not_force_kernel(self):
+        """hy2 repair 是「补缺失」，不该顺手换掉用户当前内核。"""
+        src = (ROOT / "hy2.sh").read_text(encoding="utf-8")
+        import re
+        line = [l for l in src.splitlines() if l.strip().startswith("repair)")]
+        self.assertTrue(line, "找不到 repair dispatch")
+        self.assertNotIn("repair_cmd 1", line[0])
+
+
+class AlreadyInstalledLogTests(unittest.TestCase):
+    """install_hysteria 的「已存在」日志曾经是空的。
+
+    hysteria version 先打 ASCII banner，版本行在很后面，head -1 只拿到空行。
+    """
+
+    def test_uses_version_helper_not_head(self):
+        src = (ROOT / "lib" / "install.sh").read_text(encoding="utf-8")
+        body = src[src.index("install_hysteria() {"):]
+        head = body[: body.index("local version tag arch")]
+        self.assertIn("hysteria_installed_version", head)
+        # 只看非注释行 —— 注释里提到 head -1 是在解释为什么不用它
+        code = [l for l in head.splitlines() if not l.lstrip().startswith("#")]
+        self.assertFalse(
+            any("hysteria version" in l and "head -1" in l for l in code),
+            "已存在分支不许再用 head -1 取版本（只会拿到 banner 空行）",
+        )
 
 if __name__ == "__main__":
     unittest.main()

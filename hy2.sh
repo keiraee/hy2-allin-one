@@ -879,7 +879,7 @@ main() {
     menu)       menu_interactive ;;
     install)    install_stack ;;
     repair)     repair_cmd ;;
-    upgrade)    repair_cmd ;;
+    upgrade)    repair_cmd 1 ;;   # 升级要连带把内核升到内置默认版本
     status)     status_cmd ;;
     show)       show_cmd ;;
     panel)      panel_cmd ;;

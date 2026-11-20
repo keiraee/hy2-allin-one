@@ -343,7 +343,11 @@ PY
 install_hysteria() {
   local force="${1:-0}"
   if [ "$force" != "1" ] && command -v hysteria >/dev/null 2>&1; then
-    log "Hysteria 已存在：$(hysteria version 2>/dev/null | head -1 || true)"
+    # hysteria version 先打 ASCII banner，版本行在很后面 —— 不能用 head -1，
+    # 那样只会拿到一个空行（真机上就是这么打出「已存在：」后面空着的）。
+    local have=""
+    have="$(hysteria_installed_version 2>/dev/null || true)"
+    log "Hysteria 已存在：${have:+v${have}}"
     return
   fi
 

@@ -16,15 +16,18 @@ status_cmd() {
 echo "VLESS TCP：${XRAY_PORT:-${HY2_PORT:-443}}"
   # 内核版本：低于脚本内置的默认版本时提示可以升级（不自动升级，避免
   # 在用户不知情的情况下换二进制）。
-  local hver=""
+  local hver="" target
   hver="$(hysteria_installed_version 2>/dev/null || true)"
+  target="$(version_extract "${HYSTERIA_VERSION:-v2.14.0}")"
   if [ -n "$hver" ]; then
     echo "Hysteria 内核：v${hver}"
-    if version_is_newer "${HYSTERIA_VERSION:-v2.14.0}" "$hver"; then
-      echo "  可升级到 ${HYSTERIA_VERSION:-v2.14.0}：hy2 update"
+    if [ -n "$target" ] && version_is_newer "$target" "$hver"; then
+      echo "  可升级到 v${target}：hy2 upgrade"
     fi
+  else
+    echo "Hysteria 内核：未安装"
   fi
-  echo \"统计 API：127.0.0.1:${STATS_PORT}\"
+  echo "统计 API：127.0.0.1:${STATS_PORT}"
   echo "面板后端：${BACKEND_HOST}:${BACKEND_PORT}"
   if command -v obfs_is_enabled >/dev/null 2>&1 && obfs_is_enabled; then
     echo "混淆：on (salamander)"

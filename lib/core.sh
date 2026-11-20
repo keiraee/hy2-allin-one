@@ -66,21 +66,52 @@ log() { printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "$*"; }
 warn() { printf '\033[1;33m[WARN]\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
 
-# 当前安装的 Hysteria 版本，形如 v2.14.0；读不到就输出空。
+# 当前安装的 Hysteria 版本，形如 2.14.0；读不到就返回非零。
+#
+# 真机输出是制表符分隔：「Version:\tv2.12.1」。这里用 awk 取第一个字段后面
+# 所有字段，再去掉可能的前导 v —— 不管分隔符是 tab 还是空格都吃得下。
+# 只保留纯版本号，避免把整行（含 BuildDate 等）漏进下游的整数比较。
 hysteria_installed_version() {
   local bin="${HYSTERIA_BIN:-/usr/local/bin/hysteria}" line
   [ -x "$bin" ] || bin="$(command -v hysteria 2>/dev/null || true)"
   [ -n "$bin" ] || return 1
-  line="$("$bin" version 2>/dev/null | sed -n 's/^Version[p ]*[: ]*//p' | head -n1)"
-  [ -n "$line" ] || return 1
-  printf '%s' "${line#v}"
+  line="$("$bin" version 2>/dev/null | awk '$1 == "Version:" { print $2; exit }')"
+  line="${line#v}"
+  # 只接受数字开头的版本号，别的一律当读不到（防止把错误信息当版本）
+  case "$line" in
+    [0-9]*) ;;
+    *) return 1 ;;
+  esac
+  printf '%s' "$line"
+}
+
+# 从任意字符串里抠出第一段形如 1.2.3 的版本号；抠不到输出空。
+#
+# 不能用 sed 's/.*\([0-9.]*\).*/\1/' —— 前面那个 .* 是贪婪的，会把
+# 「v2.14.0」里能匹配到的全部吃掉，只留最后一位（实测输出 "0"）。
+# grep -o 取第一个匹配，语义清晰。
+version_extract() {
+  printf '%s' "${1:-}" \
+    | grep -oE '[0-9]+(\.[0-9]+)+' \
+    | head -n1
 }
 
 # 把两个点分版本号比大小：$1 > $2 返回 0。
+#
+# 参数先过 version_extract 归一化 —— 上游万一漏进「v2.12.1 BuildDate:...」
+# 这种脏数据，也不会让 [ -gt ] 报 "integer expression expected"（真机上炸过：
+# 提示打出来了，但同时刷了两行 shell 报错，很难看）。
 version_is_newer() {
-  local a="${1#v}" b="${2#v}"
+  local a b
+  a="$(version_extract "${1:-}")"
+  b="$(version_extract "${2:-}")"
+  [ -n "$a" ] && [ -n "$b" ] || return 1
   local IFS=. ; set -- $a ; local a1="${1:-0}" a2="${2:-0}" a3="${3:-0}"
   set -- $b ; local b1="${1:-0}" b2="${2:-0}" b3="${3:-0}"
+  # 去掉可能的非数字尾巴（如 2.14.0-rc1 里的 rc 部分已在 extract 阶段截断）
+  case "$a1$a2$a3$b1$b2$b3" in
+    *[!0-9]*) return 1 ;;
+  esac
   [ "$a1" -gt "$b1" ] && return 0
   [ "$a1" -lt "$b1" ] && return 1
   [ "$a2" -gt "$b2" ] && return 0

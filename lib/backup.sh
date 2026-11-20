@@ -190,8 +190,13 @@ rollback_cmd() {
   log "回滚完成"
 }
 
+# repair_cmd [force_kernel]
+#
+# force_kernel=1 时强制重装/升级 Hysteria 内核（hy2 upgrade 走这条），
+# 否则只在缺失时补装（hy2 repair 走这条 —— 修复不该在用户不知情时换内核）。
 repair_cmd() {
   need_root repair
+  local force_kernel="${1:-0}"
   read_env
   local from_version="${AIO_VERSION:-未知}"
   from_version="${from_version#v}"
@@ -285,7 +290,7 @@ PY
 
   # 补齐缺失组件：安装中途失败后 repair 可直接续装（已装则跳过）
   ensure_hysteria_user
-  install_hysteria
+  install_hysteria "$force_kernel"
   install_xray
   install_caddy_v12
   ensure_reality_env
