@@ -204,7 +204,7 @@ class UpgradeForcesKernelTests(unittest.TestCase):
         src = (ROOT / "hy2.sh").read_text(encoding="utf-8")
         line = [l for l in src.splitlines() if l.strip().startswith("repair)")]
         self.assertTrue(line, "找不到 repair dispatch")
-        self.assertIn("${2:-0}", line[0], "repair 分支没转发参数")
+        self.assertIn("${2:-", line[0], "repair 分支没转发参数")
 
     def test_bin_entrypoint_passes_force(self):
         """bin/hy2.sh 重新执行新版 hy2.sh 时必须带 1。"""
@@ -238,6 +238,48 @@ class AlreadyInstalledLogTests(unittest.TestCase):
             any("hysteria version" in l and "head -1" in l for l in code),
             "已存在分支不许再用 head -1 取版本（只会拿到 banner 空行）",
         )
+
+
+
+class BootstrappingTests(unittest.TestCase):
+    """hy2 upgrade runs the ALREADY INSTALLED bin/hy2.sh, not the new one.
+
+    That file is the one that decides which arguments the freshly downloaded
+    hy2.sh receives. Editing bin/hy2.sh therefore cannot fix the upgrade that
+    is happening right now -- the running copy still has the old argument.
+    On the live box this showed up as two consecutive upgrades leaving the
+    kernel at v2.12.1 while status kept advertising the upgrade.
+
+    install_hysteria must therefore compare versions itself instead of
+    trusting a force flag from the caller.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.src = (ROOT / "lib" / "install.sh").read_text(encoding="utf-8")
+        cls.body = cls.src[cls.src.index("install_hysteria() {"):]
+        cls.head = cls.body[: cls.body.index("local version tag arch")]
+
+    def test_compares_installed_against_target(self):
+        self.assertIn("version_is_newer", self.head)
+        self.assertIn("hysteria_installed_version", self.head)
+
+    def test_upgrades_when_installed_is_older(self):
+        self.assertIn("Hysteria 需要升级", self.head)
+
+    def test_still_skips_when_already_current(self):
+        self.assertIn("Hysteria 已存在", self.head)
+
+    def test_force_still_short_circuits_comparison(self):
+        # force=1 时不进比较分支，直接往下走去重装
+        self.assertIn(chr(34) + "$force" + chr(34) + " != " + chr(34) + "1" + chr(34), self.head)
+
+    def test_repair_dispatch_falls_back_to_upgrade_flag(self):
+        """兜底：旧版 bin 传裸 repair 时，靠 HY2_UPGRADE_BANNER 认出这是升级。"""
+        src = (ROOT / "hy2.sh").read_text(encoding="utf-8")
+        line = [l for l in src.splitlines() if l.strip().startswith("repair)")]
+        self.assertTrue(line)
+        self.assertIn("HY2_UPGRADE_BANNER", line[0])
 
 if __name__ == "__main__":
     unittest.main()

@@ -342,13 +342,25 @@ PY
 
 install_hysteria() {
   local force="${1:-0}"
+  local want
+  want="$(version_extract "${HYSTERIA_VERSION:-v2.14.0}")"
+
   if [ "$force" != "1" ] && command -v hysteria >/dev/null 2>&1; then
     # hysteria version 先打 ASCII banner，版本行在很后面 —— 不能用 head -1，
     # 那样只会拿到一个空行（真机上就是这么打出「已存在：」后面空着的）。
     local have=""
     have="$(hysteria_installed_version 2>/dev/null || true)"
-    log "Hysteria 已存在：${have:+v${have}}"
-    return
+    # 已装版本比内置默认版本旧 → 直接升级，不再依赖调用方传 force。
+    # 这条兜底是为了破「自举陷阱」：hy2 upgrade 跑的是【已安装】的
+    # bin/hy2.sh，那行传参是老代码写的。只改 bin/hy2.sh 的话，
+    # 新版传参要等下一次 upgrade 才生效，而下一次用的还是旧的 ——
+    # 真机上就是这么连着两轮没升上去的。
+    if [ -n "$have" ] && [ -n "$want" ] && version_is_newer "$want" "$have"; then
+      log "Hysteria 需要升级：v${have} → v${want}"
+    else
+      log "Hysteria 已存在：${have:+v${have}}"
+      return
+    fi
   fi
 
   local version tag arch asset tmp hashes bin script expected

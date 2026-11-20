@@ -878,7 +878,7 @@ main() {
   case "$command" in
     menu)       menu_interactive ;;
     install)    install_stack ;;
-    repair)     repair_cmd "${2:-0}" ;;
+    repair)     repair_cmd "${2:-${HY2_UPGRADE_BANNER:-0}}" ;;
     upgrade)    repair_cmd 1 ;;   # 升级要连带把内核升到内置默认版本
     status)     status_cmd ;;
     show)       show_cmd ;;
