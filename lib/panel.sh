@@ -345,8 +345,29 @@ html[data-theme="dark"] .busy-scrim{background:rgba(0,0,0,.55)}
 .dest-table th,.dest-table td{padding:8px 10px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
 .dest-table th{font-size:11.5px;color:var(--faint);font-weight:600;background:var(--surface)}
 .dest-table tr:last-child td{border-bottom:0}
-.dest-host{font-weight:650;word-break:break-all}
-.dest-ip{color:var(--accent)}
+/* 域名一律单行截断 + 省略号。
+   以前是 word-break:break-all，10 列平分宽度后第一列只剩 20 多 px，
+   「video-edge-abc1234.xyz.cloudfront.net」会被折成 13 行、整行撑到 270px 高。
+   现在：单行、超出用 …、悬停看全名（title），点击展开详情行。 */
+.dest-host{font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:230px;cursor:pointer}
+.dest-host:hover{color:var(--accent)}
+.dest-host .root-alias{font-weight:400;color:var(--faint);font-size:12px;margin-left:6px}
+.dest-ip{color:var(--accent);white-space:nowrap}
+/* 站点表 10 列，给每列一个下限，避免长域名挤掉其他列 */
+#trafficSiteTable th:nth-child(1),#trafficSiteTable td:nth-child(1){min-width:180px;max-width:240px}
+#trafficSiteTable th:nth-child(2),#trafficSiteTable td:nth-child(2){min-width:110px}
+#trafficSiteTable th:nth-child(3),#trafficSiteTable td:nth-child(3){min-width:56px}
+/* 展开的详情行：占满整行宽度，不挤压其他列 */
+.site-detail td{padding:0;border-bottom:1px solid var(--line);background:var(--surface-2)}
+.site-detail-inner{padding:12px 14px;font-size:13px;line-height:1.6}
+/* 详情用两列并排（每列是 标签+值），9 个字段从 9 行压到 5 行，
+   展开后不会把表格顶得太高 */
+.site-detail-inner dl{margin:0;display:grid;grid-template-columns:auto 1fr auto 1fr;
+  gap:5px 14px;align-items:baseline}
+.site-detail-inner dt{color:var(--faint);font-size:12px}
+.site-detail-inner dd{margin:0;word-break:break-all}
+.site-detail-inner .full-host{font-weight:650;font-family:var(--mono)}
 .visit-cell{white-space:nowrap}
 .visit-cell .hint{margin:2px 0 0;font-size:11px;color:var(--faint)}
 th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
@@ -1487,6 +1508,47 @@ function renderLiveRows(){
     ));
   });
 }
+// 在站点行下方插入/移除一行详情（占满整表宽度，不挤压任何列）。
+// 详情行本身不参与排序与统计，纯展示。
+function toggleSiteDetail(tr,row){
+  const next=tr.nextElementSibling;
+  if(next&&next.classList.contains("site-detail")){
+    next.remove();
+    return;
+  }
+  // 同时只展开一行，避免堆得满屏
+  const root=$("trafficSites");
+  if(root)root.querySelectorAll(".site-detail").forEach(node=>node.remove());
+
+  const host=String(row.host||"--");
+  const items=[
+    ["完整域名",el("span",{className:"full-host",text:host})],
+  ];
+  const rootDomain=String(row.root||"").trim();
+  if(rootDomain&&rootDomain!==host)items.push(["归属主域",rootDomain]);
+  if(row.ip)items.push(["IP",String(row.ip)]);
+  if(row.port)items.push(["端口",String(row.port)+(portName(row.port)?("（"+portName(row.port)+"）"):"")]);
+  items.push(["上行 / 下行","↑ "+bytes(row.upload)+"　↓ "+bytes(row.download)]);
+  items.push(["合计",bytes(row.total)]);
+  items.push(["访问次数",String(row.hits||0)+" 次"]);
+  items.push(["占比",formatPct(row.share)]);
+  if(row.first_seen)items.push(["首次访问",formatActive(row.first_seen)]);
+  if(row.last_seen)items.push(["最近访问",formatActive(row.last_seen)]);
+
+  const dl=el("dl",{});
+  items.forEach(([k,v])=>{
+    dl.append(el("dt",{text:k}),el("dd",{},typeof v==="string"?document.createTextNode(v):v));
+  });
+  const detail=el("tr",{className:"site-detail"},
+    el("td",{colSpan:10},el("div",{className:"site-detail-inner"},dl))
+  );
+  tr.after(detail);
+  // 表格容器有 max-height，展开后详情可能在可视区外，滚进来一点
+  requestAnimationFrame(()=>{
+    try{ detail.scrollIntoView({block:"nearest",behavior:"smooth"}); }catch(e){}
+  });
+}
+
 function renderSiteRows(){
   const siteRoot=$("trafficSites");clearNode(siteRoot);
   const sites=sortedRows(siteList,siteSort);
@@ -1496,11 +1558,15 @@ function renderSiteRows(){
     return;
   }
   sites.forEach(row=>{
-    siteRoot.append(el("tr",{},
-      el("td",{className:"dest-host"},
-        el("div",{text:row.host||"--"}),
-        row.root&&row.root!==row.host?el("div",{className:"hint",text:row.root}):null
-      ),
+    const host=String(row.host||"--");
+    const root=String(row.root||"").trim();
+    // 域名太长时单行省略，全名放 title 悬停看；点一下在行下方展开完整信息。
+    const hostTd=el("td",{className:"dest-host",title:host+"（点击展开）"},
+      el("span",{text:host}));
+    if(root&&root!==host)hostTd.append(el("span",{className:"root-alias",text:"· "+root}));
+
+    const tr=el("tr",{},
+      hostTd,
       el("td",{className:"dest-ip",text:row.ip||"--"}),
       el("td",{},el("span",{text:row.port||"--"}),portName(row.port)?el("span",{className:"port-tag",text:portName(row.port)}):null),
       el("td",{className:"traffic-up",text:"↑ "+bytes(row.upload)}),
@@ -1510,7 +1576,9 @@ function renderSiteRows(){
       el("td",{text:formatPct(row.share)}),
       visitCell(row.first_seen||row.last_seen),
       visitCell(row.last_seen)
-    ));
+    );
+    hostTd.onclick=()=>toggleSiteDetail(tr,row);
+    siteRoot.append(tr);
   });
 }
 
