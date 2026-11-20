@@ -199,7 +199,8 @@ hy2-allin-one/
 
 ### 未发布
 - 新增端口跳跃（默认关闭）：`hy2 hop on|off|show|check`，服务端用 Hysteria 内置 `listen` 范围 + 自动 nft/iptables 重定向，订阅写 `ports`/`hop-interval`，直链端口位同步写范围；范围必须从 `HY2_PORT` 开始、跨度 ≤2000
-- 端口跳跃自检 `hy2 hop check`：逐项检查 nft/iptables、服务 `CAP_NET_ADMIN`、进程监听、重定向规则、本机防火墙基准端口，并提示云安全组需放行的 UDP 范围；缺少工具时 `hy2 hop on` 会尝试安装
+- 端口跳跃自检 `hy2 hop check`：7 项检查——nft/iptables、服务 `CAP_NET_ADMIN`、进程监听、重定向规则、本机防火墙基准端口、**残留 NAT 链**，并提示云安全组需放行的 UDP 范围；缺少工具时 `hy2 hop on` 会尝试安装
+- 修复：端口跳跃开着时，Hysteria 被快速重启（两次 restart 相隔不到 1 秒）会留下未清理的 NAT 链，下次启动 `iptables -N` 撞名直接 FATAL（`Chain already exists`），服务永远起不来，面板随即报 `traffic API / online API: Connection refused`。现在 `hy2 restart` 会**先停服务 → 清理 `HYSTERIA-PR-*` / `hysteria_*` 残留 → 再启动**；只按这两个前缀精确匹配，不动任何其他 iptables/nft 规则，也不碰 users.json / state.json / 流量统计。`hy2 hop check` 第 7 项会检测并提示
 - 新增依赖自检 `hy2 deps` / `hy2 deps fix`（菜单 26）：先识别当前机器的发行版、架构、内存与磁盘余量，再检查**当前功能真正需要**的命令；`fix` 按 apt/dnf/yum/zypper 只补缺的那几项，未启用的功能一律不碰（没开端口跳跃不动 iptables/nft，没装 firewalld 不提 firewall-cmd），小盘机器跳过 firewalld/fail2ban 这类几十上百 MB 且带常驻服务的包。安装流程在装完基础包后自动核一次，小机（<600MB）提示会启用 swap，根分区 <3GB、架构不在 amd64/arm64 时告警
 - 精简基础安装清单：去掉从未被调用的 `jq`（全仓 JSON 解析都用 `python3 -c`），也不再预装 ufw/firewalld/fail2ban/nftables/iptables —— 小机器磁盘紧，用不到的就是负担
 - 修复：`hy2 hop on` / `hy2 hop range` 的自动回滚形同虚设——`apply_hysteria_client_settings` 里 `systemctl restart` 失败会返回非零，脚本开着 `set -Eeuo pipefail` 就地退出，回滚判断永远执行不到，Hysteria 停在起不来的状态而 config.env 里还写着 `PORT_HOP_ENABLED=true`；现把调用兜住并纳入回滚条件，`hop off` 的同类问题一并修掉

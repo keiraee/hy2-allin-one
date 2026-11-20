@@ -247,11 +247,19 @@ class HysteriaApiRetryTests(unittest.TestCase):
             "systemctl restart hysteria-server.service hy2-aio.service caddy.service",
             source,
         )
-        hysteria = source.index("systemctl restart hysteria-server.service")
-        wait = source.index("wait_hysteria_stats_api")
-        backend = source.index("systemctl restart hy2-aio.service")
-        self.assertLess(hysteria, wait)
-        self.assertLess(wait, backend)
+        # restart_cmd 现在是 stop → 清理残留 NAT 链 → start →
+        # wait_hysteria_stats_api → 重启后端。原断言写死 "systemctl restart
+        # hysteria-server.service"，改成 stop/start 后要跟着调整；
+        # 但「等 stats API 就绪再启后端」这个真正要守的顺序不变。
+        restart = source[source.index("restart_cmd()") :]
+        restart = restart[: restart.index("\n}\n", 1) + 3]
+        self.assertIn("systemctl start hysteria-server.service", restart)
+        self.assertIn("systemctl restart hy2-aio.service", restart)
+        start_hysteria = restart.index("systemctl start hysteria-server.service")
+        wait = restart.index("wait_hysteria_stats_api")
+        backend = restart.index("systemctl restart hy2-aio.service")
+        self.assertLess(start_hysteria, wait, "先起 Hysteria 再等 stats 接口")
+        self.assertLess(wait, backend, "stats 就绪后才重启面板后端")
         restart = source[source.index("restart_cmd()") :]
         restart = restart[: restart.index("\n}\n", 1) + 3]
         self.assertLess(

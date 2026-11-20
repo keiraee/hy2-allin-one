@@ -306,6 +306,90 @@ validate_hop_interval() {
     || die "端口跳跃间隔须为 5-3600 的整数秒：${value:-<empty>}"
 }
 
+# 清理 Hysteria 遗留的 NAT 重定向规则。
+#
+# 背景：Hysteria 开 listen 端口范围时，自己建 iptables 链 HYSTERIA-PR-<hash>
+# 或 nft 表 hysteria_<hash>，正常退出时会删掉。但它刚起来 1 秒就被 systemctl
+# 杀掉（重启、部署时的典型情形）时，清理可能没跑完，链就留下来了。下次启动
+# `iptables -N` 撞上同名链直接 FATAL：「Chain already exists」，服务永远起不来。
+# （Hysteria 2.12.1 的已知脆弱点，2.14.0 才修。）
+#
+# 安全性：只按 HYSTERIA-PR- / hysteria_ 前缀精确匹配，绝不 `iptables -F`
+# 全清，不碰任何其他规则、不碰 users.json / state.json / 流量统计。
+# 调用时机必须是「Hysteria 已停止」之后，否则会短暂中断在线转发。
+clean_hysteria_nat_rules() {
+  # 全程不能依赖「命令成功」的返回码：脚本是 set -Eeuo pipefail，
+  # 函数体内任何一条命令返回非零都会让整个函数当场退出，
+  # 后面该清的链全被跳过（这正是第一次写完时清理没生效的原因）。
+  local removed=0 refs r ipt fam tbl
+
+  # --- iptables / ip6tables ---
+  for ipt in iptables ip6tables; do
+    command -v "$ipt" >/dev/null 2>&1 || continue
+
+    # 1) 先摘掉主链里引用它们的规则，否则 -X 会报「Too many links」。
+    #    注意：for 循环体内不要用管道，管道会在子 shell 里跑，removed 加不上。
+    refs="$("$ipt" -t nat -S 2>/dev/null | sed -n 's/^-A \(.*-j HYSTERIA-PR-[^ ]*.*\)$/\1/p' || true)"
+    if [ -n "$refs" ]; then
+      while IFS= read -r r; do
+        if [ -n "$r" ]; then
+          # shellcheck disable=SC2086
+          "$ipt" -t nat -D $r >/dev/null 2>&1 || true
+        fi
+      done <<EOF
+$refs
+EOF
+    fi
+
+    # 2) 再逐个清空并删除自建链
+    while IFS= read -r r; do
+      if [ -n "$r" ]; then
+        "$ipt" -t nat -F "$r" >/dev/null 2>&1 || true
+        if "$ipt" -t nat -X "$r" >/dev/null 2>&1; then
+          removed=$((removed + 1))
+        fi
+      fi
+    done <<EOF
+$("$ipt" -t nat -S 2>/dev/null | sed -n 's/^-N \(HYSTERIA-PR-[^ ]*\)$/\1/p' || true)
+EOF
+  done
+
+  # --- nftables ---
+  if command -v nft >/dev/null 2>&1; then
+    while read -r fam tbl; do
+      if [ -n "$fam" ] && [ -n "$tbl" ]; then
+        if nft delete table "$fam" "$tbl" >/dev/null 2>&1; then
+          removed=$((removed + 1))
+        fi
+      fi
+    done <<EOF
+$(nft list tables 2>/dev/null | awk '/^table /{print $2, $3}' | grep -E 'hysteria_[^ ]+$' || true)
+EOF
+  fi
+
+  # 用显式 if 而不是 [ ... ] 结尾：后者在 removed=0 时返回 1，
+  # 配合 set -e 会让调用方误当成命令失败。
+  if [ "$removed" -gt 0 ]; then
+    return 0
+  fi
+  return 1
+}
+
+# 检测是否有残留（不修改任何东西），给自检用。
+hysteria_nat_leftovers() {
+  {
+    if command -v iptables >/dev/null 2>&1; then
+      iptables -t nat -S 2>/dev/null | sed -n 's/^-N \(HYSTERIA-PR-[^ ]*\)$/iptables \1/p'
+    fi
+    if command -v ip6tables >/dev/null 2>&1; then
+      ip6tables -t nat -S 2>/dev/null | sed -n 's/^-N \(HYSTERIA-PR-[^ ]*\)$/ip6tables \1/p'
+    fi
+    if command -v nft >/dev/null 2>&1; then
+      nft list tables 2>/dev/null | awk '/^table /{print $2, $3}' | grep -E 'hysteria_[^ ]+$' || true
+    fi
+  } | awk 'NF'
+}
+
 port_layout_is_valid() {
   local panel_port="${1:-}" stats_port="${2:-}"
   panel_port_is_valid "$panel_port" \

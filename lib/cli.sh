@@ -77,7 +77,14 @@ restart_cmd() {
   if [ -f "${HY2_OFF_FILE:-/etc/hy2-aio/hy2.off}" ]; then
     log "Hysteria 已关闭，跳过重启（开启：hy2 on）"
   else
-    systemctl restart hysteria-server.service
+    # 先停再清残留链再起：Hysteria 上次若被秒杀，NAT 链可能没删干净，
+    # 下次启动 `iptables -N` 撞名会 FATAL（Chain already exists），服务彻底起不来。
+    # 顺序必须是 stop → clean → start，运行中清理会中断在线转发。
+    systemctl stop hysteria-server.service 2>/dev/null || true
+    if clean_hysteria_nat_rules; then
+      log "已清理 Hysteria 遗留的 NAT 重定向规则"
+    fi
+    systemctl start hysteria-server.service
     wait_hysteria_stats_api
   fi
   systemctl restart hy2-aio.service

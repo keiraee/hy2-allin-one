@@ -955,46 +955,46 @@ hop_check_cmd() {
   echo
 
   if [ -n "$backend" ]; then
-    log "自检 1/6 通过：防火墙工具 ${backend}"
+    log "自检 1/7 通过：防火墙工具 ${backend}"
   else
-    warn "自检 1/6 失败：未找到 nft/iptables（hy2 hop on 会自动尝试安装）"
+    warn "自检 1/7 失败：未找到 nft/iptables（hy2 hop on 会自动尝试安装）"
     failures=$((failures + 1))
   fi
 
   caps="$(systemctl show hysteria-server.service -p AmbientCapabilities --value 2>/dev/null | tr '[:upper:]' '[:lower:]')"
   case "$caps" in
-    *cap_net_admin*) log "自检 2/6 通过：服务具备 CAP_NET_ADMIN" ;;
+    *cap_net_admin*) log "自检 2/7 通过：服务具备 CAP_NET_ADMIN" ;;
     *)
-      warn "自检 2/6 失败：hysteria-server.service 缺少 CAP_NET_ADMIN"
+      warn "自检 2/7 失败：hysteria-server.service 缺少 CAP_NET_ADMIN"
       failures=$((failures + 1))
       ;;
   esac
 
   if systemctl is-active --quiet hysteria-server.service; then
-    log "自检 3/6 通过：hysteria-server 运行中"
+    log "自检 3/7 通过：hysteria-server 运行中"
   else
-    warn "自检 3/6 失败：hysteria-server 未运行（journalctl -u hysteria-server -n 80）"
+    warn "自检 3/7 失败：hysteria-server 未运行（journalctl -u hysteria-server -n 80）"
     failures=$((failures + 1))
   fi
 
   if ss -Hlunp 2>/dev/null | awk -v p=":${listen_port}" '$4 ~ p"$" || $4 ~ p" " {found=1} END {exit !found}'; then
-    log "自检 4/6 通过：监听 UDP ${listen_port}"
+    log "自检 4/7 通过：监听 UDP ${listen_port}"
   else
-    warn "自检 4/6 失败：未看到监听 UDP ${listen_port}"
+    warn "自检 4/7 失败：未看到监听 UDP ${listen_port}"
     failures=$((failures + 1))
   fi
 
   redirect="$(hop_redirect_range || true)"
   if [ -z "$redirect" ]; then
-    warn "自检 5/6 失败：端口范围无效，无法推导重定向区间（${range}）"
+    warn "自检 5/7 失败：端口范围无效，无法推导重定向区间（${range}）"
     failures=$((failures + 1))
   elif [ "$backend" = "nft" ]; then
     nft_out="$(nft list ruleset 2>/dev/null || true)"
     if printf '%s\n' "$nft_out" | grep -q "hysteria_" \
       && printf '%s\n' "$nft_out" | grep -q -- "dport ${redirect}"; then
-      log "自检 5/6 通过：nft 重定向规则已存在（${redirect} → ${listen_port}）"
+      log "自检 5/7 通过：nft 重定向规则已存在（${redirect} → ${listen_port}）"
     else
-      warn "自检 5/6 失败：没找到 nft 重定向规则（${redirect} → ${listen_port}；journalctl -u hysteria-server 查 firewall）"
+      warn "自检 5/7 失败：没找到 nft 重定向规则（${redirect} → ${listen_port}；journalctl -u hysteria-server 查 firewall）"
       failures=$((failures + 1))
     fi
   elif [ "$backend" = "iptables" ]; then
@@ -1002,32 +1002,45 @@ hop_check_cmd() {
     ipt_out="$( { iptables -t nat -S 2>/dev/null; ip6tables -t nat -S 2>/dev/null; } || true)"
     if printf '%s\n' "$ipt_out" | grep -q "HYSTERIA-PR-" \
       && printf '%s\n' "$ipt_out" | grep -q -- "--dport ${ipt_range}"; then
-      log "自检 5/6 通过：iptables 重定向规则已存在（${redirect} → ${listen_port}）"
+      log "自检 5/7 通过：iptables 重定向规则已存在（${redirect} → ${listen_port}）"
     else
-      warn "自检 5/6 失败：没找到 iptables 重定向规则（${redirect} → ${listen_port}；iptables -t nat -S | grep HYSTERIA）"
+      warn "自检 5/7 失败：没找到 iptables 重定向规则（${redirect} → ${listen_port}；iptables -t nat -S | grep HYSTERIA）"
       failures=$((failures + 1))
     fi
   else
-    warn "自检 5/6 失败：没有可用的防火墙工具"
+    warn "自检 5/7 失败：没有可用的防火墙工具"
     failures=$((failures + 1))
   fi
 
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
     if ufw status 2>/dev/null | grep -qE "^${listen_port}/udp[[:space:]]+ALLOW"; then
-      log "自检 6/6 通过：ufw 已放行 ${listen_port}/udp（重定向后只需基准端口）"
+      log "自检 6/7 通过：ufw 已放行 ${listen_port}/udp（重定向后只需基准端口）"
     else
-      warn "自检 6/6 失败：ufw 未放行 ${listen_port}/udp"
+      warn "自检 6/7 失败：ufw 未放行 ${listen_port}/udp"
       failures=$((failures + 1))
     fi
   elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
     if firewall-cmd --query-port="${listen_port}/udp" >/dev/null 2>&1; then
-      log "自检 6/6 通过：firewalld 已放行 ${listen_port}/udp"
+      log "自检 6/7 通过：firewalld 已放行 ${listen_port}/udp"
     else
-      warn "自检 6/6 失败：firewalld 未放行 ${listen_port}/udp"
+      warn "自检 6/7 失败：firewalld 未放行 ${listen_port}/udp"
       failures=$((failures + 1))
     fi
   else
-    log "自检 6/6 跳过：本机未启用 ufw/firewalld"
+    log "自检 6/7 跳过：本机未启用 ufw/firewalld"
+  fi
+
+  # 第 7 项：残留的 NAT 链。Hysteria 被秒杀时会留下 HYSTERIA-PR-/hysteria_，
+  # 下次启动撞名直接 FATAL。这里只报告，不动手（改动交给 hy2 restart）。
+  local leftovers
+  leftovers="$(hysteria_nat_leftovers 2>/dev/null || true)"
+  if [ -z "$leftovers" ]; then
+    log "自检 7/7 通过：没有残留的 NAT 重定向链"
+  else
+    warn "自检 7/7 失败：发现残留的重定向规则（Hysteria 重启时会因「链已存在」起不来）"
+    printf '%s\n' "$leftovers" | sed 's/^/    • /' >&2
+    warn "修复：sudo hy2 restart（会先清理再启动）"
+    failures=$((failures + 1))
   fi
 
   echo
