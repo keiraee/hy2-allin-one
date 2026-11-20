@@ -1219,7 +1219,9 @@ function renderTraffic(data){
   }
   const ups=series.map(item=>Number(item.up)||0);
   const downs=series.map(item=>Number(item.down)||0);
-  const totals=series.map((_,i)=>ups[i]+downs[i]);
+  // 纵轴顶只由两条线各自的峰值决定 —— 图里画的就是单条线的值。
+  // （曾经拿 ups+downs 之和当峰值标签，但纵轴按单线算，
+  //  结果标签写着 540.6 MB 比纵轴顶 519.8 MB 还高，点也对不上。）
   const maxLine=Math.max(1,...ups,...downs);
   const W=1100,H=280,padL=64,padR=20,padT=24,padB=36;
   const innerW=W-padL-padR, innerH=H-padT-padB;
@@ -1227,7 +1229,12 @@ function renderTraffic(data){
   const y=v=>padT+innerH-(v/maxLine*innerH);
   const line=values=>values.map((v,i)=>x(i)+","+y(v)).join(" ");
   const area=values=>values.map((v,i)=>x(i)+","+y(v)).join(" ")+" "+x(values.length-1)+","+y(0)+" "+x(0)+","+y(0);
-  const peakIdx=totals.reduce((best,value,i)=>value>totals[best]?i:best,0);
+  // 峰值点 = 图上真正最高的那个数据点（单条线），
+  // 这样红点、标签、纵轴三者指的是同一个东西。
+  const peakIdx=ups.reduce((best,_,i)=>{
+    const cur=Math.max(ups[i],downs[i]), prev=Math.max(ups[best],downs[best]);
+    return cur>prev?i:best;
+  },0);
   const svg=svgNode("svg",{
     viewBox:"0 0 "+W+" "+H,
     class:"trend-svg",
@@ -1248,9 +1255,10 @@ function renderTraffic(data){
   svg.append(svgNode("path",{d:"M"+area(ups),fill:accent,opacity:"0.12"}));
   svg.append(svgNode("polyline",{fill:"none",stroke:muted,"stroke-width":2,points:line(ups)}));
   svg.append(svgNode("polyline",{fill:"none",stroke:accent,"stroke-width":2.5,points:line(downs)}));
-  const peakX=x(peakIdx), peakY=y(Math.max(ups[peakIdx],downs[peakIdx]));
+  const peakVal=Math.max(ups[peakIdx],downs[peakIdx]);
+  const peakX=x(peakIdx), peakY=y(peakVal);
   svg.append(svgNode("circle",{cx:peakX,cy:peakY,r:4.5,fill:bad}));
-  const peakLabel=bytes(totals[peakIdx]);
+  const peakLabel=bytes(peakVal);
   const labelY=peakY<36?peakY+18:peakY-10;
   svg.append(svgNode("text",{x:Math.min(Math.max(peakX,padL+40),W-padR-40),y:labelY,"text-anchor":"middle","font-size":12,"font-weight":700,fill:bad,"font-family":mono},"峰值 "+peakLabel));
   const tickCount=Math.min(5,series.length);
@@ -1262,7 +1270,7 @@ function renderTraffic(data){
     svg.append(svgNode("text",{x:x(idx),y:H-10,"text-anchor":"middle","font-size":11,fill:faint,"font-family":mono},hourLabel(stamp)));
   }
   trend.append(svg);
-  trend.append(el("p",{className:"trend-note",text:"红点峰值约 "+bytes(totals[peakIdx])+"（↑ "+bytes(ups[peakIdx])+" · ↓ "+bytes(downs[peakIdx])+"）。纵轴最大 "+bytes(maxLine)+"。"}));
+  trend.append(el("p",{className:"trend-note",text:"红点峰值 "+bytes(peakVal)+"（↑ "+bytes(ups[peakIdx])+" · ↓ "+bytes(downs[peakIdx])+"）。纵轴最大 "+bytes(maxLine)+"。"}));
 }
 function buildTrafficSummary(data,peakCell,busy){
   const name=String(data.username||"该用户");
