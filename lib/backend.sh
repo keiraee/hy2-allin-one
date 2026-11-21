@@ -913,7 +913,7 @@ def subscription_singbox(
                     "type": "remote",
                     "format": "binary",
                     "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/sing/geo/geosite/cn.srs",
-                    "download_detour": "direct",
+                    "http_client": {"detour": "direct"},
                     "update_interval": "48h",
                 },
                 {
@@ -921,7 +921,7 @@ def subscription_singbox(
                     "type": "remote",
                     "format": "binary",
                     "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/sing/geo/geoip/cn.srs",
-                    "download_detour": "direct",
+                    "http_client": {"detour": "direct"},
                     "update_interval": "48h",
                 },
             ],

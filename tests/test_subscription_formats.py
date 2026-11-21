@@ -591,8 +591,14 @@ class SingboxChinaSplitTests(unittest.TestCase):
         self.assertIn('"rule_set": ["geosite-cn", "geoip-cn"], "outbound": "direct"', self.fn)
 
     def test_ruleset_download_via_direct(self):
-        """规则集更新走 direct,不能走代理(否则死循环:拉规则要先连上代理)。"""
-        self.assertIn('"download_detour": "direct"', self.fn)
+        """规则集更新走 direct,不能走代理(否则死循环:拉规则要先连上代理)。
+
+        sing-box 1.14 弃用 download_detour,改用 http_client.detour
+        (官方 deprecated 清单 + rule-set/index.zh.md 确认,1.16 移除)。
+        真机踩过:旧写法在 1.14 弹「弃用警告」,配置 1.16 将失效。
+        """
+        self.assertNotIn('"download_detour"', self.fn, '1.14 起弃用,1.16 移除')
+        self.assertIn('"http_client": {"detour": "direct"}', self.fn)
 
     def test_sniff_and_dns_hijack(self):
         """分流依赖域名嗅探;DNS 劫持保证 tun 下解析走 sing-box。"""
