@@ -638,3 +638,41 @@ class ClashRealMihomoParseTests(unittest.TestCase):
         self.assertNotIn("fatal", out.lower(), "mihomo 解析失败:\n" + out[:1500])
         self.assertIn(code, (0, 124), "mihomo 异常退出 code=%s\n%s" % (code, out[:1000]))
         self.assertIn("listening", out.lower(), "mihomo 没起来:\n" + out[:1000])
+
+
+class ClashDouyinDirectTests(unittest.TestCase):
+    """抖音系(含抖店 jinritemai)必须显式直连。
+
+    真机实测(2026-11-21,本地中国网络 + mihomo 1.19.34):
+      fxg.jinritemai.com → match Match using PROXY[日本]  ← BUG!
+    上游 blackmatrix7 的 China_Domain.yaml 里没有 jinritemai.com
+    (有 douyin/bytedance,独缺抖店商家端),导致抖店流量被兜底
+    MATCH 抓到日本代理 → 用户体感的"抖店变慢"。
+    所以必须自己补显式规则,不能只依赖上游规则集。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        src = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        i = src.index("rules:\n  - DOMAIN-SUFFIX,lan,DIRECT")
+        cls.rules = src[i : src.index("MATCH,PROXY", i)]
+
+    def test_jinritemai_direct(self):
+        """抖店商家端域名必须直连。"""
+        self.assertIn("DOMAIN-SUFFIX,jinritemai.com,DIRECT", self.rules)
+
+    def test_douyin_ecosystem_direct(self):
+        """抖音生态主域名都要显式直连(不依赖上游规则集完整性)。"""
+        for dom in ("douyin.com", "bytedance.com", "amemv.com",
+                    "snssdk.com", "pstatp.com", "douyincdn.com", "ixigua.com"):
+            self.assertIn("DOMAIN-SUFFIX,%s,DIRECT" % dom, self.rules, dom)
+
+    def test_bytecdn_direct(self):
+        self.assertIn("bytecdn.cn", self.rules)
+
+    def test_direct_rules_before_match(self):
+        """直连规则必须在 MATCH 之前(顺序决定优先级)。"""
+        self.assertLess(
+            self.rules.index("jinritemai"),
+            self.rules.index("RULE-SET,china-domain"),
+        )
