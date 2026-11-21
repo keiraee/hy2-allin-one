@@ -209,7 +209,14 @@ repair_cmd() {
   ensure_mode_file
   ensure_hysteria_config_perms
 
-  python3 - "$ENV_FILE" "$SCRIPT_VERSION" "${HY2_PERSIST_TRACK:-}" "${HY2_FETCH_MODULES_SHA:-}" "${HY2_FETCH_COMMIT:-}" <<'PY'
+  # 写入带构建信息的完整版本(1.7.3.N.gHASH),不再写纯基础号 ——
+  # 否则每次 upgrade 后面板都显示同一个 1.7.3,版本号"固定"不动。
+  # 远端 modules 拉取(无 git)时 AIO_VERSION 仍是基础号,用 HY2_FETCH_COMMIT 兜底。
+  local full_version="${AIO_VERSION:-$SCRIPT_VERSION}"
+  if [ -n "${HY2_FETCH_COMMIT:-}" ] && [ "$full_version" = "$SCRIPT_VERSION" ]; then
+    full_version="$SCRIPT_VERSION.${HY2_FETCH_COMMIT:0:7}"
+  fi
+  python3 - "$ENV_FILE" "$full_version" "${HY2_PERSIST_TRACK:-}" "${HY2_FETCH_MODULES_SHA:-}" "${HY2_FETCH_COMMIT:-}" <<'PY'
 import os
 import re
 import sys
