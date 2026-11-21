@@ -219,42 +219,63 @@ hy2-allin-one/
 
 ## 更新日志
 
-### 未发布
-- 新增端口跳跃（默认关闭）：`hy2 hop on|off|show|check`，服务端用 Hysteria 内置 `listen` 范围 + 自动 nft/iptables 重定向，订阅写 `ports`/`hop-interval`，直链端口位同步写范围；范围必须从 `HY2_PORT` 开始、跨度 ≤2000
-- 端口跳跃自检 `hy2 hop check`：7 项检查——nft/iptables、服务 `CAP_NET_ADMIN`、进程监听、重定向规则、本机防火墙基准端口、**残留 NAT 链**，并提示云安全组需放行的 UDP 范围；缺少工具时 `hy2 hop on` 会尝试安装
-- 修复：端口跳跃开着时，Hysteria 被快速重启（两次 restart 相隔不到 1 秒）会留下未清理的 NAT 链，下次启动 `iptables -N` 撞名直接 FATAL（`Chain already exists`），服务永远起不来，面板随即报 `traffic API / online API: Connection refused`。现在 `hy2 restart` 会**先停服务 → 清理 `HYSTERIA-PR-*` / `hysteria_*` 残留 → 再启动**；只按这两个前缀精确匹配，不动任何其他 iptables/nft 规则，也不碰 users.json / state.json / 流量统计。`hy2 hop check` 第 7 项会检测并提示
-- 新增依赖自检 `hy2 deps` / `hy2 deps fix`（菜单 26）：先识别当前机器的发行版、架构、内存与磁盘余量，再检查**当前功能真正需要**的命令；`fix` 按 apt/dnf/yum/zypper 只补缺的那几项，未启用的功能一律不碰（没开端口跳跃不动 iptables/nft，没装 firewalld 不提 firewall-cmd），小盘机器跳过 firewalld/fail2ban 这类几十上百 MB 且带常驻服务的包。安装流程在装完基础包后自动核一次，小机（<600MB）提示会启用 swap，根分区 <3GB、架构不在 amd64/arm64 时告警
-- 精简基础安装清单：去掉从未被调用的 `jq`（全仓 JSON 解析都用 `python3 -c`），也不再预装 ufw/firewalld/fail2ban/nftables/iptables —— 小机器磁盘紧，用不到的就是负担
-- 修复：`hy2 hop on` / `hy2 hop range` 的自动回滚形同虚设——`apply_hysteria_client_settings` 里 `systemctl restart` 失败会返回非零，脚本开着 `set -Eeuo pipefail` 就地退出，回滚判断永远执行不到，Hysteria 停在起不来的状态而 config.env 里还写着 `PORT_HOP_ENABLED=true`；现把调用兜住并纳入回滚条件，`hop off` 的同类问题一并修掉
-- 修复：端口跳跃范围只有两个端口时（如 `8443-8444`，合法配置）自检 5/6 必定误报「没找到重定向规则」——Hysteria 在 `start == end` 时只写单个端口号而不是 `8444-8444`
-- 修复：代理端口为 65535 时 `hy2 hop on` 会抛「结束端口必须大于开始端口」，与实际操作对不上；现改为明确提示先改小代理端口
-- 修复：只装了 iptables 没装 ip6tables 的机器，开启端口跳跃后 Hysteria 直接拒绝启动（官方实现监听通配地址时要求两个都在）；现视为工具不可用并自动补装
-- 修复：面板 CPU 长期显示 0%。旧实现每次开一个固定 120ms 的采样窗口，100Hz 内核上单核只有 12 jiffies，1% 负载折算下来才 0.12 jiffies，四舍五入永远是 0.0%——小机上常驻进程的 1~2% 完全测不出来。现改为「两次采集之间的增量」（60s 窗口 = 6000 jiffies/核，分辨率提高约 500 倍），idle 计入 iowait 与 `top` 口径一致，采集间隔不足 1 秒时沿用上次读数而不是硬报一个假 0
-- 面板刷新从「页面 60 秒拉一次」改为「页面 10 秒拉一次、切到后台不拉」，并在更新时间后标出「数据 N 秒前」；CPU 负载旁补上核数，便于判断 4.0 的负载对 1 核还是 4 核意味着什么
-- 面板字号整体上调：正文 13.5px → **15px**（行高 1.45 → 1.5），表格 13 → 14px、表头 11.5 → 12.5px、指标卡数值 20 → 24px、各类辅助文字 12 → 13px。原字号在 1080p 下偏小、看久了累眼。同时修掉两个连带问题：指标卡用 `grid-auto-rows:1fr` + 纵向弹性实现同行等高（原来 115/115/101/101 一高一低）；状态列加 `white-space:nowrap` + `min-width:180px`，否则字号放大后「最后 / 客户端」折成两行，把行高从 85px 撑到 124px
-- 默认内核升到 Hysteria **2.14.0**（原 2.12.1）。2.12.3 修了端口跳跃规则误重定向出站 UDP 的 bug（会破坏同机其他 UDP 流量），2.14.0 还带了 UDP 转发性能提升（小包约 +30%）。已用真二进制验证：我们的完整配置（含 `listen: ":8443-9443"` 端口范围、`sniff`、`speedTest`、`obfs`、`bbrProfile`）能被 2.14.0 正常加载并干净退出，4 个统计端点全部可用。2.14 把 ACL 换成 expr 引擎，但旧语法仍兼容，我们本来就没用 ACL，无影响。想钉旧版的仍可 `HYSTERIA_VERSION=v2.12.1`
-- `hy2 status` 现在显示内核版本，低于内置默认版本时会提示 `hy2 update`（只提示不自动升级）
-- 新增 `POST /kick` 支持：禁用 / 删除 / 轮换密钥时把该用户的现有连接踢掉。Hysteria 的 userpass 认证只在建立连接时校验，原先只改 `users.json` 的话，被禁用的人只要不断线就能一直用（真实漏洞）。现在落盘后立刻踢人 —— 他重连时会被验证后端拒绝，不会踢了又连回来。CLI（`hy2 disable/remove-user/rotate-user`）与面板两条路径都覆盖；踢人失败不影响主操作（Hysteria 没跑 / secret 不对都只记日志）
-- 修复：Hysteria 重启后用户流量少算。它自己的 per-user 计数器会从 0 重来，而 `counter_delta` 拿新值跟旧基线比 —— 新值若大于旧值只记差额（实测场景能少算 80%+），若小于旧值又把重启后全部当新增。现在用 `/proc/<pid>/stat` 的 `starttime` 配合 PID 判断进程是否换过，换了就把 `last_tx/last_rx` 基线和 stream 缓存清零；拿不到标识时安全退化（不清零），不会误伤
-- 修复：访问站点表的长域名被挤成竖排单字。`.dest-host` 原来用 `word-break:break-all`（允许任意字符断行），而站点表有 10 列、容器宽 617px，第一列只剩 23px ——「video-edge-abc1234.xyz.cloudfront.net」被折成 13 行、整行高 273px。现改为单行 + `text-overflow:ellipsis` + `max-width:240px`，域名列宽从 23px 恢复到 240px、行高回到 60px；`title` 悬停看全名，点击在行下方展开详情行（`colSpan=10` 占满整表宽度、不挤压其他列，同一时刻只展开一行）。详情用两列网格，9 个字段从 260px 压到约 150px
-- 面板字体改为自托管：Inter（界面文字）+ JetBrains Mono（数字/端口/用户名），四个 woff2 共约 91KB，随面板域名同源分发。原本 `--font` 里的 `Inter` 从未被加载过，Windows 上是 Segoe UI、Mac 上是 SF Pro、Linux 上又各不相同；现在各平台一致。只装 latin 子集（CJK 字库动辄几 MB），中文按 `PingFang SC → Microsoft YaHei → Noto Sans CJK SC` 回退到系统字体，不会出现豆腐块。字体缺失只 warn 不中断安装，自动退回系统字体
-- 修复：归属地查询失败被永久缓存，一次网络抖动就让国旗一直不出现（只能重启后端恢复）；现失败结果只记 1 小时
-- 修复：国旗只加在面板和订阅上，`hy2 show` 与 `/root/hy2-aio-access.txt` 里的节点名还是旧的，同一节点显示两个名字；归属地现由后端落进 `data.json` 供 CLI 复用
-
 ### v1.8.0
 
-分流产线重构。核心变化：**国内流量不再靠手写域名清单，改用 geosite 内置数据 + 自动化验收**。
+国内流量不再靠手写域名清单，改用 geosite 内置数据 + 自动化验收。
 
-- **Clash 国内分流改用 `GEOSITE,cn`**（11 万条记录，MetaCubeX 维护、持续更新）替代原 blackmatrix7 远程规则集。上游清单实测漏 `jinritemai.com`（抖店商家端），导致抖店被 `MATCH` 兜底抓到日本代理、用户体感明显变慢。现以 geosite 为主力，仅对 geosite 缺口补手写规则（当前唯一一条：`jinritemai.com`）
-- **geosite 用 lite 版**（`geosite-lite.dat`，176KB，CN 分类记录数与全量 4.3MB 版一致）。全量 `geoip.dat` 有 6.5MB，国内网络 30 秒只能拉 620KB，mihomo 会卡在 `Can't find GeoIP.dat` 起不来 —— 已移除 `GEOIP,CN` 规则，只依赖 geosite
+#### 国内分流
+
+- **Clash 改用 `GEOSITE,cn`**（11 万条，MetaCubeX 维护、持续更新），替代原 blackmatrix7 远程规则集。上游清单实测漏 `jinritemai.com`（抖店商家端），导致抖店被 `MATCH` 兜底抓到日本代理、明显变慢。现在 geosite 为主力，只对缺口补手写规则（当前仅 1 条：`jinritemai.com`）
+- **geosite 用 lite 版**（`geosite-lite.dat`，176KB，CN 分类记录数与全量 4.3MB 版一致）。全量 `geoip.dat` 6.5MB，国内网络 30 秒只能拉 620KB，mihomo 会卡在 `Can't find GeoIP.dat` 起不来 —— 已移除 `GEOIP,CN`，只依赖 geosite
 - **geox-url 走 jsdelivr 镜像**：`raw.githubusercontent.com` 在国内拉不动
-- **Clash DNS 改国内优先**：`nameserver` 用 doh.pub / alidns，`nameserver-policy` 里 `geosite:cn` 走国内 DoH，`direct-nameserver: system`。原配置只有 1.1.1.1/8.8.8.8（全境外），fake-ip 模式下国内 CDN 被解析到境外节点，即便规则直连也在绕远
+- **Clash DNS 改国内优先**：`nameserver` 用 doh.pub / alidns，`nameserver-policy` 里 `geosite:cn` 走国内 DoH，`direct-nameserver: system`。原配置只有 1.1.1.1/8.8.8.8（全境外），fake-ip 模式下国内 CDN 被解析到境外节点，即使规则直连也在绕远
 - **sing-box 补国内分流**：新增 `geosite-cn` + `geoip-cn` rule-set（jsdelivr 镜像），rules 顺序 `sniff → hijack-dns → 私有网段直连 → 国内直连 → 其余走代理`。修复 iOS sing-box 导入后微信发不出图片（图片走国内 CDN 通道被 tun 全量代理，文本走长连接所以正常 —— sing-box issue #2492 的已知问题）
-- **sing-box 的 Hysteria TLS 不再硬编码 `insecure: true`**：SNI 改用订阅证书域名（`DOMAIN`），`insecure` 按 `CLIENT_INSECURE` 判定。v2rayNG 26.2.6+ 会拒绝「未加密连接」的节点，原配置一升级就弹窗
+- **sing-box 的 Hysteria TLS 不再硬编码 `insecure: true`**：SNI 改用订阅证书域名（`DOMAIN`），`insecure` 按 `CLIENT_INSECURE` 判定。v2rayNG 26.2.6+ 会拒绝「未加密连接」的节点，原配置升级后必弹窗
 - **新增自动化验收工具** `tools/verify-domestic-routing.py`：起真 mihomo，逐个访问 22 个关键国内域名（抖店/微信/百度/淘宝/B站/知乎/京东/12306/QQ/阿里/腾讯/头条/西瓜/飞书…），解析命中规则，非 `DIRECT` 即 FAIL。清单在 `tests/test_domestic_coverage.py`，新增域名加一行即可
 - **订阅里不再写解释性注释**：给用户的 YAML 是纯配置
-- **版本号随提交自动变化**：`1.8.0.<提交数>.g<短哈希>`；`upgrade` 写入 config.env，面板不再永远显示同一个号
-- **`hy2.sh` 默认 tag 从 v1.7.3 → v1.8.0**（v1.7.3/v1.7.4 都不含本次分流修复，新机器装到旧版会直接踩坑）
+- **版本号随提交自动变化**：`1.8.0.<提交数>.g<短哈希>`，`upgrade` 写入 config.env，面板不再永远显示同一个号
+- **`hy2.sh` 默认 tag 从 v1.7.3 → v1.8.0**（v1.7.3 / v1.7.4 都不含本次分流修复，新机器装旧版会直接踩坑）
+
+#### 端口跳跃（默认关闭）
+
+- 新增 `hy2 hop on|off|show|check`：服务端用 Hysteria 内置 `listen` 范围 + 自动 nft/iptables 重定向，订阅写 `ports` / `hop-interval`，直链写 `mport`。范围必须从 `HY2_PORT` 开始、跨度 ≤2000
+- `hy2 hop check` 7 项自检：防火墙工具、`CAP_NET_ADMIN`、进程监听、重定向规则、本机防火墙基准端口、残留 NAT 链，并提示云安全组需放行的 UDP 范围
+- 修复：端口跳跃开着时快速重启（间隔 <1 秒）会留下未清理的 NAT 链，下次 `iptables -N` 撞名 FATAL（`Chain already exists`），服务起不来、面板报 `traffic API Connection refused`。现在 `hy2 restart` 先停服务 → 清 `HYSTERIA-PR-*` / `hysteria_*` 残留 → 再启动（只按这两个前缀精确匹配，不动其他规则、不碰 users.json / state.json）
+- 修复：`hop on` / `hop range` 的自动回滚形同虚设 —— `apply_hysteria_client_settings` 里 restart 失败返回非零，`set -Eeuo pipefail` 就地退出，回滚判断永远执行不到。现把调用兜住并纳入回滚条件，`hop off` 同类问题一并修
+- 修复：范围只有两个端口时（如 `8443-8444`）自检 5/6 必定误报「没找到重定向规则」 —— Hysteria 在 `start == end` 时只写单端口
+- 修复：代理端口 65535 时 `hop on` 抛「结束端口必须大于开始端口」，改为明确提示先改小端口
+- 修复：只装 iptables 没装 ip6tables 的机器，开端口跳跃后 Hysteria 直接拒绝启动（监听通配地址要求两个都在）
+
+#### 依赖自检与小机器
+
+- 新增 `hy2 deps` / `hy2 deps fix`（菜单 26）：先识别发行版、架构、内存与磁盘余量，再检查**当前功能真正需要**的命令；`fix` 按 apt/dnf/yum/zypper 只补缺项，未启用功能一律不碰，小盘机跳过 firewalld/fail2ban 这类大包。安装流程装完基础包后自动核一次，<600MB 提示启用 swap，根分区 <3GB、架构不在 amd64/arm64 时告警
+- 精简基础安装清单：去掉从未被调用的 `jq`（全仓 JSON 都用 `python3 -c`），也不再预装 ufw/firewalld/fail2ban/nftables/iptables —— 小机器磁盘紧
+
+#### 面板
+
+- 修复：面板永久卡在「正在读取数据」 —— 逐行编辑改版时删了 HTML 元素但 JS 绑定区残留一行 `$("portCancel").onclick=...`，在 null 上赋值抛 TypeError，整个 `<script>` 中断，末尾的 `load()` 永远不执行。现删除死绑定，并新增静态扫描测试（所有 `$("id")` 必须存在于 HTML）
+- 修复：`load()` 失败后永久卡死 —— 加指数退避自动重试（2s/4s/8s/16s/30s，最多 5 次，成功归零）
+- 端口设置改为**逐行独立编辑**：每行（HY2 / VLESS）有自己的「编辑 / 取消 / 应用」按钮，打开弹窗两行都锁定，改哪行点哪行。应用时只有该行提交，成功 1.5 秒后回锁定态
+- 修复：面板 CPU 长期显示 0% —— 旧实现固定 120ms 采样窗口，100Hz 内核单核只有 12 jiffies，1% 负载折算 0.12 jiffies，四舍五入永远 0.0%。现改为「两次采集之间的增量」（60s 窗口 = 6000 jiffies/核，分辨率提高约 500 倍），采集间隔 <1 秒沿用上次读数
+- 面板刷新从 60 秒改为 10 秒（切后台不拉），更新时间后标「数据 N 秒前」；CPU 负载旁补核数
+- 字号整体上调：正文 13.5px → 15px、表格 13 → 14px、指标卡数值 20 → 24px。同时修掉指标卡等高问题、状态列折行问题
+- 字体自托管：Inter + JetBrains Mono（4 个 woff2 共 91KB，同源分发），各平台一致；缺失只 warn 不中断
+- 修复：访问站点表长域名被挤成竖排单字（`.dest-host` 用 `word-break:break-all` 导致 23px 列宽折 13 行），改为单行 + `ellipsis` + `max-width:240px`，点击在行下方展开详情
+- 修复：归属地查询失败被永久缓存，一次网络抖动就让国旗一直不出现（只能重启后端），现失败只记 1 小时
+- 修复：国旗只加在面板和订阅上，`hy2 show` 与 `/root/hy2-aio-access.txt` 里节点名还是旧的，现由后端落进 `data.json` 供 CLI 复用
+- 面板新增「端口」按钮：可在面板直接改 HY2 / VLESS 端口（走 cmd 文件 + path unit 以 root 执行）
+
+#### 内核与统计
+
+- 默认内核升到 Hysteria **2.14.0**（原 2.12.1）：2.12.3 修了端口跳跃规则误重定向出站 UDP 的 bug，2.14.0 带 UDP 转发性能提升（小包约 +30%）。已用真二进制验证完整配置可正常加载。想钉旧版可 `HYSTERIA_VERSION=v2.12.1`
+- `hy2 status` 显示内核版本，低于内置默认时提示 `hy2 update`（只提示不自动升级）
+- 新增 `POST /kick`：禁用 / 删除 / 轮换密钥时把该用户现有连接踢掉。Hysteria 的 userpass 只在建连时校验，原先只改 `users.json` 的话被禁用的人不断线就能一直用（**真实漏洞**）。CLI 与面板两条路径都覆盖，踢人失败不影响主操作
+- 修复：Hysteria 重启后用户流量少算 —— per-user 计数器从 0 重来，而 `counter_delta` 拿新值跟旧基线比（实测能少算 80%+）。现在用 `/proc/<pid>/stat` 的 `starttime` + PID 判断进程是否换过，换了就清零基线；拿不到标识时安全退化
+
+#### 证书与安全
+
+- Hysteria 复用 Caddy 的 Let's Encrypt 证书（原来用 openssl 自签，`CN=IP` 且 SAN 只有 IP，严格校验的客户端直接失败）；`hy2 repair` 会刷新证书
+- 修复 VIOLESS 端口被运营商 DPI 干扰：新增 `hy2 port` 命令（`show` / `hy2 <端口|范围>` / `vless <端口>`），改端口后自动重建配置并重启内核
 
 ### v1.7.3
 - 修复 v1.7.2 卸载重装后 Hysteria 起不来（`Failed at step CHDIR`）：官方安装脚本的服务单元用 `WorkingDirectory=~`（hysteria 用户家目录），v1.7.2 把用户创建提前后家目录变成 `/nonexistent`；现统一为 `/var/lib/hysteria`，安装与 repair 自动改回坏家目录并补目录，已中招机器升级即修复、无需重装
