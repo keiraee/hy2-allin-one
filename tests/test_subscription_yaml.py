@@ -46,8 +46,9 @@ class ClashGeoSiteSplitTests(unittest.TestCase):
     def test_geosite_cn_direct(self):
         self.assertIn("GEOSITE,cn,DIRECT", self.rules)
 
-    def test_geoip_cn_direct(self):
-        self.assertIn("GEOIP,CN,DIRECT", self.rules)
+    def test_no_geoip_rule(self):
+        """不用 GEOIP —— geoip.dat 6.5MB,中国网络首启拉不下来会卡死。"""
+        self.assertNotIn("GEOIP", self.rules)
 
     def test_private_networks_direct(self):
         for cidr in ("127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"):

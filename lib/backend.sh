@@ -1060,8 +1060,7 @@ mode: rule
 log-level: info
 geodata-mode: true
 geox-url:
-  geosite: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
-  geoip: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat"
+  geosite: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite-lite.dat"
 ipv6: false
 
 tun:
@@ -1128,7 +1127,6 @@ rules:
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
   - GEOSITE,cn,DIRECT
-  - GEOIP,CN,DIRECT
   - MATCH,PROXY
 """
     return content.encode("utf-8")

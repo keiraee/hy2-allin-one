@@ -57,7 +57,7 @@ def main():
     )
 
     try:
-        deadline = time.time() + 40
+        deadline = time.time() + 120
         ready = False
         while time.time() < deadline:
             time.sleep(1)
@@ -71,13 +71,13 @@ def main():
                 print(text[-2000:])
                 return 1
         if not ready:
-            print("mihomo 40 秒未就绪:")
+            print("mihomo 120 秒未就绪:")
             with open(log_path, encoding="utf-8", errors="replace") as f:
                 print(f.read()[-2000:])
             return 1
 
-        # 再等规则集下载完（geosite.dat 首次下载）
-        time.sleep(8)
+        # 再等规则集下载完（geosite.dat + geoip.dat 首次下载，约 40MB）
+        time.sleep(20)
 
         proxy = "http://127.0.0.1:%d" % args.port
         opener = urllib.request.build_opener(

@@ -64,9 +64,26 @@ class DomesticCoverageSourceTests(unittest.TestCase):
         """Clash 的 rules 必须含 GEOSITE,cn(不是只靠手写域名)。"""
         self.assertIn("GEOSITE,cn,DIRECT", self.src)
 
-    def test_clash_uses_geoip_rule(self):
-        """GEOIP,CN 是第二道保险:域名没覆盖时按 IP 判断。"""
-        self.assertIn("GEOIP,CN,DIRECT", self.src)
+    def test_no_geoip_rule(self):
+        """不用 GEOIP,CN —— 会触发 6.5MB geoip.dat 下载,中国网络首启必卡。
+
+        实测(2026-11-21):geoip.dat 6.5MB,jsdelivr 在国内 30 秒只拉到
+        620KB,mihomo 卡在 "Can't find GeoIP.dat, start download" 起不来。
+        GEOSITE,cn 11 万条已足够覆盖,不需要 IP 兜底。
+        """
+        rules_start = self.src.index("rules:")
+        rules_end = self.src.index("MATCH,PROXY", rules_start)
+        self.assertNotIn("GEOIP", self.src[rules_start:rules_end])
+
+    def test_geosite_dat_is_lite(self):
+        """geosite 用 lite 版(176KB,CN 分类仍 110177 条),不用全量 4.3MB。
+
+        lite 版实测:10 秒内下完,CN 分类记录数与全量版一致。
+        """
+        self.assertIn("geosite-lite.dat", self.src)
+        seg = self.src[self.src.index("geox-url:"): self.src.index("dns:")]
+        self.assertNotIn("geoip:", seg)
+        self.assertNotIn(chr(103)+chr(101)+chr(111)+chr(115)+chr(105)+chr(116)+chr(101)+chr(46)+chr(100)+chr(97)+chr(116), seg)
 
     def test_singbox_uses_geosite_cn_ruleset(self):
         """sing-box 必须引用 geosite cn 规则集。"""
