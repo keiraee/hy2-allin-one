@@ -478,12 +478,23 @@ class ClashDnsSplitTests(unittest.TestCase):
         cls.dns = src[i : src.index("proxies:", i)]
 
     def test_default_nameservers_are_domestic(self):
-        """默认 nameserver 必须是国内 DNS(阿里/腾讯)。"""
-        self.assertIn("223.5.5.5", self.dns)
-        self.assertIn("119.29.29.29", self.dns)
-        # 默认列表里不能是纯国外 DNS(1.1.1.1 只允许出现在 policy 里)
+        """默认 nameserver 必须是国内 DoH(腾讯 doh.pub / 阿里 alidns)。"""
         ns_block = self.dns[self.dns.index("nameserver:"):self.dns.index("nameserver-policy")]
+        self.assertIn("doh.pub", ns_block)
+        self.assertIn("alidns", ns_block)
         self.assertNotIn("1.1.1.1", ns_block, "默认 nameserver 不能用国外 DNS")
+        # 引导解析器也要有国内明文 DNS(fake-ip 起动时 DoH 域名需要先解析)
+        self.assertIn("default-nameserver", self.dns)
+        self.assertIn("223.5.5.5", self.dns)
+
+    def test_yaml_has_no_comments(self):
+        """订阅是给用户直接用的配置文件,里面不写解释性注释。"""
+        for ln in self.dns.splitlines():
+            self.assertFalse(ln.strip().startswith("#"), "订阅 YAML 里不应有注释: " + ln)
+
+    def test_direct_nameserver_present(self):
+        """直连域名用系统 DNS,避免国内站点被 DoH 绕远。"""
+        self.assertIn("direct-nameserver", self.dns)
 
     def test_blocked_domains_use_foreign_doh(self):
         """被墙域名走国外 DoH(否则污染 IP 走代理连不上)。"""
