@@ -63,3 +63,34 @@ class VersionTrackingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VersionTrackSemanticsTests(unittest.TestCase):
+    """三条轨道的版本语义(小k 质疑后推演清楚,写死防回归)。
+
+    main 轨道:  modules=tarball 无 .git → core.sh git 探测失效 →
+                AIO_VERSION=纯基础号 → repair 拼 FETCH_COMMIT →
+                main 每推一版,upgrade 后版本就变。
+    release 轨道: tag tarball 里 SCRIPT_VERSION 已 bump → 同走 FETCH_COMMIT
+                → 1.8.0.<taghash>。
+    开发机:      git checkout → AIO_VERSION 已带构建号 → 原样保留,
+                不被 FETCH_COMMIT 二次拼接。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.backup = BACKUP.read_text(encoding="utf-8")
+
+    def test_tarball_mode_appends_fetch_commit(self):
+        """纯基础号 + 有 FETCH_COMMIT → 拼上提交哈希(main/release 轨道)。"""
+        self.assertIn('[ "$full_version" = "$SCRIPT_VERSION" ]', self.backup)
+        self.assertIn('$SCRIPT_VERSION.${HY2_FETCH_COMMIT:0:7}', self.backup)
+
+    def test_dev_checkout_keeps_build_version(self):
+        """git checkout 的 AIO_VERSION(带 .N.gHASH)不被二次拼接。"""
+        # 判据是 full_version==SCRIPT_VERSION 才拼,带构建号时必然不等 → 保留
+        self.assertIn('local full_version="${AIO_VERSION:-$SCRIPT_VERSION}"', self.backup)
+
+    def test_never_writes_bare_base_version(self):
+        """任何情况下都不能把纯基础号写进 config.env(那正是"固定"的根因)。"""
+        self.assertNotIn('"$ENV_FILE" "$SCRIPT_VERSION"', self.backup)
