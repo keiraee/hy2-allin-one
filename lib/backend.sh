@@ -821,8 +821,13 @@ def subscription_singbox(
         "password": f"{username}:{password}",   # userpass 组合，不是裸密码
         "tls": {
             "enabled": True,
-            "server_name": reality_server_name(env),
-            "insecure": True,
+            # SNI 用订阅证书域名(与 Clash/直链一致),不能用 REALITY 的伪装
+            # 域名 —— Hysteria 的证书是 Let's Encrypt 签给 DOMAIN 的,SNI
+            # 必须对上才能严格校验。之前这里硬编码 insecure=True 且 SNI 用
+            # REALITY 伪装域名,既削弱安全(v2rayNG 26.2.6+ 直接拒绝连接:
+            # "未加密连接,请启用 TLS 或固定证书")又与证书不匹配。
+            "server_name": subscription_sni(env),
+            "insecure": bool(client_insecure(env)),
         },
     }
     hop_ports = port_hop_ports(env)

@@ -602,3 +602,45 @@ class SingboxChinaSplitTests(unittest.TestCase):
     def test_final_still_proxy(self):
         """被墙流量仍走代理 —— 直连规则只放行国内。"""
         self.assertIn('"final": "proxy"', self.fn)
+
+
+class SingboxHy2TlsTests(unittest.TestCase):
+    """sing-box 订阅的 Hysteria2 TLS 必须走订阅证书体系,不允许硬编码 insecure。
+
+    真机 bug:v2rayNG(安卓)26.2.6+ 弹窗拒绝连接:
+      "当前节点使用未加密连接…此类节点无法使用 26.2.6+ 版本的
+       Xray 核心连接。如为自建节点,请启用 TLS 等安全加密。"
+    原因:sing-box hy2 节点 tls 硬编码 insecure=True,且 SNI 用的是
+    REALITY 伪装域名(www.cloudflare.com)—— 与 Hysteria 实际证书
+    (Let's Encrypt 签给 DOMAIN)不匹配。Clash 和直链早就是
+    subscription_sni + client_insecure 判定,唯独 sing-box 漏改。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        src = BACKEND.read_text(encoding="utf-8")
+        i = src.index('def subscription_singbox(')
+        j = src.index("\ndef subscription_body", i)
+        cls.fn = src[i:j]
+
+    def test_sni_uses_subscription_sni(self):
+        """SNI 必须是订阅证书域名,不是 REALITY 伪装域名。"""
+        # hy2 节点段里的 server_name
+        seg = self.fn[self.fn.index('"type": "hysteria2"'):]
+        seg = seg[:seg.index('"type": "vless"')] if '"type": "vless"' in seg else seg
+        self.assertIn('"server_name": subscription_sni(env)', seg)
+        self.assertNotIn(
+            '"server_name": reality_server_name(env)',
+            seg,
+            "hy2 节点的 SNI 不能用 REALITY 伪装域名",
+        )
+
+    def test_insecure_follows_client_insecure(self):
+        """insecure 由 client_insecure 判定(有可信证书=False),禁止硬编码。"""
+        self.assertIn('"insecure": bool(client_insecure(env))', self.fn)
+        self.assertNotIn('"insecure": True', self.fn)
+
+    def test_vless_still_uses_reality_sni(self):
+        """VLESS+Reality 节点保留 REALITY 的 SNI(那是 Reality 协议的一部分)。"""
+        seg = self.fn[self.fn.index('"type": "vless"'):]
+        self.assertIn('"server_name": reality_server_name(env)', seg)
