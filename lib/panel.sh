@@ -1951,14 +1951,15 @@ async function openQr(username, kind){
   if(kind === "subscription-singbox"){
     qrPayload = "sing-box://import-remote-profile?url=" + encodeURIComponent(url)
               + "#" + encodeURIComponent(displayName);
-  }else if(kind === "subscription"){
-    // Clash 系：注意名字是查询参数，不能用 # —— 那边只读 &name=
-    // CMA 的 ExternalControlActivity 还认 type / update-interval：
-    //   update-interval 单位是分钟，且 coerceAtLeast(15) —— 小于 15 会被抬到 15。
-    // 带上它，导入后客户端会自动按这个周期刷新订阅，不用手点。
-    qrPayload = "clash://install-config?url=" + encodeURIComponent(url)
-              + "&name=" + encodeURIComponent(displayName)
-              + "&type=url&update-interval=1440";
+}else if(kind === "subscription"){
+    // Clash 系二维码编码【裸订阅 URL】,不编深链。
+    // 实测(CMA 内置扫一扫,2026-11-21):CMA 自己的扫码器把二维码内容
+    // 直接填进「配置→URL」字段,该字段只认 http(s):// —— 深链
+    // clash://install-config?... 会报「Unsupported url」。
+    // clash:// 深链是给【浏览器】呼起 CMA 用的(ExternalControlActivity
+    // 走 ACTION_VIEW intent),CMA 内置扫码不走那条路径。
+    // 名字在客户端里默认按域名/末段生成,可手动改,不影响连接。
+    qrPayload = url;
   }
   $("qrHint").textContent = username + " · " + label;
   $("qrUrlText").textContent = url;

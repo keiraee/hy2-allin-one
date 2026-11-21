@@ -274,15 +274,16 @@ class SingboxDeeplinkTests(unittest.TestCase):
 
 
 
-class ClashDeeplinkTests(unittest.TestCase):
-    """Clash 系的深链格式和 sing-box 完全不同。
+class ClashQrBareUrlTests(unittest.TestCase):
+    """Clash 二维码编码裸订阅 URL,不编 clash:// 深链。
 
-    源码核对（clash-verge-rev src-tauri/src/utils/resolve/scheme.rs）：
-      scheme 必须是 "clash" 或 "clash-verge"
-      名字走查询参数 &name=，不是 #fragment
+    实测(CMA 内置扫一扫,2026-11-21):CMA 自己的扫码器把二维码内容
+    直接填进「配置→URL」字段,该字段只认 http(s):// —— 深链
+    clash://install-config?... 会报「Unsupported url clash://...」。
 
-    所以不能一套格式通用 —— 之前只做了 sing-box 的 #fragment 写法，
-    Clash 扫码后名字自然是空的。
+    clash:// 深链只适合【浏览器】呼起 CMA(ExternalControlActivity
+    走 ACTION_VIEW intent),CMA 内置扫码不走那条路径。
+    历史:第一版把深链编进二维码,真机扫码必报错,故翻转。
     """
 
     @classmethod
@@ -291,24 +292,33 @@ class ClashDeeplinkTests(unittest.TestCase):
         body = cls.js[cls.js.index("async function openQr("):]
         cls.body = body[: body.index(chr(10) + "}" + chr(10))]
 
-    def test_clash_uses_install_config_scheme(self):
-        code = [l for l in self.body.splitlines() if not l.lstrip().startswith("//")]
-        self.assertTrue(
-            any("clash://install-config?url=" in l for l in code),
-            "代码里（非注释）必须有 clash:// 深链",
-        )
+    def _clash_branch(self):
+        i = self.body.index('}else if(kind === "subscription"){')
+        # 分支以两空格缩进的 } 结束(不是行首 }),用 qrPayload 行兜底定位
+        j = self.body.index("qrPayload = url;", i)
+        return self.body[i : self.body.index(chr(10), j)]
 
-    def test_clash_name_is_query_param(self):
-        """Clash 读 &name=；写成 #fragment 会被忽略。"""
-        self.assertIn("&name=" + chr(34) + " + encodeURIComponent(displayName)", self.body)
+    def test_clash_qr_is_bare_url(self):
+        seg = self._clash_branch()
+        code = [l for l in seg.splitlines() if not l.lstrip().startswith("//")]
+        joined = chr(10).join(code)
+        self.assertNotIn("clash://", joined, "Clash 二维码不能再编深链")
+        self.assertIn("qrPayload = url", joined)
 
-    def test_singbox_keeps_fragment_form(self):
-        """sing-box 反过来：名字在 #fragment 里。"""
-        self.assertIn("sing-box://import-remote-profile?url=", self.body)
-        self.assertIn("#" + chr(34) + " + encodeURIComponent(displayName)", self.body)
+    def test_no_deeplink_in_active_code(self):
+        """可执行代码里不能有 clash://install-config(只能留在注释)。"""
+        for l in self.body.splitlines():
+            if l.lstrip().startswith("//"):
+                continue
+            self.assertNotIn("clash://install-config", l)
+
+    def test_singbox_keeps_deeplink(self):
+        """sing-box 的深链保留 —— 它的客户端扫码器认 deep link。"""
+        i = self.body.index('if(kind === "subscription-singbox"){')
+        seg = self.body[i : self.body.index(chr(10) + "}", i)]
+        self.assertIn("sing-box://import-remote-profile?url=", seg)
 
     def test_v2ray_stays_bare_url(self):
-        """v2ray 系没有这类深链，扫裸 URL，名字由客户端自己生成。"""
         self.assertIn("qrPayload = url", self.body)
         self.assertNotIn("v2ray://", self.body)
 
@@ -317,44 +327,6 @@ class ClashDeeplinkTests(unittest.TestCase):
         self.assertIn(chr(34) + "subscription" + chr(34), self.body)
 
 
-
-class CmaDeepLinkTests(unittest.TestCase):
-    """ClashMetaForAndroid 的深链参数（扒 app/src/main 源码确认）。
-
-    AndroidManifest.xml 的 intent-filter：
-        <data android:scheme="clash"/><data android:scheme="clashmeta"/>
-        <data android:host="install-config"/>
-
-    ExternalControlActivity.kt 里读的参数：
-        url            （必填，没有就 finish）
-        name           （缺省用 R.string.new_profile）
-        type           （url / file，缺省 Url）
-        update-interval（分钟，coerceAtLeast(15)）
-
-    注意 update-interval 小于 15 会被抬到 15 —— 传 1 不会"更勤快"。
-    """
-
-    @classmethod
-    def setUpClass(cls):
-        js = js_block()
-        body = js[js.index("async function openQr("):]
-        cls.body = body[: body.index(chr(10) + "}" + chr(10))]
-
-    def test_scheme_matches_cma_manifest(self):
-        self.assertIn("clash://install-config", self.body)
-
-    def test_name_param_present(self):
-        self.assertIn("&name=", self.body)
-
-    def test_type_param_is_url(self):
-        self.assertIn("&type=url", self.body)
-
-    def test_update_interval_at_least_15_minutes(self):
-        """CMA 会 coerceAtLeast(15)，所以传的值不该小于 15。"""
-        import re
-        m = re.search(r"update-interval=(\d+)", self.body)
-        self.assertIsNotNone(m, "深链里没有 update-interval")
-        self.assertGreaterEqual(int(m.group(1)), 15)
 
 if __name__ == "__main__":
     unittest.main()
