@@ -1122,6 +1122,7 @@ proxy-groups:
 
 rules:
   - DOMAIN-SUFFIX,lan,DIRECT
+  - DOMAIN-SUFFIX,jinritemai.com,DIRECT
   - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve

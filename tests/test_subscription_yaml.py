@@ -60,10 +60,20 @@ class ClashGeoSiteSplitTests(unittest.TestCase):
     def test_match_last(self):
         self.assertTrue(self.rules.rstrip().endswith("MATCH,PROXY"))
 
-    def test_no_handwritten_domain_list(self):
-        """不再手写国内域名 —— 打地鼠式补规则已废弃。"""
-        for dom in ("jinritemai", "douyin.com", "bytedance.com", "amemv.com"):
-            self.assertNotIn("DOMAIN-SUFFIX,%s" % dom, self.rules)
+    def test_minimal_handwritten_supplement(self):
+        """手写域名规则只补 geosite 的缺口,不铺开清单。
+
+        geosite-lite.dat 实测缺 jinritemai.com(抖店)——
+        由 tools/verify-domestic-routing.py 自动发现。
+        主力是 GEOSITE,cn(11 万条),手写只做 gap fill(≤3 条)。
+        """
+        handwritten = [
+            ln for ln in self.rules.splitlines()
+            if "DOMAIN-SUFFIX," in ln and ",lan," not in ln
+        ]
+        self.assertLessEqual(len(handwritten), 3,
+                             "手写域名规则应 ≤3 条,当前 %d" % len(handwritten))
+        self.assertIn("GEOSITE,cn,DIRECT", self.rules)
 
     def test_no_rule_providers(self):
         """geosite 内置数据替代远程 rule-providers。"""
