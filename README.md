@@ -1,40 +1,60 @@
-# HY2 AIO v1.7.3
+# HY2 AIO v1.8.0
 
 一键部署 Hysteria 2 + VLESS+Reality + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
 **稳定版**见 [Releases](https://github.com/keiraee/hy2-allin-one/releases)（含版本说明与变更记录）。  
 想先试用仓库 `main` 上还没发版的功能，见下方 [试用 main 开发版](#试用-main-开发版)。
 
-## 快速开始
+## 快速开始（新机器安装）
+
+当前版本：**v1.8.0**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.0/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
-按中文提示一步步回车即可（公网 IP → 端口 → 面板端口 → 用户数 → 流量单位+数值 → 域名/伪装）。  
-一路回车使用推荐默认值（流量默认 1 TB）；套餐流量可选 **MB / GB / TB / 无限流量**，选好单位再填数值。高级用户也可用环境变量无人值守安装（见下方）。
+按中文提示回车即可（公网 IP → 代理端口 → 面板端口 → 用户数 → 流量单位+数值 → 域名/伪装）。一路回车用推荐默认值（流量默认 1 TB，可选 MB / GB / TB / 无限）。
+
+安装完看这两条：
+
+```bash
+hy2 panel     # 面板地址与登录账号
+hy2 show      # 订阅链接 / 节点信息
+```
 
 ## 已安装 · 升级
 
-`upgrade` 会比 **版本号和提交哈希**。正式版 tag（例如 `v1.6.0`）原地更新后，版本号不变也会继续拉新模块。日志里 **上次哈希 / 本次哈希** 对得上才跳过。
-
-跟 GitHub 最新正式版（Release）：
+**只要一条命令**（`upgrade` 更新模块和配置，`restart` 让内核真正生效 —— 两个必须成对）：
 
 ```bash
-hy2 upgrade && hy2 restart
+sudo hy2 upgrade && sudo hy2 restart
 ```
 
-需 root：已是 root 直接执行；有 sudo：`sudo hy2 upgrade && sudo hy2 restart`。
+升级前会自动打回滚快照（`/var/lib/hy2-aio-rollbacks/`，保留最新 10 份）。日志里看 **上次哈希 / 本次哈希** 是否不同 —— 不同才说明模块真的换了。
 
-已经装过同一版本、但 tag 后来又补了提交：新入口会对比哈希并继续升级。若本机 `hy2` 仍提示「无需升级」且本次哈希显示「未下载」，用仓库里的新引导脚本跑一次：
+升级后**客户端要重新导入订阅**（分流规则、节点 TLS 参数都可能变）：
+
+- Clash / ClashMetaForAndroid：配置 → 更新订阅
+- sing-box：更新订阅
+- v2rayNG：更新订阅（分流需在 App 内选「绕过大陆」预设）
+
+### 想跟仓库最新提交（main 开发版）
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.7.3/hy2.sh?nocache=$(date +%s)" -o hy2.sh
-sudo bash hy2.sh upgrade && hy2 restart
+sudo HY2_REPO_REF=main hy2 upgrade && sudo hy2 restart
 ```
 
-`upgrade` / `repair` 会打回滚快照、更新模块与配置、写入 Hysteria 配置（含 QUIC 保活）；**默认不重启 Hysteria**，所以要和 `hy2 restart` 写在同一行。也可以用 `hy2 obfs on|off`（会重启 Hysteria）。
+`HY2_REPO_REF=main` 会写进 `config.env` 的 `HY2_TRACK_REF`，之后普通 `hy2 upgrade` 就一直跟 main，不会被后续正式版 tag 带跑。
+
+### 已装机器还是老版本、升不上去
+
+如果 `hy2 upgrade` 一直显示「已是 vX.Y.Z，提交未变化」，说明它钉在旧 tag 轨道上。用新引导脚本强制切轨道：
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.0/hy2.sh?nocache=$(date +%s)" -o hy2.sh
+sudo HY2_REPO_REF=main bash hy2.sh upgrade && sudo hy2 restart
+```
 
 ## 试用 main 开发版
 
@@ -149,7 +169,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.7.3` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.8.0` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `COUNTRY_CODE` | 节点名国旗（ISO 码如 `SG`）；留空=按服务器 IP 自动识别 | 自动识别 |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
@@ -220,6 +240,21 @@ hy2-allin-one/
 - 面板字体改为自托管：Inter（界面文字）+ JetBrains Mono（数字/端口/用户名），四个 woff2 共约 91KB，随面板域名同源分发。原本 `--font` 里的 `Inter` 从未被加载过，Windows 上是 Segoe UI、Mac 上是 SF Pro、Linux 上又各不相同；现在各平台一致。只装 latin 子集（CJK 字库动辄几 MB），中文按 `PingFang SC → Microsoft YaHei → Noto Sans CJK SC` 回退到系统字体，不会出现豆腐块。字体缺失只 warn 不中断安装，自动退回系统字体
 - 修复：归属地查询失败被永久缓存，一次网络抖动就让国旗一直不出现（只能重启后端恢复）；现失败结果只记 1 小时
 - 修复：国旗只加在面板和订阅上，`hy2 show` 与 `/root/hy2-aio-access.txt` 里的节点名还是旧的，同一节点显示两个名字；归属地现由后端落进 `data.json` 供 CLI 复用
+
+### v1.8.0
+
+分流产线重构。核心变化：**国内流量不再靠手写域名清单，改用 geosite 内置数据 + 自动化验收**。
+
+- **Clash 国内分流改用 `GEOSITE,cn`**（11 万条记录，MetaCubeX 维护、持续更新）替代原 blackmatrix7 远程规则集。上游清单实测漏 `jinritemai.com`（抖店商家端），导致抖店被 `MATCH` 兜底抓到日本代理、用户体感明显变慢。现以 geosite 为主力，仅对 geosite 缺口补手写规则（当前唯一一条：`jinritemai.com`）
+- **geosite 用 lite 版**（`geosite-lite.dat`，176KB，CN 分类记录数与全量 4.3MB 版一致）。全量 `geoip.dat` 有 6.5MB，国内网络 30 秒只能拉 620KB，mihomo 会卡在 `Can't find GeoIP.dat` 起不来 —— 已移除 `GEOIP,CN` 规则，只依赖 geosite
+- **geox-url 走 jsdelivr 镜像**：`raw.githubusercontent.com` 在国内拉不动
+- **Clash DNS 改国内优先**：`nameserver` 用 doh.pub / alidns，`nameserver-policy` 里 `geosite:cn` 走国内 DoH，`direct-nameserver: system`。原配置只有 1.1.1.1/8.8.8.8（全境外），fake-ip 模式下国内 CDN 被解析到境外节点，即便规则直连也在绕远
+- **sing-box 补国内分流**：新增 `geosite-cn` + `geoip-cn` rule-set（jsdelivr 镜像），rules 顺序 `sniff → hijack-dns → 私有网段直连 → 国内直连 → 其余走代理`。修复 iOS sing-box 导入后微信发不出图片（图片走国内 CDN 通道被 tun 全量代理，文本走长连接所以正常 —— sing-box issue #2492 的已知问题）
+- **sing-box 的 Hysteria TLS 不再硬编码 `insecure: true`**：SNI 改用订阅证书域名（`DOMAIN`），`insecure` 按 `CLIENT_INSECURE` 判定。v2rayNG 26.2.6+ 会拒绝「未加密连接」的节点，原配置一升级就弹窗
+- **新增自动化验收工具** `tools/verify-domestic-routing.py`：起真 mihomo，逐个访问 22 个关键国内域名（抖店/微信/百度/淘宝/B站/知乎/京东/12306/QQ/阿里/腾讯/头条/西瓜/飞书…），解析命中规则，非 `DIRECT` 即 FAIL。清单在 `tests/test_domestic_coverage.py`，新增域名加一行即可
+- **订阅里不再写解释性注释**：给用户的 YAML 是纯配置
+- **版本号随提交自动变化**：`1.8.0.<提交数>.g<短哈希>`；`upgrade` 写入 config.env，面板不再永远显示同一个号
+- **`hy2.sh` 默认 tag 从 v1.7.3 → v1.8.0**（v1.7.3/v1.7.4 都不含本次分流修复，新机器装到旧版会直接踩坑）
 
 ### v1.7.3
 - 修复 v1.7.2 卸载重装后 Hysteria 起不来（`Failed at step CHDIR`）：官方安装脚本的服务单元用 `WorkingDirectory=~`（hysteria 用户家目录），v1.7.2 把用户创建提前后家目录变成 `/nonexistent`；现统一为 `/var/lib/hysteria`，安装与 repair 自动改回坏家目录并补目录，已中招机器升级即修复、无需重装
