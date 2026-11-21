@@ -721,14 +721,16 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
     </div>
     <div class="stack">
       <label class="hint">HY2 UDP 端口（可填范围开启端口跳跃，如 8443-9443）</label>
-      <input id="portHy2" class="input" type="text" placeholder="8443 或 8443-9443" autocomplete="off">
+      <input id="portHy2" class="input" type="text" placeholder="8443 或 8443-9443" autocomplete="off" disabled>
       <label class="hint">VLESS TCP 端口（被运营商干扰时换个冷门口，如 2083）</label>
-      <input id="portVless" class="input" type="text" placeholder="2083" autocomplete="off">
+      <input id="portVless" class="input" type="text" placeholder="2083" autocomplete="off" disabled>
       <p id="portMsg" class="hint" hidden></p>
+      <p class="hint" id="portLockHint">输入框已锁定 —— 防止误触改动。点「编辑」才能修改。</p>
     </div>
     <div class="modal-actions">
-      <button id="portCancel" class="btn" type="button">取消</button>
-      <button id="portSave" class="btn primary" type="button">应用</button>
+      <button id="portEdit" class="btn primary" type="button">编辑</button>
+      <button id="portCancel" class="btn" type="button" hidden>取消</button>
+      <button id="portSave" class="btn primary" type="button" hidden>应用</button>
     </div>
   </div>
 </div>
@@ -1819,6 +1821,26 @@ let qrCurrentUrl = "";
 // 记住打开弹窗时的原值，用于判断用户实际改了哪个 —— 只提交改动过的，
 // 避免「只想改 VLESS 却把 HY2 也一起提交」。
 let portOriginal={hy2:"",vless:""};
+// 防误触：打开弹窗默认是锁定态（输入框 disabled），点「编辑」才解锁。
+// 应用成功后自动回到锁定态。
+function setPortEditing(on){
+  $("portHy2").disabled=!on;
+  $("portVless").disabled=!on;
+  $("portEdit").hidden=on;
+  $("portCancel").hidden=!on;
+  $("portSave").hidden=!on;
+  $("portLockHint").hidden=on;
+  if(on){
+    setTimeout(()=>$("portHy2").focus(),50);
+  }else{
+    // 回到锁定态：还原成当前真实值，清掉提示
+    const p=(window.__lastData||{}).server&&window.__lastData.server.ports||{};
+    $("portHy2").value=p.hy2||"";
+    $("portVless").value=p.vless||"";
+    portOriginal={hy2:(p.hy2||"").trim(),vless:(p.vless||"").trim()};
+    const msg=$("portMsg"); msg.hidden=true; msg.textContent="";
+  }
+}
 function setPortModal(open){
   $("portModal").classList.toggle("open",open);
   if(open){
@@ -1828,7 +1850,7 @@ function setPortModal(open){
     portOriginal={hy2:(p.hy2||"").trim(),vless:(p.vless||"").trim()};
     const msg=$("portMsg"); msg.hidden=true; msg.textContent="";
     $("portSave").disabled=false;
-    setTimeout(()=>$("portHy2").focus(),50);
+    setPortEditing(false);   // 每次打开都从锁定态开始
   }
 }
 async function applyPorts(){
@@ -1854,7 +1876,10 @@ async function applyPorts(){
     msg.textContent="已应用（"+targets.join("、")+"）。请在客户端重新导入订阅。";
     toast("端口已更新："+targets.join("、"));
     await load();
-    setTimeout(()=>setPortModal(false),1500);
+    // 应用成功 → 重新记原值，1.5s 后回锁定态（不关弹窗，用户能看到结果）
+    const p=(window.__lastData||{}).server&&window.__lastData.server.ports||{};
+    portOriginal={hy2:(p.hy2||"").trim(),vless:(p.vless||"").trim()};
+    setTimeout(()=>setPortEditing(false),1500);
   }catch(error){
     msg.textContent="失败："+error.message+"（可以看 hy2 logs 里的后端日志）";
     $("portSave").disabled=false;
@@ -2308,6 +2333,8 @@ $("portBtn").onclick=()=>setPortModal(true);
 $("portClose").onclick=()=>setPortModal(false);
 $("portCancel").onclick=()=>setPortModal(false);
 $("portSave").onclick=applyPorts;
+$("portEdit").onclick=function(){ setPortEditing(true); };
+$("portCancel").onclick=function(){ setPortEditing(false); };
 $("portModal").onclick=function(event){ if(event.target===this)setPortModal(false); };
 $("drawerClose").onclick=()=>setDrawer(false);
 $("scrim").onclick=()=>setDrawer(false);

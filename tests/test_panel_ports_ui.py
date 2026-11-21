@@ -38,5 +38,50 @@ class PortsModalTests(unittest.TestCase):
         self.assertIn("targets.join", self.body)
 
 
+
+
+class PortLockTests(unittest.TestCase):
+    """端口弹窗默认锁定,点「编辑」才能改 —— 防误触。
+
+    小k:加一个编辑按钮,不想误触改动,点击编辑那个输入框才是可编辑状态。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.src = PANEL.read_text(encoding="utf-8")
+
+    def test_inputs_default_disabled(self):
+        """两个输入框初始必须是 disabled。"""
+        for input_id in ("portHy2", "portVless"):
+            tag = next(
+                (l2 for l2 in self.src.splitlines() if ('id="%s"' % input_id) in l2),
+                None,
+            )
+            self.assertIsNotNone(tag, "找不到 %s 的输入框" % input_id)
+            self.assertIn("disabled", tag, "%s 没有默认 disabled" % input_id)
+
+    def test_edit_button_exists(self):
+        self.assertIn('id="portEdit"', self.src)
+
+    def test_edit_unlocks_and_save_hidden_until_edit(self):
+        """保存/取消按钮在锁定态隐藏，编辑态显示。"""
+        self.assertIn("setPortEditing(true)", self.src)
+        # setPortEditing 里必须同时切六个元素的状态
+        i = self.src.index("function setPortEditing(on)")
+        body = self.src[i : self.src.index(chr(10) + "}", i)]
+        for sel in ("portHy2", "portVless", "portEdit", "portCancel", "portSave", "portLockHint"):
+            self.assertIn(sel, body, "setPortEditing 没处理 %s" % sel)
+
+    def test_modal_opens_locked(self):
+        """每次打开弹窗都从锁定态开始(防止上次的编辑态残留)。"""
+        self.assertIn("setPortEditing(false);", self.src)
+
+    def test_cancel_returns_to_locked(self):
+        self.assertIn('$("portCancel").onclick=function(){ setPortEditing(false); }', self.src)
+
+    def test_apply_success_returns_to_locked(self):
+        """应用成功后 1.5s 自动回锁定态。"""
+        self.assertIn("setTimeout(()=>setPortEditing(false),1500)", self.src)
+
 if __name__ == "__main__":
     unittest.main()
