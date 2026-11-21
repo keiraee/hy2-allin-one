@@ -1076,7 +1076,21 @@ dns:
   enable: true
   ipv6: false
   enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.1/16
+  # 默认走国内 DNS:抖音/抖店等国内 CDN 按解析者位置调度,
+  # 全部用国外 DNS(1.1.1.1/8.8.8.8)会把国内域名解析到国外/异常节点,
+  # 直连也绕远 —— 真机现象:电脑版 Clash 规则/全局模式下抖音店铺变慢。
   nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  # 被墙域名用国外 DoH 解析(拿到真实 IP 再走代理,避免污染 IP 直连失败)。
+  # geosite:geolocation-!cn 是 mihomo 内置数据,CMA/Clash Verge/FlClash 都认。
+  nameserver-policy:
+    "geosite:geolocation-!cn":
+      - https://1.1.1.1/dns-query
+      - https://8.8.8.8/dns-query
+  # 解析代理服务器自身域名(自定义节点可能用域名)走国外 DoH,不依赖国内 DNS
+  proxy-server-nameserver:
     - https://1.1.1.1/dns-query
     - https://8.8.8.8/dns-query
 

@@ -460,3 +460,44 @@ class AccessFileFlagTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ClashDnsSplitTests(unittest.TestCase):
+    """Clash DNS 必须国内优先 —— 否则国内 CDN 被解析到国外节点。
+
+    真机现象(小k,2026-11-21):电脑版 Clash 走规则或全局模式,
+    抖音店铺都变慢。根因不是分流规则(rules 是对的),而是 DNS:
+    fake-ip 模式下所有域名用 1.1.1.1/8.8.8.8(全国外)解析,
+    抖音 CDN 按解析者位置调度 → 拿到国外/异常节点 → 国内直连绕远。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        src = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        i = src.index("dns:\n  enable: true")
+        cls.dns = src[i : src.index("proxies:", i)]
+
+    def test_default_nameservers_are_domestic(self):
+        """默认 nameserver 必须是国内 DNS(阿里/腾讯)。"""
+        self.assertIn("223.5.5.5", self.dns)
+        self.assertIn("119.29.29.29", self.dns)
+        # 默认列表里不能是纯国外 DNS(1.1.1.1 只允许出现在 policy 里)
+        ns_block = self.dns[self.dns.index("nameserver:"):self.dns.index("nameserver-policy")]
+        self.assertNotIn("1.1.1.1", ns_block, "默认 nameserver 不能用国外 DNS")
+
+    def test_blocked_domains_use_foreign_doh(self):
+        """被墙域名走国外 DoH(否则污染 IP 走代理连不上)。"""
+        self.assertIn("nameserver-policy", self.dns)
+        self.assertIn("geosite:geolocation-!cn", self.dns)
+        policy = self.dns[self.dns.index("nameserver-policy"):]
+        self.assertIn("https://1.1.1.1/dns-query", policy)
+
+    def test_proxy_server_domain_resolution(self):
+        """自定义节点域名解析走国外 DoH。"""
+        self.assertIn("proxy-server-nameserver", self.dns)
+
+    def test_fake_ip_range_explicit(self):
+        self.assertIn("fake-ip-range", self.dns)
+
+    def test_ipv6_still_disabled(self):
+        self.assertIn("ipv6: false", self.dns)
