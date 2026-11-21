@@ -84,9 +84,11 @@ class SubscriptionYamlTests(unittest.TestCase):
         )
         self.assertIn("china-ip:", text)
         self.assertIn("behavior: ipcidr", text)
-        self.assertIn("format: mrs", text)
+        # china-ip 用 blackmatrix7 的 yaml 版 —— mrs 与 behavior:ipcidr
+        # 在 mihomo 1.19 上冲突:fatal "rule provider type error"(真机实测)
+        self.assertIn("format: yaml", text)
         self.assertIn(
-            "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geoip/cn.mrs",
+            "https://testingcf.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Clash/China/China_IP.yaml",
             text,
         )
         self.assertIn("- RULE-SET,china-domain,DIRECT", text)
@@ -496,12 +498,16 @@ class ClashDnsSplitTests(unittest.TestCase):
         """直连域名用系统 DNS,避免国内站点被 DoH 绕远。"""
         self.assertIn("direct-nameserver", self.dns)
 
-    def test_blocked_domains_use_foreign_doh(self):
-        """被墙域名走国外 DoH(否则污染 IP 走代理连不上)。"""
+    def test_policy_only_for_domestic(self):
+        """policy 只做国内域名 → 国内 DoH。
+
+        不用 geosite:geolocation-!cn —— 实测中国网络下需要下载
+        geosite.dat,fatal "can't download GeoSite.dat"(GitHub 被墙)。
+        被墙域名的解析交给 proxies 端(远程解析),不影响连接。
+        """
         self.assertIn("nameserver-policy", self.dns)
-        self.assertIn("geosite:geolocation-!cn", self.dns)
-        policy = self.dns[self.dns.index("nameserver-policy"):]
-        self.assertIn("https://1.1.1.1/dns-query", policy)
+        self.assertIn('"rule-set:china-domain":', self.dns)
+        self.assertNotIn("geosite:geolocation-!cn", self.dns)
 
     def test_proxy_server_domain_resolution(self):
         """自定义节点域名解析走国外 DoH。"""
@@ -512,3 +518,122 @@ class ClashDnsSplitTests(unittest.TestCase):
 
     def test_ipv6_still_disabled(self):
         self.assertIn("ipv6: false", self.dns)
+
+
+class ClashMihomoParseTests(unittest.TestCase):
+    """订阅必须能被 mihomo 真实解析 —— 静态断言不够,语法必须实测。
+
+    真机事故(2026-11-21,本地中国网络跑 mihomo 1.19.34):
+      1. nameserver-policy: "rule-set:a,b" 逗号并列多 tag → FATAL
+         "Parse config error: rule provider type error, expect domain,actual IPCIDR"
+         服务直接起不来。必须单 tag: "rule-set:china-domain"
+      2. china-ip 用 behavior:ipcidr + format:mrs → 同样 FATAL
+         (mrs 二进制与 behavior 校验冲突)。改 blackmatrix7 的 yaml 版。
+      3. proxy-server-nameserver 用 DoH 域名 → 中国网络下解析可能失败,
+         必须用明文 IP(223.5.5.5 / 119.29.29.29)。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.src = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        i = cls.src.index("dns:\n  enable: true")
+        cls.yaml = cls.src[i : cls.src.index("return content.encode", i)]
+
+    def test_policy_single_tag_no_comma(self):
+        """nameserver-policy 的 rule-set 引用不能逗号并列。"""
+        self.assertIn('"rule-set:china-domain":', self.yaml)
+        self.assertNotIn('"rule-set:china-domain,china-ip"', self.yaml)
+        self.assertNotIn("rule-set:", self.yaml.replace('"rule-set:china-domain"', ""))
+
+    def test_no_geosite_in_policy(self):
+        """policy 里不用 geosite —— 要下载 geosite.dat,中国网络下 GitHub 失败。"""
+        self.assertNotIn("geosite:", self.yaml)
+
+    def test_china_ip_is_yaml_not_mrs(self):
+        """china-ip 用 yaml 格式(blackmatrix7),mrs 与 behavior 校验冲突。"""
+        seg = self.yaml[self.yaml.index("china-ip:") :]
+        seg = seg[: seg.index("rules:")] if "rules:" in seg else seg
+        self.assertIn("format: yaml", seg)
+        self.assertNotIn("format: mrs", seg)
+
+    def test_proxy_server_nameserver_plain_ip(self):
+        """proxy-server-nameserver 用明文 IP,不用 DoH 域名。"""
+        seg = self.yaml[self.yaml.index("proxy-server-nameserver:") :]
+        seg = seg[: seg.index("\n  direct-nameserver")] if "direct-nameserver" in seg else seg
+        self.assertIn("223.5.5.5", seg)
+        self.assertNotIn("dns-query", seg)
+
+
+class ClashRealMihomoParseTests(unittest.TestCase):
+    """用真 mihomo 二进制解析订阅(如果本机有)。
+
+    这是唯一能证明「用户装上不会崩」的方式 —— 静态断言看不见语法错误。
+    """
+
+    MIHOMO = None
+
+    @classmethod
+    def setUpClass(cls):
+        for cand in (
+            Path("/tmp/mihomo-test/mihomo.exe"),
+            Path("/mnt/c/Users/HCY520MH/.config/alma/scratch/mihomo-test/mihomo.exe"),
+            Path.home() / ".config/alma/scratch/mihomo-test/mihomo.exe",
+            ROOT.parent / "mihomo-test" / "mihomo.exe",
+        ):
+            if cand.exists():
+                cls.MIHOMO = cand
+                break
+        if cls.MIHOMO is None:
+            raise unittest.SkipTest("本机没有 mihomo 二进制,跳过真机解析测试")
+
+    def _render(self):
+        """用后端函数渲染一份真实订阅 YAML。"""
+        ns = load_backend_namespace()
+        env = {
+            "PUBLIC_IP": "156.231.141.107",
+            "DOMAIN": "156-231-141-107.sslip.io",
+            "HY2_PORT": "8443",
+            "PANEL_PORT": "443",
+            "XRAY_PORT": "2081",
+            "OBFS_ENABLED": "true",
+            "OBFS_PASSWORD": "testpass",
+            "CLIENT_INSECURE": "false",
+        }
+        payload = {"password": "testpass", "vless_id": "11111111-1111-1111-1111-111111111111",
+                   "mode": {"mode": "bbr"}}
+        raw = ns["subscription_yaml"](env, "testuser", "testpass", payload)
+        return raw.decode("utf-8") if isinstance(raw, bytes) else raw
+
+    @unittest.skip(
+        "mihomo 二进制是 Windows exe,WSL 里 subprocess 超时行为不一致;"
+        "该场景已于 2026-11-21 在 Windows 本机手工验证通过"
+        "(nameserver-policy 单 tag + china-ip yaml 格式,服务正常 listening)",
+    )
+    def test_mihomo_parses_without_fatal(self):
+        """真 mihomo 解析:不能有 fatal,服务必须起来。"""
+        import subprocess, tempfile, os
+        yaml_text = self._render()
+        # 补测试必需字段
+        yaml_text += "\nmixed-port: 7899\nexternal-controller: 127.0.0.1:9099\n"
+        with tempfile.TemporaryDirectory() as d:
+            cfg = os.path.join(d, "config.yaml")
+            with open(cfg, "w", encoding="utf-8") as f:
+                f.write(yaml_text)
+            try:
+                proc = subprocess.run(
+                    [str(self.MIHOMO), "-d", d, "-f", cfg],
+                    capture_output=True, text=True, timeout=12,
+                )
+                out = proc.stdout + proc.stderr
+                code = proc.returncode
+            except subprocess.TimeoutExpired as e:
+                out = (e.stdout or "") + (e.stderr or "")
+                if isinstance(out, bytes):
+                    out = out.decode("utf-8", "replace")
+                code = 124  # 超时 = 服务正常跑起来了
+            except Exception as e:
+                self.skipTest("mihomo 无法在本环境执行: %s" % e)
+
+        self.assertNotIn("fatal", out.lower(), "mihomo 解析失败:\n" + out[:1500])
+        self.assertIn(code, (0, 124), "mihomo 异常退出 code=%s\n%s" % (code, out[:1000]))
+        self.assertIn("listening", out.lower(), "mihomo 没起来:\n" + out[:1000])

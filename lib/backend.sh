@@ -1089,14 +1089,12 @@ dns:
     - https://doh.pub/dns-query
     - https://dns.alidns.com/dns-query
   nameserver-policy:
-    "rule-set:china-domain,china-ip":
+    "rule-set:china-domain":
       - https://doh.pub/dns-query
       - https://dns.alidns.com/dns-query
-    "geosite:geolocation-!cn":
-      - https://1.1.1.1/dns-query
-      - https://8.8.8.8/dns-query
   proxy-server-nameserver:
-    - https://1.1.1.1/dns-query
+    - 223.5.5.5
+    - 119.29.29.29
   direct-nameserver:
     - system
   direct-nameserver-follow-policy: false
@@ -1130,10 +1128,10 @@ rule-providers:
   china-ip:
     type: http
     behavior: ipcidr
-    format: mrs
-    path: ./ruleset/china-ip.mrs
+    format: yaml
+    path: ./ruleset/china-ip.yaml
     interval: 86400
-    url: https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geoip/cn.mrs
+    url: https://testingcf.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Clash/China/China_IP.yaml
 
 rules:
   - DOMAIN-SUFFIX,lan,DIRECT
