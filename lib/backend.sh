@@ -923,7 +923,7 @@ def subscription_singbox(
                     "tag": "geosite-cn",
                     "type": "remote",
                     "format": "binary",
-                    "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/sing/geo/geosite/cn.srs",
+                    "url": "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/cn.srs",
                     "http_client": "dl-direct",
                     "update_interval": "48h",
                 },
@@ -931,7 +931,7 @@ def subscription_singbox(
                     "tag": "geoip-cn",
                     "type": "remote",
                     "format": "binary",
-                    "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/sing/geo/geoip/cn.srs",
+                    "url": "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip/cn.srs",
                     "http_client": "dl-direct",
                     "update_interval": "48h",
                 },
@@ -1058,6 +1058,10 @@ def subscription_yaml(
 allow-lan: false
 mode: rule
 log-level: info
+geodata-mode: true
+geox-url:
+  geosite: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
+  geoip: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat"
 ipv6: false
 
 tun:
@@ -1089,7 +1093,7 @@ dns:
     - https://doh.pub/dns-query
     - https://dns.alidns.com/dns-query
   nameserver-policy:
-    "rule-set:china-domain":
+    "geosite:cn":
       - https://doh.pub/dns-query
       - https://dns.alidns.com/dns-query
   proxy-server-nameserver:
@@ -1117,42 +1121,14 @@ proxy-groups:
       - {node}
 {vless_group}      - DIRECT
 
-rule-providers:
-  china-domain:
-    type: http
-    behavior: domain
-    format: yaml
-    path: ./ruleset/china-domain.yaml
-    interval: 86400
-    url: https://testingcf.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Clash/China/China_Domain.yaml
-  china-ip:
-    type: http
-    behavior: classical
-    format: yaml
-    path: ./ruleset/china-ip.yaml
-    interval: 86400
-    url: https://testingcf.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Clash/China/China_Classical_No_Resolve.yaml
-
 rules:
   - DOMAIN-SUFFIX,lan,DIRECT
-  - DOMAIN-SUFFIX,jinritemai.com,DIRECT
-  - DOMAIN-SUFFIX,douyin.com,DIRECT
-  - DOMAIN-SUFFIX,bytedance.com,DIRECT
-  - DOMAIN-SUFFIX,bytedance.net,DIRECT
-  - DOMAIN-SUFFIX,bytegoofy.com,DIRECT
-  - DOMAIN-SUFFIX,amemv.com,DIRECT
-  - DOMAIN-SUFFIX,ixigua.com,DIRECT
-  - DOMAIN-SUFFIX,snssdk.com,DIRECT
-  - DOMAIN-SUFFIX,pstatp.com,DIRECT
-  - DOMAIN-SUFFIX,bytecdn.cn,DIRECT
-  - DOMAIN-SUFFIX,douyincdn.com,DIRECT
-  - DOMAIN-KEYWORD,jinritemai,DIRECT
   - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
-  - RULE-SET,china-domain,DIRECT
-  - RULE-SET,china-ip,DIRECT
+  - GEOSITE,cn,DIRECT
+  - GEOIP,CN,DIRECT
   - MATCH,PROXY
 """
     return content.encode("utf-8")
