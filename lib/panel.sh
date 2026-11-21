@@ -2273,11 +2273,14 @@ function renderUsers(users){
     ));
   });
 }
+let loadRetryTimer=null, loadRetryCount=0;
 async function load(){
   try{
+    if(loadRetryTimer){clearTimeout(loadRetryTimer);loadRetryTimer=null}
     const response=await fetch("data.json?t="+Date.now(),{cache:"no-store"});
     if(!response.ok)throw new Error("HTTP "+response.status);
     const data=await response.json();window.__lastData=data;const t=data.server.traffic;
+    loadRetryCount=0;   // 成功即归零，下次失败重新从 2s 退避
     const ver=String(data.version||"").replace(/^v/i,"").trim();
     const ageText=dataAgeText(data.generated_at);
     $("time").textContent=(ver&&ver!=="unknown"?("v"+ver+" · "):"")+"更新 "+data.generated_at+(ageText?"（"+ageText+"）":"")+" · "+data.server.ip+" · "+data.server.domain;
@@ -2312,7 +2315,21 @@ async function load(){
   }catch(error){
     $("errorText").textContent="读取失败："+error.message;
     $("error").classList.add("show");
+    // 失败自动重试（指数退避 2s/4s/8s/16s/30s，最多 5 次）：
+    // 一次网络抖动不该让面板永久卡在"正在读取数据…"。
+    // 成功一次就归零；用户手动刷新页面也能复位。
+    scheduleLoadRetry();
   }
+}
+
+function scheduleLoadRetry(){
+  if(loadRetryTimer||loadRetryCount>=5)return;
+  loadRetryCount++;
+  const delay=Math.min(2000*Math.pow(2,loadRetryCount-1),30000);
+  loadRetryTimer=setTimeout(()=>{
+    loadRetryTimer=null;
+    load();
+  },delay);
 }
 
 $("hy2Toggle").onclick=toggleHy2;
@@ -2340,7 +2357,6 @@ if($("qrCopy"))$("qrCopy").onclick=async()=>{
 $("qrModal").onclick=function(event){ if(event.target===this)closeQr(); };
 $("portBtn").onclick=()=>setPortModal(true);
 $("portClose").onclick=()=>setPortModal(false);
-$("portCancel").onclick=()=>setPortModal(false);
 $("portHy2Edit").onclick=function(){ setPortRowEditing("hy2",true); };
 $("portHy2Cancel").onclick=function(){ setPortRowEditing("hy2",false); };
 $("portHy2Save").onclick=function(){ applyPortRow("hy2"); };
