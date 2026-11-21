@@ -72,16 +72,26 @@ install_panel_vendor() {
     fi
     [ -n "${HY2_REPO_URL:-}" ] || continue
     tmp="$(mktemp)"
-    if _bootstrap_curl "${HY2_REPO_URL}/assets/vendor/${name}?nocache=$(date +%s)" -o "$tmp" 2>/dev/null  \
-      && [ -s "$tmp" ] && head -c 200 "$tmp" | grep -q 'qrcode'; then
-      got="$(font_sha256 "$tmp")"
-      if [ "$got" = "$want" ]; then
-        install -m 0640 -o hy2-aio -g caddy "$tmp" "${PANEL_VENDOR_DIR}/${name}"
-        ok=$((ok + 1))
-      else
-        warn "二维码库校验不符，已丢弃（二维码功能将不可用）"
+    # 拉取顺序:GitHub raw → jsdelivr CDN 镜像。国内 VPS 直连
+    # raw.githubusercontent.com 经常超时,静默失败后面板二维码永远装不上
+    # (真机踩过)。镜像内容和 raw 同源,SHA256 校验兜住一致性。
+    local fetch_urls=(
+      "${HY2_REPO_URL}/assets/vendor/${name}?nocache=$(date +%s)"
+      "https://testingcf.jsdelivr.net/gh/keiraee/hy2-allin-one@main/assets/vendor/${name}"
+    )
+    local fetch_url
+    for fetch_url in "${fetch_urls[@]}"; do
+      if _bootstrap_curl "$fetch_url" -o "$tmp" 2>/dev/null         && [ -s "$tmp" ] && head -c 200 "$tmp" | grep -q 'qrcode'; then
+        got="$(font_sha256 "$tmp")"
+        if [ "$got" = "$want" ]; then
+          install -m 0640 -o hy2-aio -g caddy "$tmp" "${PANEL_VENDOR_DIR}/${name}"
+          ok=$((ok + 1))
+          break
+        else
+          warn "二维码库校验不符，尝试下一个来源"
+        fi
       fi
-    fi
+    done
     rm -f "$tmp"
   done
   [ "$ok" -gt 0 ] && log "面板依赖就绪（二维码）"

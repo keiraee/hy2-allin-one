@@ -8,7 +8,7 @@
 ## 快速开始
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.7.3/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.7.4/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 

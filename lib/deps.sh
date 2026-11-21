@@ -251,6 +251,32 @@ EOF
     [ "$skipped" -gt 0 ] && warn "${skipped} 项因磁盘空间不足跳过（不影响当前功能）"
   fi
 
+  # 面板二维码库不在 deps_scan 的命令清单里（它是个 JS 文件不是系统包），
+  # 单独检查：缺了直接现场调 install_panel_vendor 修（GitHub 失败会走
+  # jsdelivr 镜像）。以前不查这项，新装机/repair 后二维码悄悄缺失，
+  # 用户扫码时才看到「二维码库没装好」（真机踩过）。
+  # 面板变量来自 panel.sh;deps 可以单独 source(测试场景),未加载时跳过此检查
+  if [ "${PANEL_VENDOR_DIR:-}" = "" ] || [ "${#PANEL_VENDOR_FILES[@]:-0}" -eq 0 ]; then
+    : # panel.sh 未加载(纯 deps 环境),跳过二维码检查
+  elif [ -f "${PANEL_VENDOR_DIR}/qrcode.min.js" ]; then
+    local vendor_want=""
+    # SHA 来源与 install_panel_vendor 同一份清单,避免两处维护漂移
+    vendor_want="${PANEL_VENDOR_FILES[0]%% *}"
+    if [ -n "$vendor_want" ] && [ "$(font_sha256 "${PANEL_VENDOR_DIR}/qrcode.min.js")" != "$vendor_want" ]; then
+      warn "二维码库校验不符（文件损坏或版本过旧）"
+      install_panel_vendor 1 >/dev/null 2>&1 || true
+      [ "$(font_sha256 "${PANEL_VENDOR_DIR}/qrcode.min.js" 2>/dev/null)" = "$vendor_want" ]         && log "二维码库已修复"         || warn "二维码库修复失败；不影响代理，仅面板扫码不可用（可稍后重试 sudo hy2 repair）"
+    fi
+  else
+    warn "面板二维码库缺失（面板扫码不可用，代理不受影响）；尝试自动补齐..."
+    install_panel_vendor 1 >/dev/null 2>&1 || true
+    if [ -f "${PANEL_VENDOR_DIR}/qrcode.min.js" ]; then
+      log "二维码库已补齐"
+    else
+      warn "二维码库补齐失败（多为国内 VPS 拉 GitHub 超时）；稍后重试 sudo hy2 repair"
+    fi
+  fi
+
   if [ "$needed_missing" -eq 0 ]; then
     log "当前功能所需的依赖齐全，服务可以正常运行"
     if [ "${#deferred[@]}" -gt 0 ]; then
