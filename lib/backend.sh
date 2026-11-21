@@ -898,8 +898,33 @@ def subscription_singbox(
         ],
         "outbounds": outbounds,
         "route": {
+            # 国内分流:与 Clash 订阅的 china-domain + china-ip 对齐。
+            # 之前只有 ip_is_private 直连、final=proxy,微信图片上传等
+            # 国内大流量通道被 tun 全量代理绕道日本 → iOS 上发图必失败
+            # (sing-box 官方 issue #2492,Android 用 rule-set 分流即解决)。
+            "rule_set": [
+                {
+                    "tag": "geosite-cn",
+                    "type": "remote",
+                    "format": "binary",
+                    "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/sing/geo/geosite/cn.srs",
+                    "download_detour": "direct",
+                    "update_interval": "48h",
+                },
+                {
+                    "tag": "geoip-cn",
+                    "type": "remote",
+                    "format": "binary",
+                    "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/sing/geo/geoip/cn.srs",
+                    "download_detour": "direct",
+                    "update_interval": "48h",
+                },
+            ],
             "rules": [
+                {"action": "sniff"},
+                {"protocol": "dns", "action": "hijack-dns"},
                 {"ip_is_private": True, "outbound": "direct"},
+                {"rule_set": ["geosite-cn", "geoip-cn"], "outbound": "direct"},
             ],
             "final": "proxy",
             "auto_detect_interface": True,

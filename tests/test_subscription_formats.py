@@ -565,3 +565,40 @@ class CaddyCertReuseTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class SingboxChinaSplitTests(unittest.TestCase):
+    """sing-box 订阅必须带国内分流,与 Clash 订阅对齐。
+
+    真机 bug:iOS sing-box 导入后微信发不了图片(文本正常)。
+    原因:route.rules 只有 ip_is_private → 微信图片上传的国内 CDN
+    通道被 tun 全量代理绕道日本 → 失败(sing-box issue #2492,
+    社区结论:rule-set 分流让微信直连即解决)。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        src = BACKEND.read_text(encoding="utf-8")
+        i = src.index('def subscription_singbox(')
+        j = src.index("\ndef subscription_body", i)
+        cls.fn = src[i:j]
+
+    def test_has_china_rulesets(self):
+        self.assertIn("geosite-cn", self.fn)
+        self.assertIn("geoip-cn", self.fn)
+        self.assertIn('"type": "remote"', self.fn)
+
+    def test_china_direct_rule(self):
+        self.assertIn('"rule_set": ["geosite-cn", "geoip-cn"], "outbound": "direct"', self.fn)
+
+    def test_ruleset_download_via_direct(self):
+        """规则集更新走 direct,不能走代理(否则死循环:拉规则要先连上代理)。"""
+        self.assertIn('"download_detour": "direct"', self.fn)
+
+    def test_sniff_and_dns_hijack(self):
+        """分流依赖域名嗅探;DNS 劫持保证 tun 下解析走 sing-box。"""
+        self.assertIn('"action": "sniff"', self.fn)
+        self.assertIn('"action": "hijack-dns"', self.fn)
+
+    def test_final_still_proxy(self):
+        """被墙流量仍走代理 —— 直连规则只放行国内。"""
+        self.assertIn('"final": "proxy"', self.fn)
