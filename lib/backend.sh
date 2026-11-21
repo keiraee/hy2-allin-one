@@ -878,6 +878,17 @@ def subscription_singbox(
 
     config = {
         "log": {"level": "info"},
+        # 规则集下载用的 HTTP 客户端。sing-box 1.14 的坑:
+        #   - http_client 拨号 detour 到 direct 出站(不管 direct 有没有参数)
+        #     一律报「detour to an empty direct outbound makes no sense」
+        #     -> 服务起不来(真机踩过)
+        #   - 不写 http_clients 则触发 implicit default HTTP client 弃用警告
+        # 正解:顶层 http_clients 定义一个不带 detour 的客户端 --
+        # 走系统默认路由直连,等价于旧 download_detour=direct 的语义,
+        # 无警告无报错(真机 sing-box 1.14.4 run 验证 0 输出)。
+        "http_clients": [
+            {"tag": "dl-direct"}
+        ],
         # DNS 用 sing-box 1.12+ 的新格式（type + server），旧写法
         # {"address": "https://1.1.1.1/dns-query"} 在 1.14.0 已彻底移除，
         # 导入会直接报「legacy DNS server formats are deprecated」。
@@ -913,7 +924,7 @@ def subscription_singbox(
                     "type": "remote",
                     "format": "binary",
                     "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/sing/geo/geosite/cn.srs",
-                    "http_client": {"detour": "direct"},
+                    "http_client": "dl-direct",
                     "update_interval": "48h",
                 },
                 {
@@ -921,7 +932,7 @@ def subscription_singbox(
                     "type": "remote",
                     "format": "binary",
                     "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/refs/heads/sing/geo/geoip/cn.srs",
-                    "http_client": {"detour": "direct"},
+                    "http_client": "dl-direct",
                     "update_interval": "48h",
                 },
             ],

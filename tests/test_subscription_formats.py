@@ -598,7 +598,14 @@ class SingboxChinaSplitTests(unittest.TestCase):
         真机踩过:旧写法在 1.14 弹「弃用警告」,配置 1.16 将失效。
         """
         self.assertNotIn('"download_detour"', self.fn, '1.14 起弃用,1.16 移除')
-        self.assertIn('"http_client": {"detour": "direct"}', self.fn)
+        # 不能用 {"detour": "direct"}:sing-box 1.14 对 http_client 拨号
+        # detour 到 direct 出站一律报「detour to an empty direct outbound
+        # makes no sense」(参数为空与否无关),服务直接起不来 —— 真机踩过。
+        self.assertNotIn('"http_client": {"detour"', self.fn)
+        # 正解:顶层 http_clients 定义 + rule_set 引用 tag
+        self.assertIn('"http_clients": [', self.fn)
+        self.assertIn('{"tag": "dl-direct"}', self.fn)
+        self.assertIn('"http_client": "dl-direct"', self.fn)
 
     def test_sniff_and_dns_hijack(self):
         """分流依赖域名嗅探;DNS 劫持保证 tun 下解析走 sing-box。"""
