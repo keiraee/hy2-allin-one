@@ -388,6 +388,9 @@ html[data-theme="dark"] .busy-scrim{background:rgba(0,0,0,.55)}
 .modal h3{margin:0 0 6px;font-size:14px}
 .modal .hint{margin-bottom:12px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+.port-field{display:flex;gap:8px;align-items:stretch}
+.port-field .input{flex:1;min-width:0}
+.port-field .btn{flex:none;white-space:nowrap}
 .modal.traffic-modal{width:100%;height:100%;max-width:none;max-height:none;min-width:0;min-height:0;padding:0;display:flex;flex-direction:column;overflow:hidden;border-radius:var(--radius);background:var(--bg)}
 .traffic-modal-h{display:flex;align-items:center;justify-content:space-between;padding:0 16px;height:48px;border-bottom:1px solid var(--line);background:var(--bg)}
 .traffic-modal-h h2{margin:0;font-size:13px;font-weight:700}
@@ -720,17 +723,22 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
       <button id="portClose" class="btn ghost" type="button" aria-label="关闭"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg></button>
     </div>
     <div class="stack">
-      <label class="hint">HY2 UDP 端口（可填范围开启端口跳跃，如 8443-9443）</label>
-      <input id="portHy2" class="input" type="text" placeholder="8443 或 8443-9443" autocomplete="off" disabled>
-      <label class="hint">VLESS TCP 端口（被运营商干扰时换个冷门口，如 2083）</label>
-      <input id="portVless" class="input" type="text" placeholder="2083" autocomplete="off" disabled>
+      <label class="hint" for="portHy2">HY2 UDP 端口（可填范围开启端口跳跃，如 8443-9443）</label>
+      <div class="port-field">
+        <input id="portHy2" class="input" type="text" placeholder="8443 或 8443-9443" autocomplete="off" disabled>
+        <button id="portHy2Edit" class="btn" type="button" title="解锁这一行进行修改">编辑</button>
+        <button id="portHy2Cancel" class="btn" type="button" hidden title="放弃修改并重新锁定">取消</button>
+        <button id="portHy2Save" class="btn primary" type="button" hidden>应用</button>
+      </div>
+      <label class="hint" for="portVless">VLESS TCP 端口（被运营商干扰时换个冷门口，如 2083）</label>
+      <div class="port-field">
+        <input id="portVless" class="input" type="text" placeholder="2083" autocomplete="off" disabled>
+        <button id="portVlessEdit" class="btn" type="button" title="解锁这一行进行修改">编辑</button>
+        <button id="portVlessCancel" class="btn" type="button" hidden title="放弃修改并重新锁定">取消</button>
+        <button id="portVlessSave" class="btn primary" type="button" hidden>应用</button>
+      </div>
       <p id="portMsg" class="hint" hidden></p>
-      <p class="hint" id="portLockHint">输入框已锁定 —— 防止误触改动。点「编辑」才能修改。</p>
-    </div>
-    <div class="modal-actions">
-      <button id="portEdit" class="btn primary" type="button">编辑</button>
-      <button id="portCancel" class="btn" type="button" hidden>取消</button>
-      <button id="portSave" class="btn primary" type="button" hidden>应用</button>
+      <p class="hint">端口默认锁定防止误触 —— 改哪行就点哪行的「编辑」。改动会重建配置并重启服务，需重新导入订阅。</p>
     </div>
   </div>
 </div>
@@ -1818,29 +1826,39 @@ async function copyCredential(username,kind){
 // 给，避免前端自己拼 URL 拼错（尤其 fmt 参数和 panel_path 前缀）。
 let qrCurrentUrl = "";
 // ---- 端口设置 ----
-// 记住打开弹窗时的原值，用于判断用户实际改了哪个 —— 只提交改动过的，
-// 避免「只想改 VLESS 却把 HY2 也一起提交」。
+// 防误触模型：每一行（HY2 / VLESS）独立锁定。
+// 打开弹窗时两行都是 disabled，改哪行就点哪行的「编辑」解锁那一行，
+// 另一行保持锁定。行内有自己的 编辑/取消/应用 三个按钮：
+//   编辑：解锁该行输入框，显示 取消+应用
+//   取消：还原该行原值并重新锁定
+//   应用：提交该行，成功后 1.5s 回到锁定态
+// 原值（portOriginal）记的是「最后一次与服务器同步的值」，用于：
+//   a) 应用时判断有没有实际改动（没改动不白发请求）
+//   b) 取消时还原
 let portOriginal={hy2:"",vless:""};
-// 防误触：打开弹窗默认是锁定态（输入框 disabled），点「编辑」才解锁。
-// 应用成功后自动回到锁定态。
-function setPortEditing(on){
-  $("portHy2").disabled=!on;
-  $("portVless").disabled=!on;
-  $("portEdit").hidden=on;
-  $("portCancel").hidden=!on;
-  $("portSave").hidden=!on;
-  $("portLockHint").hidden=on;
+
+function portFieldIds(target){
+  return target==="hy2"
+    ? {input:"portHy2",edit:"portHy2Edit",cancel:"portHy2Cancel",save:"portHy2Save"}
+    : {input:"portVless",edit:"portVlessEdit",cancel:"portVlessCancel",save:"portVlessSave"};
+}
+
+function setPortRowEditing(target,on){
+  const ids=portFieldIds(target);
+  $(ids.input).disabled=!on;
+  $(ids.edit).hidden=on;
+  $(ids.cancel).hidden=!on;
+  $(ids.save).hidden=!on;
   if(on){
-    setTimeout(()=>$("portHy2").focus(),50);
+    setTimeout(()=>$(ids.input).focus(),50);
   }else{
-    // 回到锁定态：还原成当前真实值，清掉提示
+    // 回到锁定态：该行还原成当前真实值
     const p=(window.__lastData||{}).server&&window.__lastData.server.ports||{};
-    $("portHy2").value=p.hy2||"";
-    $("portVless").value=p.vless||"";
-    portOriginal={hy2:(p.hy2||"").trim(),vless:(p.vless||"").trim()};
-    const msg=$("portMsg"); msg.hidden=true; msg.textContent="";
+    $(ids.input).value=p[target]||"";
+    portOriginal[target]=(p[target]||"").trim();
   }
 }
+
 function setPortModal(open){
   $("portModal").classList.toggle("open",open);
   if(open){
@@ -1849,40 +1867,31 @@ function setPortModal(open){
     $("portVless").value=p.vless||"";
     portOriginal={hy2:(p.hy2||"").trim(),vless:(p.vless||"").trim()};
     const msg=$("portMsg"); msg.hidden=true; msg.textContent="";
-    $("portSave").disabled=false;
-    setPortEditing(false);   // 每次打开都从锁定态开始
+    setPortRowEditing("hy2",false);    // 每次打开两行都从锁定态开始
+    setPortRowEditing("vless",false);
   }
 }
-async function applyPorts(){
-  const hy2=$("portHy2").value.trim(), vless=$("portVless").value.trim();
-  const changedHy2=hy2&&hy2!==portOriginal.hy2;
-  const changedVless=vless&&vless!==portOriginal.vless;
-  if(!changedHy2&&!changedVless){
-    toast("没有改动（两个端口都和当前一致）");
-    return;
-  }
+
+async function applyPortRow(target){
+  const ids=portFieldIds(target);
+  const value=$(ids.input).value.trim();
+  if(!value){ toast("端口不能为空"); return; }
+  if(value===portOriginal[target]){ toast("没有改动（和当前一致）"); return; }
   const msg=$("portMsg"); msg.hidden=false;
-  const targets=[];
-  if(changedHy2)targets.push("HY2");
-  if(changedVless)targets.push("VLESS");
-  msg.textContent="正在改 "+targets.join(" 和 ")+"…（重建配置并重启，约 10~20 秒）";
-  $("portSave").disabled=true;
-  // 只提交改动过的那个，另一个保持原样 —— 用户常常只想动一个
-  const jobs=[];
-  if(changedHy2)jobs.push(apiPost("api/ports",{target:"hy2",value:hy2}));
-  if(changedVless)jobs.push(apiPost("api/ports",{target:"vless",value:vless}));
+  msg.textContent="正在改 "+(target==="hy2"?"HY2":"VLESS")+" 端口…（重建配置并重启，约 10~20 秒）";
+  $(ids.save).disabled=true;
   try{
-    await Promise.all(jobs);
-    msg.textContent="已应用（"+targets.join("、")+"）。请在客户端重新导入订阅。";
-    toast("端口已更新："+targets.join("、"));
+    await apiPost("api/ports",{target,value});
+    msg.textContent="已应用（"+(target==="hy2"?"HY2":"VLESS")+" = "+value+"）。请在客户端重新导入订阅。";
+    toast("端口已更新："+(target==="hy2"?"HY2":"VLESS"));
     await load();
-    // 应用成功 → 重新记原值，1.5s 后回锁定态（不关弹窗，用户能看到结果）
+    // 与服务器同步原值；1.5s 后该行回锁定态（不关弹窗，用户能看到结果）
     const p=(window.__lastData||{}).server&&window.__lastData.server.ports||{};
-    portOriginal={hy2:(p.hy2||"").trim(),vless:(p.vless||"").trim()};
-    setTimeout(()=>setPortEditing(false),1500);
+    portOriginal[target]=(p[target]||"").trim();
+    setTimeout(()=>setPortRowEditing(target,false),1500);
   }catch(error){
-    msg.textContent="失败："+error.message+"（可以看 hy2 logs 里的后端日志）";
-    $("portSave").disabled=false;
+    msg.textContent="失败："+error.message;
+    $(ids.save).disabled=false;
   }
 }
 async function openQr(username, kind){
@@ -2332,9 +2341,12 @@ $("qrModal").onclick=function(event){ if(event.target===this)closeQr(); };
 $("portBtn").onclick=()=>setPortModal(true);
 $("portClose").onclick=()=>setPortModal(false);
 $("portCancel").onclick=()=>setPortModal(false);
-$("portSave").onclick=applyPorts;
-$("portEdit").onclick=function(){ setPortEditing(true); };
-$("portCancel").onclick=function(){ setPortEditing(false); };
+$("portHy2Edit").onclick=function(){ setPortRowEditing("hy2",true); };
+$("portHy2Cancel").onclick=function(){ setPortRowEditing("hy2",false); };
+$("portHy2Save").onclick=function(){ applyPortRow("hy2"); };
+$("portVlessEdit").onclick=function(){ setPortRowEditing("vless",true); };
+$("portVlessCancel").onclick=function(){ setPortRowEditing("vless",false); };
+$("portVlessSave").onclick=function(){ applyPortRow("vless"); };
 $("portModal").onclick=function(event){ if(event.target===this)setPortModal(false); };
 $("drawerClose").onclick=()=>setDrawer(false);
 $("scrim").onclick=()=>setDrawer(false);
