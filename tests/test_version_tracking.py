@@ -42,7 +42,7 @@ class VersionTrackingTests(unittest.TestCase):
 
     def test_repair_writes_full_version(self):
         """repair_cmd(upgrade 落盘路径)必须写完整版本,不是纯基础号。"""
-        self.assertIn('local full_version="${AIO_VERSION:-$SCRIPT_VERSION}"', self.backup)
+        self.assertIn('local full_version="$SCRIPT_VERSION"', self.backup)
         self.assertIn('"$ENV_FILE" "$full_version"', self.backup)
         # 不再直接把 SCRIPT_VERSION 传给 python 写 env
         self.assertNotIn(
@@ -82,15 +82,35 @@ class VersionTrackSemanticsTests(unittest.TestCase):
         cls.backup = BACKUP.read_text(encoding="utf-8")
 
     def test_tarball_mode_appends_fetch_commit(self):
-        """纯基础号 + 有 FETCH_COMMIT → 拼上提交哈希(main/release 轨道)。"""
-        self.assertIn('[ "$full_version" = "$SCRIPT_VERSION" ]', self.backup)
-        self.assertIn('$SCRIPT_VERSION.${HY2_FETCH_COMMIT:0:7}', self.backup)
+        """有 FETCH_COMMIT → 一律拼上提交哈希(main/release 轨道)。
 
-    def test_dev_checkout_keeps_build_version(self):
-        """git checkout 的 AIO_VERSION(带 .N.gHASH)不被二次拼接。"""
-        # 判据是 full_version==SCRIPT_VERSION 才拼,带构建号时必然不等 → 保留
-        self.assertIn('local full_version="${AIO_VERSION:-$SCRIPT_VERSION}"', self.backup)
+        新语义:不以内存 AIO_VERSION 做判据(read_env 会把 config.env
+        旧值载入,导致哈希永远拼不上、版本卡死),直接
+        SCRIPT_VERSION.<commit7>。
+        """
+        self.assertIn('full_version="$SCRIPT_VERSION.${HY2_FETCH_COMMIT:0:7}"', self.backup)
+
+    def test_repair_prefers_fetch_commit_over_stale_env(self):
+        """repair 必须以本次拉取的提交为准,不能被 config.env 旧值带偏。
+
+        真实事故:read_env 把 config.env 里上次写的 1.7.3.4f40b4e 载入内存,
+        它永远≠SCRIPT_VERSION → FETCH_COMMIT 永远拼不上 → 版本卡死旧提交。
+        修后:有 FETCH_COMMIT 一律 SCRIPT_VERSION.<commit7>;
+        无 FETCH_COMMIT(本地直装)才退回 core.sh 构建版本。
+        """
+        self.assertIn('local full_version="$SCRIPT_VERSION"', self.backup)
+        self.assertIn('full_version="$SCRIPT_VERSION.${HY2_FETCH_COMMIT:0:7}"', self.backup)
+        # 兜底分支:仅在拿不到 FETCH_COMMIT 时用 AIO_VERSION
+        self.assertIn('full_version="$AIO_VERSION"', self.backup)
+        self.assertIn('!= "$SCRIPT_VERSION"', self.backup)
 
     def test_never_writes_bare_base_version(self):
         """任何情况下都不能把纯基础号写进 config.env(那正是"固定"的根因)。"""
         self.assertNotIn('"$ENV_FILE" "$SCRIPT_VERSION"', self.backup)
+
+    def test_full_version_never_empty(self):
+        """跨基础号升级时 full_version 不允许为空写进 env。
+
+        兜底顺序:FETCH_COMMIT → AIO_VERSION(core.sh 构建版本) → SCRIPT_VERSION。
+        """
+        self.assertIn('elif [ -n "$AIO_VERSION" ]', self.backup)

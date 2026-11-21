@@ -212,23 +212,26 @@ repair_cmd() {
   # 写入带构建信息的完整版本,不再写纯基础号 ——
   # 否则每次 upgrade 后面板都显示同一个 1.7.3,版本号"固定"不动。
   #
-  # 两条轨道的版本语义(想清楚再改):
-  #   main 轨道: modules 是 tarball(无 .git),core.sh 里 git 探测失效,
-  #     AIO_VERSION 恒为纯基础号 → 必须拼 HY2_FETCH_COMMIT(本次拉到的提交),
-  #     这样 main 每推一版、用户 upgrade 一次,版本号就变一次。
-  #   release 轨道: tag 的 tarball 里 SCRIPT_VERSION 已 bump(如 1.8.0),
-  #     同样走 FETCH_COMMIT 分支 → 1.8.0.<taghash>,基础号变化也能体现。
-  #   开发机 git checkout: AIO_VERSION 已带构建号(1.7.3.N.gHASH),
-  #     保留原样 —— 它本身就指向当前提交。
-  # 判据用「AIO_VERSION 是否还是纯基础号」,而不是比较 FETCH_COMMIT
-  # 是否存在 —— 避免开发机路径被误拼两次哈希。
-  local full_version="${AIO_VERSION:-$SCRIPT_VERSION}"
-  if [ -n "${HY2_FETCH_COMMIT:-}" ] && [ "$full_version" = "$SCRIPT_VERSION" ]; then
+  # ⚠️ 不能用内存里的 $AIO_VERSION 做判据!read_env 会把 config.env 里
+  # 上次写入的 AIO_VERSION(如 1.7.3.4f40b4e)覆盖进内存,它永远≠
+  # SCRIPT_VERSION,导致 FETCH_COMMIT 永远拼不上去 → 版本卡死在旧提交。
+  #
+  # 三条轨道的版本语义(小k 质疑后推演清楚):
+  #   main 轨道: modules=tarball 无 .git → core.sh git 探测失效,
+  #     core.sh 里 AIO_VERSION=纯基础号 → 拼 HY2_FETCH_COMMIT(本次提交)
+  #     → main 每推一版,upgrade 一次版本就变一次。
+  #   release 轨道: tag tarball 里 SCRIPT_VERSION 已 bump(如 1.8.0)
+  #     → 同拼 FETCH_COMMIT → 1.8.0.<taghash>。
+  #   开发机: git checkout → core.sh 已拼好 .N.gHASH,
+  #     但 repair_cmd 必须以【本次部署的提交】为准 → 一律用
+  #     SCRIPT_VERSION + FETCH_COMMIT,这样部署结果和拉取源强一致。
+  local full_version="$SCRIPT_VERSION"
+  if [ -n "${HY2_FETCH_COMMIT:-}" ]; then
     full_version="$SCRIPT_VERSION.${HY2_FETCH_COMMIT:0:7}"
+  elif [ -n "$AIO_VERSION" ] && [ "$AIO_VERSION" != "$SCRIPT_VERSION" ]; then
+    # 拿不到 FETCH_COMMIT(本地开发直装)才退回 core.sh 的构建版本
+    full_version="$AIO_VERSION"
   fi
-  # 兜底:跨基础号升级(1.7.3 → 1.8.0)时,若本次拉取仍拿不到 FETCH_COMMIT
-  # (理论上不该发生,但防御一下),保留 AIO_VERSION 原值,不回退基础号。
-  [ -n "$full_version" ] || full_version="${AIO_VERSION:-$SCRIPT_VERSION}"
   python3 - "$ENV_FILE" "$full_version" "${HY2_PERSIST_TRACK:-}" "${HY2_FETCH_MODULES_SHA:-}" "${HY2_FETCH_COMMIT:-}" <<'PY'
 import os
 import re
