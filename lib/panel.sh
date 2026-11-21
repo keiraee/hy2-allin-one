@@ -1875,24 +1875,41 @@ function setPortModal(open){
 async function applyPortRow(target){
   const ids=portFieldIds(target);
   const value=$(ids.input).value.trim();
-  if(!value){ toast("端口不能为空"); return; }
-  if(value===portOriginal[target]){ toast("没有改动（和当前一致）"); return; }
-  const msg=$("portMsg"); msg.hidden=false;
-  msg.textContent="正在改 "+(target==="hy2"?"HY2":"VLESS")+" 端口…（重建配置并重启，约 10~20 秒）";
-  $(ids.save).disabled=true;
-  try{
+  const label=target==="hy2"?"HY2":"VLESS";
+  const msg=$("portMsg");
+  if(!value){
+    msg.hidden=false;
+    msg.textContent="端口不能为空";
+    return;
+  }
+  if(value===portOriginal[target]){
+    // 没改动:不白发请求。之前只弹 toast,弹窗毫无变化,看起来像"卡住"。
+    // 升级:弹窗内明示 + 2 秒后该行自动回锁(没改就别停在编辑态)。
+    msg.hidden=false;
+    msg.textContent="没有改动（"+label+" 还是 "+value+"，和当前一致）";
+    setTimeout(()=>setPortRowEditing(target,false),2000);
+    return;
+  }
+  msg.hidden=true;
+  const started=Date.now();
+  // 走 runMutate:全屏忙碌遮罩 + 按钮转圈,和备份/同步一致 ——
+  // 6~10 秒的重建+重启期有明确视觉反馈,不再像"卡住"。
+  await runMutate($(ids.save),async()=>{
     await apiPost("api/ports",{target,value});
-    msg.textContent="已应用（"+(target==="hy2"?"HY2":"VLESS")+" = "+value+"）。请在客户端重新导入订阅。";
-    toast("端口已更新："+(target==="hy2"?"HY2":"VLESS"));
+    const secs=Math.round((Date.now()-started)/1000);
+    msg.hidden=false;
+    msg.textContent="已应用（"+label+" = "+value+"，用时 "+secs+" 秒）。请在客户端重新导入订阅。";
+    toast("端口已更新："+label);
     await load();
     // 与服务器同步原值；1.5s 后该行回锁定态（不关弹窗，用户能看到结果）
     const p=(window.__lastData||{}).server&&window.__lastData.server.ports||{};
     portOriginal[target]=(p[target]||"").trim();
     setTimeout(()=>setPortRowEditing(target,false),1500);
-  }catch(error){
+  },(target==="hy2"?"正在改 HY2 端口":"正在改 VLESS 端口")+"…（重建配置并重启，约 10~20 秒）")
+  .catch(error=>{
+    msg.hidden=false;
     msg.textContent="失败："+error.message;
-    $(ids.save).disabled=false;
-  }
+  });
 }
 async function openQr(username, kind){
   closeMenus();
