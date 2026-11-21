@@ -83,12 +83,12 @@ class SubscriptionYamlTests(unittest.TestCase):
             text,
         )
         self.assertIn("china-ip:", text)
-        self.assertIn("behavior: ipcidr", text)
+        self.assertIn("behavior: classical", text)
         # china-ip 用 blackmatrix7 的 yaml 版 —— mrs 与 behavior:ipcidr
         # 在 mihomo 1.19 上冲突:fatal "rule provider type error"(真机实测)
         self.assertIn("format: yaml", text)
         self.assertIn(
-            "https://testingcf.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Clash/China/China_IP.yaml",
+            "https://testingcf.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Clash/China/China_Classical_No_Resolve.yaml",
             text,
         )
         self.assertIn("- RULE-SET,china-domain,DIRECT", text)
@@ -554,6 +554,7 @@ class ClashMihomoParseTests(unittest.TestCase):
         seg = self.yaml[self.yaml.index("china-ip:") :]
         seg = seg[: seg.index("rules:")] if "rules:" in seg else seg
         self.assertIn("format: yaml", seg)
+        self.assertIn("behavior: classical", seg)
         self.assertNotIn("format: mrs", seg)
 
     def test_proxy_server_nameserver_plain_ip(self):

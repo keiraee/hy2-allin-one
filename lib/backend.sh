@@ -1127,11 +1127,11 @@ rule-providers:
     url: https://testingcf.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Clash/China/China_Domain.yaml
   china-ip:
     type: http
-    behavior: ipcidr
+    behavior: classical
     format: yaml
     path: ./ruleset/china-ip.yaml
     interval: 86400
-    url: https://testingcf.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Clash/China/China_IP.yaml
+    url: https://testingcf.jsdelivr.net/gh/blackmatrix7/ios_rule_script@master/rule/Clash/China/China_Classical_No_Resolve.yaml
 
 rules:
   - DOMAIN-SUFFIX,lan,DIRECT
