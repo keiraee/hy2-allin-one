@@ -49,6 +49,14 @@ CRITICAL_DOMESTIC_DOMAINS = [
     "www.feishu.cn",
 ]
 
+# 必须国内直连的国内 IP（不依赖域名解析，微信/抖音 CDN 大量直接用 IP）
+CRITICAL_DOMESTIC_IPS = [
+    "183.61.35.28",     # 微信图片 CDN (Tencent)
+    "203.205.254.36",   # 微信 mmtls 长连接
+    "101.32.104.4",     # 腾讯云
+    "140.205.94.189",   # 阿里
+]
+
 
 class DomesticCoverageSourceTests(unittest.TestCase):
     """分流数据源必须是 MetaCubeX geosite(11 万条,持续更新)。
@@ -63,6 +71,18 @@ class DomesticCoverageSourceTests(unittest.TestCase):
     def test_clash_uses_geosite_rule(self):
         """Clash 的 rules 必须含 GEOSITE,cn(不是只靠手写域名)。"""
         self.assertIn("GEOSITE,cn,DIRECT", self.src)
+
+    def test_has_china_ip_ruleset(self):
+        """纯 IP 流量也要直连 —— 微信/抖音 CDN 大量用 IP 直连不走域名。
+
+        真机现象(2026-11-22):两台手机微信图片/视频加载不动,关掉代理就好。
+        根因:规则里只有 GEOSITE,cn(匹配域名),微信 CDN 的纯 IP 连接
+        落到 MATCH → 走日本代理 → 加载转圈。必须补 IP 段规则。
+        china-ip.mrs 只有 37KB(jsdelivr 0.3 秒下完),不影响首启。
+        """
+        self.assertIn("RULE-SET,china-ip,DIRECT", self.src)
+        self.assertIn("behavior: ipcidr", self.src)
+        self.assertIn("format: mrs", self.src)
 
     def test_no_geoip_rule(self):
         """不用 GEOIP,CN —— 会触发 6.5MB geoip.dat 下载,中国网络首启必卡。

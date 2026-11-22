@@ -75,10 +75,18 @@ class ClashGeoSiteSplitTests(unittest.TestCase):
                              "手写域名规则应 ≤3 条,当前 %d" % len(handwritten))
         self.assertIn("GEOSITE,cn,DIRECT", self.rules)
 
-    def test_no_rule_providers(self):
-        """geosite 内置数据替代远程 rule-providers。"""
-        dns_start = self.src.index("dns:\n  enable: true")
-        self.assertNotIn("rule-providers:", self.src[dns_start:])
+    def test_only_china_ip_provider(self):
+        """只保留 china-ip 一个 provider(IP 段必须直连);域名靠 geosite.
+
+        真机现象(2026-11-22):微信图片/视频加载不动 —— 微信 CDN 大量用
+        纯 IP 直连不走域名,GEOSITE 匹配不到 -> 落到 MATCH 走代理。
+        china-ip.mrs 只有 37KB,不像 geoip.dat 那样 6.5MB 拖垮首启。
+        """
+        dns_start = self.src.index("dns:")
+        tail = self.src[dns_start:]
+        self.assertIn("rule-providers:", tail)
+        self.assertIn("china-ip:", tail)
+        self.assertNotIn("china-domain:", tail)
 
     def test_geox_url_uses_mirror(self):
         """geosite.dat 走 jsdelivr 镜像（中国网络拉 GitHub release 会超时）。"""

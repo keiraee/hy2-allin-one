@@ -1120,6 +1120,15 @@ proxy-groups:
       - {node}
 {vless_group}      - DIRECT
 
+rule-providers:
+  china-ip:
+    type: http
+    behavior: ipcidr
+    format: mrs
+    path: ./ruleset/china-ip.mrs
+    interval: 86400
+    url: https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geoip/cn.mrs
+
 rules:
   - DOMAIN-SUFFIX,lan,DIRECT
   - DOMAIN-SUFFIX,jinritemai.com,DIRECT
@@ -1128,6 +1137,7 @@ rules:
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
   - GEOSITE,cn,DIRECT
+  - RULE-SET,china-ip,DIRECT
   - MATCH,PROXY
 """
     return content.encode("utf-8")
