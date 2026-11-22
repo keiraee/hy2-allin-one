@@ -1,4 +1,4 @@
-# HY2 AIO v1.8.0
+# HY2 AIO v1.8.1
 
 一键部署 Hysteria 2 + VLESS+Reality + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -7,10 +7,10 @@
 
 ## 快速开始（新机器安装）
 
-当前版本：**v1.8.0**
+当前版本：**v1.8.1**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.0/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.1/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -52,7 +52,7 @@ sudo HY2_REPO_REF=main hy2 upgrade && sudo hy2 restart
 如果 `hy2 upgrade` 一直显示「已是 vX.Y.Z，提交未变化」，说明它钉在旧 tag 轨道上。用新引导脚本强制切轨道：
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.0/hy2.sh?nocache=$(date +%s)" -o hy2.sh
+curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.1/hy2.sh?nocache=$(date +%s)" -o hy2.sh
 sudo HY2_REPO_REF=main bash hy2.sh upgrade && sudo hy2 restart
 ```
 
@@ -169,7 +169,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.8.0` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.8.1` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `COUNTRY_CODE` | 节点名国旗（ISO 码如 `SG`）；留空=按服务器 IP 自动识别 | 自动识别 |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
@@ -218,6 +218,48 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v1.8.1
+
+紧急修复。**微信图片/视频加载不出来**（两人手机都中招，关掉代理重连才恢复）。
+
+#### 根因
+
+v1.8.0 为了避开 6.5MB 的 `geoip.dat`（国内网络拉不动会卡首启），把 `GEOIP,CN` 删了，只留 `GEOSITE,cn`。但 **GEOSITE 只匹配域名** —— 微信图片/视频 CDN 大量**直接用 IP 连接**（不走域名解析），这些连接匹配不到任何规则，落到 `MATCH,PROXY` → 全部绕道日本/美国 → 加载转圈。
+
+真机日志对照（同一台手机、同一个 IP）：
+
+```
+36.155.189.213:80
+  v1.8.0 订阅 → match Match using PROXY[🇯🇵]         ← 转圈
+  v1.8.1 订阅 → match RuleSet(china-ip) using DIRECT ← 秒开
+```
+
+#### 修法
+
+补回 IP 段规则，但用 **mrs 格式（37KB，0.3 秒下完）** 而不是 `geoip.dat`（6.5MB）：
+
+```yaml
+rule-providers:
+  china-ip:
+    behavior: ipcidr
+    format: mrs
+    url: .../MetaCubeX/meta-rules-dat@meta/geo/geoip/cn.mrs
+rules:
+  - GEOSITE,cn,DIRECT
+  - RULE-SET,china-ip,DIRECT   # 新增：纯 IP 连接也直连
+  - MATCH,PROXY
+```
+
+#### 新增验证工具
+
+- `tools/verify-ip-coverage.py`：起真 mihomo 逐个验证国内 IP 是否直连，非 `DIRECT` 即 FAIL
+- 清单在 `tests/test_domestic_coverage.py`（`CRITICAL_DOMESTIC_DOMAINS` 域名 + `CRITICAL_DOMESTIC_IPS` IP）
+- 实测小k 抓的 7 个微信真实 IP：全部 `RuleSet(china-ip) using DIRECT` ✓
+
+#### 客户端要做的事
+
+**只需「更新订阅」，不用重新导入**（订阅 URL 和 token 未变，服务端返回 `cache-control: no-store`）。
 
 ### v1.8.0
 
