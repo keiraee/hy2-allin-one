@@ -27,6 +27,11 @@ CRITICAL_DOMESTIC_DOMAINS = [
     "buyin.jinritemai.com",
     "www.douyin.com",
     "www.iesdouyin.com",
+    # 抖音搜索/封面走 CDN 域名(2026-11-23 小k 报障:搜索加载不出)
+    "api.amemv.com",             # 抖音业务 API
+    "aweme.snssdk.com",          # 抖音接口
+    "p3.douyinpic.com",          # 抖音图片 CDN
+    "v3.douyinvod.com",          # 抖音视频 CDN
     # 微信生态(小k 报障:iOS sing-box 图片发不出)
     "long.open.weixin.qq.com",
     "mp.weixin.qq.com",
@@ -47,6 +52,9 @@ CRITICAL_DOMESTIC_DOMAINS = [
     "www.toutiao.com",
     "www.ixigua.com",
     "www.feishu.cn",
+    # 小红书(2026-11-23 小k 报障:评论区头像加载慢)
+    "www.xiaohongshu.com",
+    "sns-webpic-qc.xhscdn.com",  # 小红书图片/头像 CDN
 ]
 
 # 必须国内直连的国内 IP（不依赖域名解析，微信/抖音 CDN 大量直接用 IP）

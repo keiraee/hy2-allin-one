@@ -116,6 +116,30 @@ class SingBoxTests(unittest.TestCase):
         """替代废弃的 dns.rules[].outbound。"""
         self.assertIn("default_domain_resolver", self.cfg["route"])
 
+    def test_dns_strategy_is_ipv4_only(self):
+        """DNS 只解析 IPv4 —— 等价于 Clash 订阅的 ipv6: false。
+
+        真机事故(2026-11-23):WI-Fi 无 IPv6 时,sing-box 把国内域名
+        解析成 AAAA(2408:... 联通 v6 段) → 判为国内直连 → direct 经
+        wlan0 连 v6 → "network is unreachable",抖音搜索/小红书头像转圈。
+        蜂窝有 v6、Clash 有 ipv6:false,所以只有「sing-box + 无 v6 的 WiFi」炸。
+        """
+        self.assertEqual("ipv4_only", self.cfg["dns"].get("strategy"))
+
+    def test_tun_has_no_ipv6_address(self):
+        """tun 不给 IPv6 地址 —— 否则系统以为有 v6,把 v6 包送进 tun
+        又被 direct 丢回真实网卡,回到 unreachable 老路。"""
+        addr = self.cfg["inbounds"][0]["address"]
+        self.assertTrue(any("." in a for a in addr), addr)
+        self.assertFalse(any(":" in a for a in addr), addr)
+
+    def test_tun_mtu_is_narrowed(self):
+        """tun MTU 显式收窄 —— 默认偏大,撞小 MTU 链路(PPPoE 1492)
+        会分片丢包,表现为大图/长页面加载卡。"""
+        mtu = self.cfg["inbounds"][0].get("mtu")
+        self.assertIsInstance(mtu, int)
+        self.assertLessEqual(mtu, 1400)
+
     def test_hop_interval_has_unit(self):
         """sing-box 要 "30s"，裸数字 "30" 报 missing unit in duration。"""
         hy = self.cfg["outbounds"][0]

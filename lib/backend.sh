@@ -899,6 +899,13 @@ def subscription_singbox(
                 {"type": "https", "tag": "google", "server": "8.8.8.8"},
                 {"type": "local", "tag": "local"},
             ],
+            # 只解析 IPv4(等价于 Clash 订阅的 ipv6: false)。
+            # 2026-11-23 真机事故:WiFi 无 IPv6 时,sing-box 把国内域名
+            # 解析成 AAAA(2408:... 联通 v6 段),判为国内直连 → direct
+            # 经 wlan0 连 v6 → "network is unreachable",抖音搜索 /
+            # 小红书头像全部转圈。蜂窝有 v6 所以流量正常;Clash 有
+            # ipv6:false 所以正常 —— 只有 sing-box 在没有 v6 的 WiFi 上炸。
+            "strategy": "ipv4_only",
             # 不再写 dns.rules[{outbound,server}] —— sing-box 1.12 起废弃、
             # 1.14 起移除。域名解析交给 route.default_domain_resolver。
             "final": "local",
@@ -907,9 +914,15 @@ def subscription_singbox(
             {
                 "type": "tun",
                 "tag": "tun-in",
-                "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
+                # 只给 tun 分配 IPv4。带 IPv6 地址会让系统误以为有 v6,
+                # 应用把 v6 包送进 tun、再被 direct 送回 wlan0 → unreachable
+                # (同 2026-11-23 事故)。
+                "address": ["172.19.0.1/30"],
                 "auto_route": True,
                 "strict_route": True,
+                # MTU 显式收窄:WiFi 默认 1500,代理封装后撞上 PPPoE(1492)
+                # 之类小 MTU 链路会分片丢包 → 大图 / 长页面加载卡。1400 为安全值。
+                "mtu": 1400,
             }
         ],
         "outbounds": outbounds,

@@ -219,6 +219,43 @@ hy2-allin-one/
 
 ## 更新日志
 
+### v1.8.2
+
+紧急修复。**sing-box 用户:连没有 IPv6 的 Wi-Fi 时,国内 App(抖音搜索、小红书头像、微信大图)全部转圈**。
+
+#### 根因
+
+订阅里的 sing-box 配置**没有关掉 IPv6 解析**(Clash 那份有 `ipv6: false`,sing-box 这份漏了)。
+Wi-Fi 无 IPv6 时,sing-box 先把国内域名解析成 AAAA(如 `2408:...` 联通 v6 段),
+判为「国内 → 直连」,再让 `direct` 经 wlan0 去连 v6 地址:
+
+```
+inbound connection to [2408:876c:1740:150::8e]:443
+outbound/direct[direct]: outbound connection to [2408:876c:1740:150::8e]:443
+ERROR: dial wlan0 (24): dial tcp [2408:...]:443: connect: network is unreachable
+```
+
+请求全部失败、App 超时重试 → 表现为「加载不出来 / 头像转圈」。
+
+这解释了三个现象:**切 VLESS 没用**(走的是 direct 直连那条路,与出站协议无关)、
+**只有 Wi-Fi 出问题、蜂窝正常**(蜂窝有 v6 所以直连通)、**Clash 正常**(有 `ipv6: false`)。
+
+#### 修法
+
+- sing-box 的 `dns` 加 `"strategy": "ipv4_only"`(等价 Clash 的 `ipv6: false`)
+- tun `address` 去掉 IPv6 段,只留 `172.19.0.1/30`
+- tun 顺手显式收窄 `mtu: 1400`(默认偏大,撞 PPPoE 1492 之类小 MTU 链路会分片丢包)
+
+#### 自动化验收
+
+- `test_dns_strategy_is_ipv4_only` / `test_tun_has_no_ipv6_address` / `test_tun_mtu_is_narrowed`
+- 关键域名清单补抖音 CDN(`api.amemv.com` / `aweme.snssdk.com` / `douyinpic` / `douyinvod`)
+  与小红书(`www.xiaohongshu.com` / `sns-webpic-qc.xhscdn.com`)
+
+#### 客户端要做的事
+
+**只需「更新订阅」**(订阅 URL/token 未变)。
+
 ### v1.8.1
 
 紧急修复。**微信图片/视频加载不出来**（两人手机都中招，关掉代理重连才恢复）。
