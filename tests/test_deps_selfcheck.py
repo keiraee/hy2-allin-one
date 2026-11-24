@@ -332,6 +332,38 @@ class PanelVendorArrayGuardTests(unittest.TestCase):
         self.assertIn("二维码库", combined)
 
 
+class PanelVendorDownloadTests(unittest.TestCase):
+    """二维码库必须在 hy2.sh 的下载清单里。
+
+    2026-11-24 真机：装完之后面板扫码一直转圈，`/vendor/qrcode.min.js` 404。
+    根因：hy2.sh 的 assets 清单只有字体和图标，**漏了 assets/vendor/qrcode.min.js**。
+    于是 install_panel_vendor 先查本地副本查不到，只能去拉 GitHub raw ——
+    国内直连必超时，二维码就静默缺失了。
+
+    这和 deps.sh 那个 bad substitution 是同一次改动留下的两个洞：
+    自检有了，但没人把文件真正下载下来。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.src = (ROOT / "hy2.sh").read_text(encoding="utf-8")
+
+    def test_download_list_contains_qrcode(self):
+        # 截取 local assets=( ... ) 这一段：到第一个单独成行的 "  )" 为止
+        start = self.src.index("local assets=(")
+        end = self.src.index("\n  )", start)
+        seg = self.src[start:end]
+        self.assertIn("assets/vendor/qrcode.min.js", seg)
+
+    def test_vendor_dir_created(self):
+        self.assertIn("${target_dir}/assets/vendor", self.src)
+
+    def test_js_body_is_validated(self):
+        """js 没有魔数，必须有正文内容校验，否则 CDN 错误页会被当文件落盘。"""
+        self.assertIn("head -c 200", self.src)
+        self.assertIn("grep -q qrcode", self.src)
+
+
 
 if __name__ == "__main__":
     unittest.main()

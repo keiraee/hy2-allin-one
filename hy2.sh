@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Pin remote installs to a release tag by default (override with HY2_REPO_REF=main for tip).
 DEFAULT_REPO_SLUG="keiraee/hy2-allin-one"
 REPO_SLUG="${HY2_REPO:-$DEFAULT_REPO_SLUG}"
-REPO_REF="${HY2_REPO_REF:-v1.8.3}"
+REPO_REF="${HY2_REPO_REF:-v1.8.4}"
 
 apply_repo_url() {
   if [ -n "${HY2_REPO_URL:-}" ]; then
@@ -205,6 +205,10 @@ fetch_modules() {
     "assets/icons/v2ray-64.webp"
     "assets/icons/singbox-32.webp"
     "assets/icons/singbox-64.webp"
+    # 面板二维码库。必须在下载清单里 —— 漏了它，install_panel_vendor
+    # 先查本地这个路径就查不到,只能去拉 GitHub raw(国内必超时),
+    # 二维码静默缺失、面板扫码一直转圈(2026-11-24 真机踩到)。
+    "assets/vendor/qrcode.min.js"
   )
   local sums tmp f expected
   sums="$(mktemp)"
@@ -232,7 +236,7 @@ PY
   done
 
   # 字体与图标：失败只警告不中断——面板会退到系统字体/内置 SVG，功能不受影响
-  mkdir -p "${target_dir}/assets/fonts" "${target_dir}/assets/icons"
+  mkdir -p "${target_dir}/assets/fonts" "${target_dir}/assets/icons" "${target_dir}/assets/vendor"
   for f in "${assets[@]}"; do
     tmp="$(mktemp)"
     # 按扩展名选魔数：woff2 是 wOF2，webp 是 RIFF
@@ -241,8 +245,15 @@ PY
       *.webp)  magic='RIFF' ;;
       *)       magic='' ;;
     esac
+    # js(二维码库)没有魔数,额外要求正文含 qrcode 字样 —— 否则 CDN 返回的
+    # 404/错误页会被当成正常文件落盘,到自检阶段才发现校验不符(多绕一圈)
+    local body_ok=1
+    case "$f" in
+      *.js) body_ok=0 ;;
+    esac
     if _bootstrap_curl "${REPO_URL}/${f}?nocache=$(date +%s)" -o "$tmp" 2>/dev/null \
-      && [ -s "$tmp" ] && { [ -z "$magic" ] || head -c4 "$tmp" | grep -q "$magic"; }; then
+      && [ -s "$tmp" ] && { [ -z "$magic" ] || head -c4 "$tmp" | grep -q "$magic"; } \
+      && { [ "$body_ok" = "1" ] || head -c 200 "$tmp" | grep -q qrcode; }; then
       mv "$tmp" "${target_dir}/${f}"
       _bootstrap_log "下载：${f}"
     else

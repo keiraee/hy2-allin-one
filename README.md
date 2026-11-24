@@ -1,4 +1,4 @@
-# HY2 AIO v1.8.3
+# HY2 AIO v1.8.4
 
 一键部署 Hysteria 2 + VLESS+Reality + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -7,10 +7,10 @@
 
 ## 快速开始（新机器安装）
 
-当前版本：**v1.8.3**
+当前版本：**v1.8.4**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.3/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.4/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -52,7 +52,7 @@ sudo HY2_REPO_REF=main hy2 upgrade && sudo hy2 restart
 如果 `hy2 upgrade` 一直显示「已是 vX.Y.Z，提交未变化」，说明它钉在旧 tag 轨道上。用新引导脚本强制切轨道：
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.3/hy2.sh?nocache=$(date +%s)" -o hy2.sh
+curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.4/hy2.sh?nocache=$(date +%s)" -o hy2.sh
 sudo HY2_REPO_REF=main bash hy2.sh upgrade && sudo hy2 restart
 ```
 
@@ -169,7 +169,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.8.3` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.8.4` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `COUNTRY_CODE` | 节点名国旗（ISO 码如 `SG`）；留空=按服务器 IP 自动识别 | 自动识别 |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
@@ -218,6 +218,59 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v1.8.4
+
+紧急修复。**面板里的二维码一直不显示**（扫码导入订阅失败）。
+
+#### 根因
+
+`hy2.sh` 的下载清单 `local assets=(...)` 里只有字体和客户端图标，
+**漏了 `assets/vendor/qrcode.min.js`**。
+
+于是链条断在第一步：
+
+1. 安装时该文件从未被下载到 `/usr/local/lib/hy2-aio/modules/assets/vendor/`
+2. `install_panel_vendor` 先查这个本地副本 → 查不到
+3. 只能去拉 `raw.githubusercontent.com` → 国内直连必超时
+4. 二维码静默缺失，面板扫码区域空白
+
+> 这和 v1.8.3 修的 `bad substitution` 是同一次改动（新装机三连坑）留下的两个洞：
+> 自检写好了，但没人把文件真正下载下来。
+
+#### 修法
+
+- `assets` 清单补上 `assets/vendor/qrcode.min.js`
+- `mkdir` 补上 `assets/vendor` 目录
+- 校验段对 `*.js` 加正文检查（`head -c 200 | grep -q qrcode`）——
+  js 没有 magic number，不加这层的话 CDN 返回的 404/错误页会被当成正常文件落盘
+
+#### 已经卡住的机器怎么办（不用等发版，立即生效）
+
+```bash
+sudo mkdir -p /var/www/hy2-aio/vendor
+sudo curl -fsSL "https://testingcf.jsdelivr.net/gh/keiraee/hy2-allin-one@main/assets/vendor/qrcode.min.js" -o /tmp/qrcode.min.js
+sudo sh -c 'echo "4ee9e4db9666ed5c38c508c0cb57512465fcbc5a653ebf9fa33c0c37c71b15bf  /tmp/qrcode.min.js" | sha256sum -c'
+sudo install -m 0640 -o hy2-aio -g caddy /tmp/qrcode.min.js /var/www/hy2-aio/vendor/qrcode.min.js
+sudo rm -f /tmp/qrcode.min.js
+```
+
+然后 **Ctrl+F5 强刷面板**（或用无痕窗口），二维码即出现。
+
+#### 自动化验收
+
+新增 3 项回归：
+
+- `test_download_list_contains_qrcode` —— 清单必须含该文件
+- `test_vendor_dir_created` —— 必须创建 `assets/vendor` 目录
+- `test_js_body_is_validated` —— js 必须有正文内容校验
+
+负向三组各自精确变红：删清单项 → 1 红；删 mkdir → 1 红；删正文校验 → 1 红。
+
+#### 新机器 / 已装机器
+
+- 新装：直接用 v1.8.4 的安装命令
+- 已装：`sudo hy2 upgrade && sudo hy2 restart`
 
 ### v1.8.3
 
