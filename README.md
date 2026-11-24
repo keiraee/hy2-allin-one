@@ -1,4 +1,4 @@
-# HY2 AIO v1.8.5
+# HY2 AIO v1.8.6
 
 一键部署 Hysteria 2 + VLESS+Reality + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -7,10 +7,10 @@
 
 ## 快速开始（新机器安装）
 
-当前版本：**v1.8.5**
+当前版本：**v1.8.6**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.5/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.6/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -52,7 +52,7 @@ sudo HY2_REPO_REF=main hy2 upgrade && sudo hy2 restart
 如果 `hy2 upgrade` 一直显示「已是 vX.Y.Z，提交未变化」，说明它钉在旧 tag 轨道上。用新引导脚本强制切轨道：
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.5/hy2.sh?nocache=$(date +%s)" -o hy2.sh
+curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.6/hy2.sh?nocache=$(date +%s)" -o hy2.sh
 sudo HY2_REPO_REF=main bash hy2.sh upgrade && sudo hy2 restart
 ```
 
@@ -169,7 +169,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.8.5` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.8.6` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `COUNTRY_CODE` | 节点名国旗（ISO 码如 `SG`）；留空=按服务器 IP 自动识别 | 自动识别 |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
@@ -218,6 +218,102 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v1.8.6
+
+修复 **YouTube 完全打不开** —— 根因是 DNS 被污染，且旧配置把境外域名交给了系统 DNS。
+
+#### 现象
+
+用脚本装好之后，YouTube 视频始终加载不出来（"完全没法看"，不是慢）。
+
+#### 根因：DNS 污染 + `dns.final = local`
+
+真机实测（`nslookup rr5---sn-a5msenes.googlevideo.com`）：
+
+```
+2a03:2880:f11f:83:face:b00c:0:25de    ← face:b00c 是 Facebook 的标志性 IPv6 段
+108.160.172.1                          ← Dropbox 的段
+```
+
+客户端日志里 `googlevideo.com` 也被解成一串**根本不属于 Google** 的 IP：
+
+```
+31.13.94.37 / 31.13.95.169 → Facebook 段
+199.59.149.230             → Twitter
+59.24.3.173 / 74.86.151.167
+```
+
+而旧配置的致命点是：
+
+```json
+"dns": { ..., "final": "local" }
+```
+
+`final: local` 意味着**所有没命中规则的域名都走系统 DNS** —— 也就是被污染的那个。
+所以即使路由规则正确（v1.8.5 已修），代理也是去连这些假 IP：
+拿 `SNI=googlevideo.com` 去连 `Facebook:443`，握手必然失败。
+
+Clash 那份同理：`nameserver` 全用国内 DoH（doh.pub / alidns），
+递归查询境外域名时同样返回污染结果。
+
+#### 修法：境外域名经代理走 DoH
+
+sing-box：
+
+```json
+"servers": [
+    {"type": "https", "tag": "remote", "server": "1.1.1.1", "detour": "proxy"},
+    {"type": "https", "tag": "remote-alt", "server": "8.8.8.8", "detour": "proxy"},
+    {"type": "local", "tag": "local"}
+],
+"rules": [
+    {"domain_suffix": [".cn"], "server": "local"},
+    {"rule_set": "geosite-cn", "server": "local"}
+],
+"final": "remote"
+```
+
+`detour: proxy` 让 DoH 查询本身**经代理发出**，绕开本地污染。
+国内域名仍走 `local`（快，且国内域名不会被污染）。
+
+Clash：
+
+```yaml
+nameserver:
+  - https://1.1.1.1/dns-query#PROXY
+  - https://8.8.8.8/dns-query#PROXY
+nameserver-policy:
+  "geosite:cn":
+    - https://doh.pub/dns-query
+    - https://dns.alidns.com/dns-query
+```
+
+`#PROXY` 后缀让 mihomo 经代理去查。
+
+#### 为什么之前"看着正常"
+
+国内站点不受影响（域名走 local，IP 也是国内的）；
+只有**境外域名**才会踩到污染 —— 所以表现就是"能上国内网，YouTube 死活打不开"。
+
+#### 自动化验收
+
+新增 5 项 `DnsPollutionGuardTests`：
+
+| 用例 | 校验点 |
+|---|---|
+| `test_singbox_dns_final_is_not_local` | `dns.final` 不能是 local |
+| `test_singbox_remote_dns_uses_proxy_detour` | 境外 DoH 必须 detour 到 proxy |
+| `test_singbox_domestic_domains_use_local_dns` | 国内域名仍走 local |
+| `test_clash_foreign_dns_goes_through_proxy` | Clash 境外 nameserver 带 `#PROXY` |
+| `test_clash_domestic_policy_still_local` | Clash 国内策略仍走国内 DoH |
+
+负向三组各自精确变红：final 改回 local → 1 红；去掉 detour → 1 红；Clash 去掉 `#PROXY` → 1 红。
+另用真 sing-box 1.14.4 `check` 验证配置合法（含 `dns.rules` 跨引用 `rule_set`）。
+
+#### 客户端要做的事
+
+**更新订阅**（DNS 配置在订阅里）。服务端先 `sudo hy2 upgrade && sudo hy2 restart`。
 
 ### v1.8.5
 

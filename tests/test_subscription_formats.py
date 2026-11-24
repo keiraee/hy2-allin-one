@@ -109,8 +109,15 @@ class SingBoxTests(unittest.TestCase):
                 self.assertIn("server", s)
 
     def test_no_deprecated_dns_rules(self):
-        """dns.rules[].outbound 在 1.12 废弃、1.14 移除。"""
-        self.assertNotIn("rules", self.cfg["dns"])
+        """dns.rules[].outbound 在 1.12 废弃、1.14 移除。
+
+        ⚠️ 禁的是 `outbound` 这个字段，不是整个 rules。
+        rules 本身在 1.12+ 依然是官方推荐的写法（用 `server` 指向 DNS server，
+        见 v1.8.6：境外域名走代理 DoH 就靠 dns.rules 分流）。
+        以前这里写成 assertNotIn("rules", ...)，属于过度断言。
+        """
+        for rule in self.cfg["dns"].get("rules", []):
+            self.assertNotIn("outbound", rule, f"dns.rules 里不能用 outbound: {rule}")
 
     def test_route_has_default_domain_resolver(self):
         """替代废弃的 dns.rules[].outbound。"""

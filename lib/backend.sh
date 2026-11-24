@@ -894,9 +894,16 @@ def subscription_singbox(
         # 导入会直接报「legacy DNS server formats are deprecated」。
         # 官方 migration 文档：https://sing-box.sagernet.org/migration/
         "dns": {
+            # ⚠️ 境外域名必须「走代理」去查，否则会被污染。
+            # 真机 2026-11-25：googlevideo.com（YouTube CDN）解析出一串
+            # 根本不属于 Google 的 IP —— 31.13.94.37/31.13.95.169（Facebook 段）、
+            # 199.59.149.230（Twitter）、59.24.3.173… 全是污染结果。
+            # 即使路由规则正确把流量交给代理，代理也是去连这些假 IP，
+            # 拿 SNI=googlevideo.com 去连 Facebook:443，必然失败 → YouTube 打不开。
+            # detour 让 DoH 查询本身经代理发出，绕开本地污染。
             "servers": [
-                {"type": "https", "tag": "cloudflare", "server": "1.1.1.1"},
-                {"type": "https", "tag": "google", "server": "8.8.8.8"},
+                {"type": "https", "tag": "remote", "server": "1.1.1.1", "detour": "proxy"},
+                {"type": "https", "tag": "remote-alt", "server": "8.8.8.8", "detour": "proxy"},
                 {"type": "local", "tag": "local"},
             ],
             # 只解析 IPv4(等价于 Clash 订阅的 ipv6: false)。
@@ -906,9 +913,14 @@ def subscription_singbox(
             # 小红书头像全部转圈。蜂窝有 v6 所以流量正常;Clash 有
             # ipv6:false 所以正常 —— 只有 sing-box 在没有 v6 的 WiFi 上炸。
             "strategy": "ipv4_only",
-            # 不再写 dns.rules[{outbound,server}] —— sing-box 1.12 起废弃、
-            # 1.14 起移除。域名解析交给 route.default_domain_resolver。
-            "final": "local",
+            # 国内域名用本地 DNS（快，且国内域名不会被污染）。
+            # 其余一律走 remote（经代理的 DoH）—— 这是治污染的关键。
+            # 注意 dns.rules 的 server 字段在 1.12+ 仍可用（废弃的是 outbound）。
+            "rules": [
+                {"domain_suffix": [".cn"], "server": "local"},
+                {"rule_set": "geosite-cn", "server": "local"},
+            ],
+            "final": "remote",
         },
         "inbounds": [
             {
@@ -1120,8 +1132,8 @@ dns:
     - "+.lan"
     - "+.local"
   nameserver:
-    - https://doh.pub/dns-query
-    - https://dns.alidns.com/dns-query
+    - https://1.1.1.1/dns-query#PROXY
+    - https://8.8.8.8/dns-query#PROXY
   nameserver-policy:
     "geosite:cn":
       - https://doh.pub/dns-query

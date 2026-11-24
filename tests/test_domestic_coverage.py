@@ -203,5 +203,54 @@ class DomainBeforeIpRuleOrderTests(unittest.TestCase):
         self.assertLess(i_overseas, i_chinaip, "Clash 的海外域名规则必须排在 china-ip 之前")
 
 
+class DnsPollutionGuardTests(unittest.TestCase):
+    """境外域名的解析必须「走代理」，否则拿到的是污染 IP。
+
+    真机 2026-11-25（小k 的 macOS sing-box，YouTube 完全打不开）：
+      nslookup rr5---sn-a5msenes.googlevideo.com
+        → 2a03:2880:f11f:83:face:b00c:0:25de   ← face:b00c 是 Facebook 标志段
+        → 108.160.172.1                        ← Dropbox 段
+      sing-box 日志里 googlevideo 也被解成 31.13.94.37/31.13.95.169（Facebook）、
+      199.59.149.230（Twitter）、59.24.3.173 …
+
+    这是典型的 DNS 污染：Google 的域名被解析成别人家的 IP。
+    即使路由规则正确把流量交给代理，代理也是去连这些假 IP，
+    拿 SNI=googlevideo.com 去连 Facebook:443 → 必然失败。
+
+    旧配置的致命点：`dns.final = "local"` —— 所有没命中规则的域名都走系统 DNS。
+    Clash 那份则是 nameserver 全用国内 DoH，查境外域名同样拿到污染结果。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.src = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+
+    def test_singbox_dns_final_is_not_local(self):
+        """dns.final 不能是 local —— 那就是把境外域名交给被污染的系统 DNS。"""
+        self.assertIn('"final": "remote"', self.src)
+        self.assertNotIn('"final": "local"', self.src)
+
+    def test_singbox_remote_dns_uses_proxy_detour(self):
+        """境外 DoH 必须 detour 到 proxy，否则查询本身就被干扰。"""
+        self.assertIn('"tag": "remote", "server": "1.1.1.1", "detour": "proxy"', self.src)
+
+    def test_singbox_domestic_domains_use_local_dns(self):
+        """国内域名仍用 local（快且不会被污染）。"""
+        self.assertIn('{"domain_suffix": [".cn"], "server": "local"}', self.src)
+        self.assertIn('{"rule_set": "geosite-cn", "server": "local"}', self.src)
+
+    def test_clash_foreign_dns_goes_through_proxy(self):
+        """Clash 的境外 nameserver 必须带 #PROXY，否则国内 DoH 也拿到污染结果。"""
+        self.assertIn("https://1.1.1.1/dns-query#PROXY", self.src)
+        self.assertIn("https://8.8.8.8/dns-query#PROXY", self.src)
+
+    def test_clash_domestic_policy_still_local(self):
+        """国内域名策略仍指向国内 DoH。"""
+        i = self.src.index("nameserver-policy:")
+        seg = self.src[i:i + 400]
+        self.assertIn("geosite:cn", seg)
+        self.assertIn("doh.pub", seg)
+
+
 if __name__ == "__main__":
     unittest.main()

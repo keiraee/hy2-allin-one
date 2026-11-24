@@ -28,7 +28,7 @@ class VersionTrackingTests(unittest.TestCase):
         """基础版本号仍是一个语义化常量,发布大版本手动 bump。"""
         m = re.search(r'SCRIPT_VERSION="(\d+\.\d+\.\d+)"', self.core)
         self.assertIsNotNone(m, "SCRIPT_VERSION 基础号丢失")
-        self.assertEqual(m.group(1), "1.8.5")
+        self.assertEqual(m.group(1), "1.8.6")
 
     def test_git_build_info_injected(self):
         """AIO_VERSION 必须拼上提交数与短哈希(构建时注入)。"""

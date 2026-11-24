@@ -122,11 +122,25 @@ class ClashDnsDomesticFirstTests(unittest.TestCase):
         cls.dns = src[src.index("dns:\n  enable: true"): src.index("proxies:")]
 
     def test_default_nameservers_domestic(self):
+        """国内域名必须由国内 DoH 解析（不被绕远），但默认 servers 要走代理。
+
+        v1.8.0 的原始意图是「国内 CDN 别被解析到境外节点」——
+        这个意图由 nameserver-policy 的 geosite:cn 保证，不需要限制默认 nameserver。
+        v1.8.6 起默认 nameserver 改为境外 DoH + `#PROXY`：因为国内 DoH
+        递归查询境外域名时同样返回被污染的 IP（googlevideo.com 被解成 Facebook 段）。
+        """
+        # 1) 国内域名策略必须指向国内 DoH
+        policy = self.dns[self.dns.index("nameserver-policy"):]
+        policy = policy[: policy.index("proxy-server-nameserver")] if "proxy-server-nameserver" in policy else policy
+        self.assertIn("geosite:cn", policy)
+        self.assertIn("doh.pub", policy)
+        self.assertIn("alidns", policy)
+
+        # 2) 默认 nameserver 必须是经代理的境外 DoH（防污染）
         seg = self.dns[self.dns.index("nameserver:"):]
         seg = seg[: seg.index("nameserver-policy")]
-        self.assertIn("doh.pub", seg)
-        self.assertIn("alidns", seg)
-        self.assertNotIn("1.1.1.1", seg)
+        self.assertIn("1.1.1.1", seg)
+        self.assertIn("#PROXY", seg)
 
     def test_default_nameserver_plain_dns_for_bootstrap(self):
         self.assertIn("default-nameserver", self.dns)
