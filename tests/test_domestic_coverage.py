@@ -157,5 +157,51 @@ class CriticalDomainListTests(unittest.TestCase):
         )
 
 
+class DomainBeforeIpRuleOrderTests(unittest.TestCase):
+    """域名规则必须挡在 IP 规则之前 —— 否则海外域名会被 IP 误判成直连。
+
+    真机 2026-11-25（小k 的 macOS sing-box 日志）：唯一一条 ERROR 是
+      ERROR ... dial tcp 118.193.240.37:443: i/o timeout
+    追上去发现该 IP 是 `rr5.sn-qja5mc-5q.googlevideo.com` 的解析结果
+    —— YouTube CDN 在国内的缓存节点（联通陕西）。
+
+    根因：sing-box 规则曾经写成
+      {"rule_set": ["geosite-cn", "geoip-cn"], "outbound": "direct"}
+    `rule_set` 数组是 **OR** 关系：geoip-cn 命中就直接直连，
+    **域名判断被完全绕过**。于是「海外域名 + 国内 CDN IP」全被判成直连，
+    YouTube 视频起播就 5 秒超时。Clash 那份 `GEOSITE,cn,DIRECT` +
+    `RULE-SET,china-ip,DIRECT` 是同一个坑。
+
+    修法：拆成三条，域名优先 —— 国内域名直连 → 海外域名代理 → 纯 IP 兜底。
+    这一组用例就是防止以后有人图省事把规则合并回去。
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.src = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+
+    def test_singbox_rules_are_not_merged(self):
+        """不能合并成 ["geosite-cn", "geoip-cn"] 一条（OR 会让 IP 抢跑域名）。"""
+        self.assertNotIn('"rule_set": ["geosite-cn", "geoip-cn"]', self.src)
+
+    def test_singbox_overseas_domain_rule_before_geoip(self):
+        """geolocation-!cn 必须出现在 geoip-cn 直连规则之前。"""
+        i_overseas = self.src.find('"rule_set": ["geosite-geolocation-!cn"], "outbound": "proxy"')
+        i_geoip = self.src.find('"rule_set": ["geoip-cn"], "outbound": "direct"')
+        self.assertGreater(i_overseas, 0, "缺少海外域名 → 代理 的规则")
+        self.assertGreater(i_geoip, 0, "缺少 geoip-cn 直连规则")
+        self.assertLess(i_overseas, i_geoip, "海外域名规则必须排在 geoip-cn 之前")
+
+    def test_singbox_has_overseas_ruleset(self):
+        self.assertIn('"tag": "geosite-geolocation-!cn"', self.src)
+        self.assertIn("geosite/geolocation-!cn.srs", self.src)
+
+    def test_clash_overseas_domain_before_china_ip(self):
+        i_overseas = self.src.find("GEOSITE,geolocation-!cn,PROXY")
+        i_chinaip = self.src.find("RULE-SET,china-ip,DIRECT")
+        self.assertGreater(i_overseas, 0, "Clash 缺少 GEOSITE,geolocation-!cn,PROXY")
+        self.assertLess(i_overseas, i_chinaip, "Clash 的海外域名规则必须排在 china-ip 之前")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,4 +1,4 @@
-# HY2 AIO v1.8.4
+# HY2 AIO v1.8.5
 
 一键部署 Hysteria 2 + VLESS+Reality + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -7,10 +7,10 @@
 
 ## 快速开始（新机器安装）
 
-当前版本：**v1.8.4**
+当前版本：**v1.8.5**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.4/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.5/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -52,7 +52,7 @@ sudo HY2_REPO_REF=main hy2 upgrade && sudo hy2 restart
 如果 `hy2 upgrade` 一直显示「已是 vX.Y.Z，提交未变化」，说明它钉在旧 tag 轨道上。用新引导脚本强制切轨道：
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.4/hy2.sh?nocache=$(date +%s)" -o hy2.sh
+curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.5/hy2.sh?nocache=$(date +%s)" -o hy2.sh
 sudo HY2_REPO_REF=main bash hy2.sh upgrade && sudo hy2 restart
 ```
 
@@ -169,7 +169,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.8.4` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.8.5` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `COUNTRY_CODE` | 节点名国旗（ISO 码如 `SG`）；留空=按服务器 IP 自动识别 | 自动识别 |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
@@ -218,6 +218,80 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v1.8.5
+
+修复分流规则顺序 —— **YouTube / Google 视频起播 5 秒超时**。
+
+#### 现象
+
+真机日志里唯一一条 ERROR：
+
+```
+ERROR ... open connection to 118.193.240.37:443 using outbound/direct[direct]:
+      dial tcp 118.193.240.37:443: i/o timeout
+```
+
+追上去发现该 IP 是 `rr5.sn-qja5mc-5q.googlevideo.com` 的解析结果
+—— YouTube CDN 在国内的缓存节点（联通陕西）。
+
+#### 根因
+
+规则曾经写成一条：
+
+```json
+{"rule_set": ["geosite-cn", "geoip-cn"], "outbound": "direct"}
+```
+
+`rule_set` 数组是 **OR** 关系：`geoip-cn` 一命中就直接直连，
+**域名判断被完全绕过**。
+
+于是「海外域名 + 国内 CDN IP」这类组合全被判成直连：
+`googlevideo.com` 在境内有 CDN 缓存，解析出来的就是国内 IP，
+但它们经常不可用/被干扰 → 5 秒超时 → 视频起播失败。
+
+Clash 那份 `GEOSITE,cn,DIRECT` + `RULE-SET,china-ip,DIRECT` 是同一个坑。
+
+#### 修法：域名优先、IP 兜底
+
+拆成三条，顺序不能变：
+
+```json
+{"rule_set": ["geosite-cn"], "outbound": "direct"},              // 国内域名 → 直连
+{"rule_set": ["geosite-geolocation-!cn"], "outbound": "proxy"},  // 海外域名 → 代理
+{"rule_set": ["geoip-cn"], "outbound": "direct"},                // 纯 IP 兜底 → 直连
+```
+
+新增 `geosite-geolocation-!cn` 规则集（166KB，jsdelivr 镜像）。
+Clash 对应加 `GEOSITE,geolocation-!cn,PROXY`，同样挡在 `china-ip` 之前。
+
+**注意 `rule_set` 是 OR 不是 AND** —— 把国内和海外两套规则塞进同一条，
+IP 一侧会抢跑，域名一侧永远不生效。这是本次的教训。
+
+#### 保留的行为
+
+- 微信图片/视频（纯 IP 直连）仍由 `geoip-cn` 兜底，不受影响
+- 国内域名仍走直连
+- 只有「海外域名解析到国内 IP」这一种情况从直连改成了代理
+
+#### 自动化验收
+
+新增 4 项 `DomainBeforeIpRuleOrderTests`：
+
+| 用例 | 校验点 |
+|---|---|
+| `test_singbox_rules_are_not_merged` | 禁止合并成 OR 单条 |
+| `test_singbox_overseas_domain_rule_before_geoip` | 海外域名规则必须在 geoip 之前 |
+| `test_singbox_has_overseas_ruleset` | 规则集定义存在 |
+| `test_clash_overseas_domain_before_china_ip` | Clash 侧顺序同样正确 |
+
+负向三组各自精确变红：合并回 OR → 2 红；调整顺序 → 1 红；删 Clash 规则 → 1 红。
+另外用真 sing-box 1.14.4 `check` 验证生成的配置合法。
+
+#### 客户端要做的事
+
+**更新订阅即可**（服务端配置变了，客户端拉新配置）。
+服务端执行 `sudo hy2 upgrade && sudo hy2 restart`。
 
 ### v1.8.4
 

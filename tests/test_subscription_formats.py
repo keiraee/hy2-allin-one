@@ -612,7 +612,15 @@ class SingboxChinaSplitTests(unittest.TestCase):
         self.assertIn('"type": "remote"', self.fn)
 
     def test_china_direct_rule(self):
-        self.assertIn('"rule_set": ["geosite-cn", "geoip-cn"], "outbound": "direct"', self.fn)
+        """国内直连必须是「域名优先、IP 兜底」三条，不能合并成 OR 一条。
+
+        合并成 ["geosite-cn", "geoip-cn"] 时，geoip 命中就直连、域名判断被绕过；
+        googlevideo.com（海外域名 + 国内 CDN IP）会被判成直连 → i/o timeout。
+        详见 DomainBeforeIpRuleOrderTests。
+        """
+        self.assertIn('"rule_set": ["geosite-cn"], "outbound": "direct"', self.fn)
+        self.assertIn('"rule_set": ["geoip-cn"], "outbound": "direct"', self.fn)
+        self.assertNotIn('"rule_set": ["geosite-cn", "geoip-cn"]', self.fn)
 
     def test_ruleset_download_via_direct(self):
         """规则集更新走 direct,不能走代理(否则死循环:拉规则要先连上代理)。

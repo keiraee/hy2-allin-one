@@ -948,12 +948,30 @@ def subscription_singbox(
                     "http_client": "dl-direct",
                     "update_interval": "48h",
                 },
+                {
+                    # 明确「非要走代理」的海外域名。用途是挡住 geoip 误判：
+                    # googlevideo.com 这类海外域名会解析到国内 CDN IP，
+                    # 只有 IP 规则会把它判成直连 → 5s i/o timeout。
+                    "tag": "geosite-geolocation-!cn",
+                    "type": "remote",
+                    "format": "binary",
+                    "url": "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/geolocation-!cn.srs",
+                    "http_client": "dl-direct",
+                    "update_interval": "48h",
+                },
             ],
             "rules": [
                 {"action": "sniff"},
                 {"protocol": "dns", "action": "hijack-dns"},
                 {"ip_is_private": True, "outbound": "direct"},
-                {"rule_set": ["geosite-cn", "geoip-cn"], "outbound": "direct"},
+                # ⚠️ 顺序不能合并成 [geosite-cn, geoip-cn] 一条 —— 那是 OR 关系，
+                # geoip 命中就直连，域名判断被完全绕过。真机 2026-11-25：
+                # googlevideo.com(YouTube CDN) 解析到国内联通 IP →
+                # 被 geoip-cn 判直连 → i/o timeout 5s。
+                # 正确顺序：域名(国内→直连) → 域名(海外→代理) → IP(国内→直连)
+                {"rule_set": ["geosite-cn"], "outbound": "direct"},
+                {"rule_set": ["geosite-geolocation-!cn"], "outbound": "proxy"},
+                {"rule_set": ["geoip-cn"], "outbound": "direct"},
             ],
             "final": "proxy",
             "auto_detect_interface": True,
@@ -1150,6 +1168,7 @@ rules:
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
   - GEOSITE,cn,DIRECT
+  - GEOSITE,geolocation-!cn,PROXY
   - RULE-SET,china-ip,DIRECT
   - MATCH,PROXY
 """
