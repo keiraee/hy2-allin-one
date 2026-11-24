@@ -256,7 +256,16 @@ EOF
   # jsdelivr 镜像）。以前不查这项，新装机/repair 后二维码悄悄缺失，
   # 用户扫码时才看到「二维码库没装好」（真机踩过）。
   # 面板变量来自 panel.sh;deps 可以单独 source(测试场景),未加载时跳过此检查
-  if [ "${PANEL_VENDOR_DIR:-}" = "" ] || [ "${#PANEL_VENDOR_FILES[@]:-0}" -eq 0 ]; then
+  # ⚠️ 别写成 ${#PANEL_VENDOR_FILES[@]:-0} —— ${#arr[@]} 后面不能接默认值,
+  # bash 直接 "bad substitution" 报错;再叠 set -Eeuo pipefail 就整个安装中断。
+  # (2026-11-24 新装机 v1.8.2 真机踩到:依赖自检打完就退出,装不下去)
+  # 也不能直接写 ${#arr[@]}: set -u 下未定义数组会 "unbound variable",
+  # 所以先用 +set 判断存在性,再取长度。
+  local panel_vendor_count=0
+  if [ -n "${PANEL_VENDOR_FILES+set}" ]; then
+    panel_vendor_count=${#PANEL_VENDOR_FILES[@]}
+  fi
+  if [ "${PANEL_VENDOR_DIR:-}" = "" ] || [ "$panel_vendor_count" -eq 0 ]; then
     : # panel.sh 未加载(纯 deps 环境),跳过二维码检查
   elif [ -f "${PANEL_VENDOR_DIR}/qrcode.min.js" ]; then
     local vendor_want=""

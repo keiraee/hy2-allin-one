@@ -291,6 +291,47 @@ class DepsEntryGuardTests(unittest.TestCase):
             text = (ROOT / rel).read_text(encoding="utf-8")
             self.assertIn("hy2 deps", text, rel)
 
+class PanelVendorArrayGuardTests(unittest.TestCase):
+    """deps_cmd 的二维码自检不能因为 panel.sh 未加载而崩掉。
+
+    2026-11-24 真机（新装机 v1.8.2，Debian 13）：
+      依赖自检打印完「无需补装」后立刻
+        /tmp/.../lib/deps.sh: line 259: ${#PANEL_VENDOR_FILES[@]:-0}: bad substitution
+      整个 install 中断，机器装不下去。
+
+    根因：${#arr[@]} 后面不能接 :- 默认值（那是给普通变量用的），
+    bash 直接判语法错误。于是「panel.sh 未加载」这条本该早退的分支反而先炸了。
+    另外也不能退化成裸 ${#arr[@]} —— set -u 下未定义数组会 unbound variable。
+    """
+
+    def test_check_survives_undefined_panel_vendor_array(self):
+        # 关键：PANEL_VENDOR_DIR 必须有值。若它为空，bash 的 || 会短路，
+        # 右边那个数组展开根本不会被求值，测试就成了假绿。
+        # 真实场景是「WEB_DIR 已就绪、但 panel.sh 的文件清单没加载」。
+        result = run_bash(
+            PRELUDE
+            + 'PANEL_VENDOR_DIR="/nonexistent/hy2-vendor-probe"\n'
+            + "unset PANEL_VENDOR_FILES 2>/dev/null || true\n"
+            + "deps_cmd check || true\n"
+        )
+        combined = result.stdout + result.stderr
+        self.assertNotIn("bad substitution", combined)
+        self.assertNotIn("unbound variable", combined)
+
+    def test_qr_check_still_active_when_panel_loaded(self):
+        """反向：panel 变量存在时，二维码缺失仍要报警（别修成永远不执行的死代码）。"""
+        result = run_bash(
+            PRELUDE
+            + 'PANEL_VENDOR_DIR="/nonexistent/hy2-vendor-probe"\n'
+            + 'PANEL_VENDOR_FILES=("deadbeef  qrcode.min.js")\n'
+            + "install_panel_vendor() { return 1; }\n"
+            + "deps_cmd check || true\n"
+        )
+        combined = result.stdout + result.stderr
+        self.assertNotIn("bad substitution", combined)
+        self.assertIn("二维码库", combined)
+
+
 
 if __name__ == "__main__":
     unittest.main()

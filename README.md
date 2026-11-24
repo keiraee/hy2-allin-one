@@ -1,4 +1,4 @@
-# HY2 AIO v1.8.2
+# HY2 AIO v1.8.3
 
 一键部署 Hysteria 2 + VLESS+Reality + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -7,10 +7,10 @@
 
 ## 快速开始（新机器安装）
 
-当前版本：**v1.8.2**
+当前版本：**v1.8.3**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.2/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.3/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -52,7 +52,7 @@ sudo HY2_REPO_REF=main hy2 upgrade && sudo hy2 restart
 如果 `hy2 upgrade` 一直显示「已是 vX.Y.Z，提交未变化」，说明它钉在旧 tag 轨道上。用新引导脚本强制切轨道：
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.2/hy2.sh?nocache=$(date +%s)" -o hy2.sh
+curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.3/hy2.sh?nocache=$(date +%s)" -o hy2.sh
 sudo HY2_REPO_REF=main bash hy2.sh upgrade && sudo hy2 restart
 ```
 
@@ -169,7 +169,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.8.2` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.8.3` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `COUNTRY_CODE` | 节点名国旗（ISO 码如 `SG`）；留空=按服务器 IP 自动识别 | 自动识别 |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
@@ -218,6 +218,58 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v1.8.3
+
+紧急修复。**新装机/`hy2 repair` 会在依赖自检阶段直接中断，装不下去。**
+
+#### 根因
+
+`lib/deps.sh` 里二维码库检查写成了：
+
+```bash
+[ "${#PANEL_VENDOR_FILES[@]:-0}" -eq 0 ]
+```
+
+`${#arr[@]}` 是数组长度，**后面不能接 `:-` 默认值**（那是给普通变量用的）。
+bash 判定为语法错误，直接抛 `bad substitution`；再叠上 `set -Eeuo pipefail`，
+整个安装就在这一行中断：
+
+```
+HY2 AIO 运行环境自检
+系统：Debian GNU/Linux 13 (trixie)  架构：x86_64 (amd64)
+内存：943MB  根分区：26GB（可用 24424MB）  包管理器：apt
+
+[09:01:51] 无需补装
+/tmp/.../lib/deps.sh: line 259: ${#PANEL_VENDOR_FILES[@]:-0}: bad substitution
+```
+
+讽刺的是这行本来是「panel.sh 没加载就早退跳过」的保护分支，结果自己先炸了。
+
+#### 修法
+
+先判存在性再取长度，两条路都安全：
+
+```bash
+local panel_vendor_count=0
+if [ -n "${PANEL_VENDOR_FILES+set}" ]; then
+  panel_vendor_count=${#PANEL_VENDOR_FILES[@]}
+fi
+if [ "${PANEL_VENDOR_DIR:-}" = "" ] || [ "$panel_vendor_count" -eq 0 ]; then
+```
+
+注意**不能**简单退化成裸 `${#PANEL_VENDOR_FILES[@]}` —— `set -u` 下未定义数组会报 `unbound variable`，同样中断安装。
+
+#### 自动化验收
+
+- `test_check_survives_undefined_panel_vendor_array`：目录有值、文件数组未定义时不崩
+- `test_qr_check_still_active_when_panel_loaded`：反向守护，变量齐备时二维码缺失仍要报警（防止修成死代码）
+- 负向三组各自精确变红：改回 `:-0` → 2 红；改裸写法 → 1 红（unbound variable）；改成永远跳过 → 1 红
+
+#### 影响范围
+
+v1.8.2 的所有**新装机和 repair**。已装好且能正常运行的机器不受影响（这行只在依赖自检时执行）。
+装 v1.8.2 失败的机器，用 v1.8.3 重新执行安装命令即可，无需清理。
 
 ### v1.8.2
 
