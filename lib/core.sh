@@ -6,7 +6,7 @@ set -Eeuo pipefail
 # 基础版本号：语义化版本,发布大版本时手动 bump 这里。
 # 面板/CLI 实际展示的版本 = 基础版本 + 自此的提交数 + 短哈希(构建时注入),
 # 这样每个提交都有可区分的版本号,不再出现"改了几十版面板还显示旧版本"。
-SCRIPT_VERSION="2.0.0"
+SCRIPT_VERSION="2.0.1"
 SCRIPT_BUILD="$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)" rev-list --count HEAD 2>/dev/null || true)"
 SCRIPT_COMMIT="$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)" rev-parse --short=7 HEAD 2>/dev/null || true)"
 if [ -n "$SCRIPT_BUILD" ] && [ -n "$SCRIPT_COMMIT" ]; then
