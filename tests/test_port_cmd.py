@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG = ROOT / "lib" / "config.sh"
+CONFIG = ROOT / "lib" / "network.sh"
 BACKEND = ROOT / "app" / "server.py"
 PANEL = ROOT / "web" / "index.html"
 CLI = ROOT / "lib" / "cli.sh"
@@ -73,7 +73,7 @@ class PortControlScriptTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.src = CONFIG.read_text(encoding="utf-8")
+        cls.src = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
 
     def test_control_understands_port_prefix(self):
         self.assertIn('port:*)', self.src)

@@ -153,7 +153,7 @@ class HopRollbackReachabilityTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.text = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
+        cls.text = (ROOT / "lib" / "network.sh").read_text(encoding="utf-8")
 
     def hop_cmd_body(self) -> str:
         start = self.text.index("hop_cmd() {")
@@ -209,7 +209,7 @@ class HopCheckLeftoverTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        src = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
+        src = (ROOT / "lib" / "network.sh").read_text(encoding="utf-8")
         start = src.index("# 第 7 项：残留的 NAT 链")
         cls.body = src[start : start + 1400]
 

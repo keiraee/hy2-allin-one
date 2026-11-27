@@ -146,6 +146,7 @@ fi
 source "${MODULES_DIR}/lib/core.sh"
 source "${MODULES_DIR}/lib/install.sh"
 source "${MODULES_DIR}/lib/config.sh"
+source "${MODULES_DIR}/lib/network.sh"
 source "${MODULES_DIR}/lib/panel.sh"
 source "${MODULES_DIR}/lib/user.sh"
 source "${MODULES_DIR}/lib/cert.sh"

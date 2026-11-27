@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG = ROOT / "lib" / "config.sh"
+CONFIG = ROOT / "lib" / "network.sh"
 
 
 class PortOwnerParseTests(unittest.TestCase):

@@ -80,7 +80,7 @@ class HopCheckIntegrationTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.src = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
+        cls.src = (ROOT / "lib" / "network.sh").read_text(encoding="utf-8")
 
     def test_check_has_leftover_item(self):
         self.assertIn("hysteria_nat_leftovers", self.src)
