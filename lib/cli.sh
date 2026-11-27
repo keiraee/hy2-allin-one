@@ -121,8 +121,13 @@ PY
 )"
     if [ -n "$got_xray_port" ] && [ "$got_xray_port" != "$want_xray_port" ]; then
       log "检测到 Xray 端口配置变化（$got_xray_port → $want_xray_port），重建配置"
+      if [ -x "${XRAY_REBUILD_FILE:-}" ]; then
+        "$XRAY_REBUILD_FILE" || warn "rebuild_xray.py 执行失败"
+        chown hy2-aio:hy2-aio "$XRAY_CONFIG" 2>/dev/null || true
+        chmod 0640 "$XRAY_CONFIG" 2>/dev/null || true
+      fi
+      wait_backend_ready 10 || true
       api_post sync >/dev/null 2>&1 || true
-      sleep 1
     fi
   fi
 
