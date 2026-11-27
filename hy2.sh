@@ -923,6 +923,7 @@ main() {
     rollback)   rollback_cmd ;;
     logs)       logs_cmd "${2:-}" ;;
     restart)    restart_cmd ;;
+    cert)       cert_cmd ;;
     users)      users_cmd ;;
     add-user)   modify_user "add-user" "${2:-}" ;;
     remove-user) modify_user "remove-user" "${2:-}" ;;
