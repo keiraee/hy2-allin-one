@@ -1,4 +1,4 @@
-# HY2 AIO v2.0.1
+# HY2 AIO v2.1.0
 
 一键部署 Hysteria 2 + VLESS+Reality + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -7,10 +7,10 @@
 
 ## 快速开始（新机器安装）
 
-当前版本：**v2.0.1**
+当前版本：**v2.1.0**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v2.0.1/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v2.1.0/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -52,7 +52,7 @@ sudo HY2_REPO_REF=main hy2 upgrade && sudo hy2 restart
 如果 `hy2 upgrade` 一直显示「已是 vX.Y.Z，提交未变化」，说明它钉在旧 tag 轨道上。用新引导脚本强制切轨道：
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v2.0.1/hy2.sh?nocache=$(date +%s)" -o hy2.sh
+curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v2.1.0/hy2.sh?nocache=$(date +%s)" -o hy2.sh
 sudo HY2_REPO_REF=main bash hy2.sh upgrade && sudo hy2 restart
 ```
 
@@ -169,7 +169,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v2.0.1` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v2.1.0` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `COUNTRY_CODE` | 节点名国旗（ISO 码如 `SG`）；留空=按服务器 IP 自动识别 | 自动识别 |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
@@ -218,6 +218,16 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v2.1.0
+- **Clash Fake-IP 与 DNS 修复**：修正 `fake-ip-filter-mode` 误写 `whitelist` 导致 Fake-IP 失效并反噬局域网 `.lan`/`.local` 的问题，改为 `blacklist` 并补齐标准绕过列表；`direct-nameserver` 改用国内纯净 DoH 避免系统 DNS 劫持。
+- **Clash 域名嗅探对齐**：新增 `sniffer`（HTTP / TLS / QUIC 纯 IP 嗅探与 `+.push.apple.com` 跳过），与 sing-box 的 `sniff` 行为一致。
+- **sing-box 多版本客户端自适应兼容**：同一订阅链接按 `User-Agent`（及可选 `?sbver=` 参数）自动在 `1.14+`（`http_clients` + `store_dns`）、`1.12~1.13`（`download_detour`）与 `1.11`（旧版 DNS 格式）间切换，并开启 `experimental.cache_file` 持久化缓存。
+- **Clash / sing-box 同源规则集与单一分流中间层**：Clash 全面切换为与 sing-box `.srs` 1:1 对应的 4 组 MetaCubeX `.mrs` 二进制规则集（`geosite-private` / `geosite-cn` / `geosite-geolocation-!cn` / `geoip-cn`），淘汰裁剪版 `geosite-lite.dat`；`lan` / `local` / `jinritemai.com` 补充规则双端同步。
+- **VPS 本机 Caddy `/rules/*` 同源规则缓存分发**：有受信 HTTPS 域名时，订阅内的 `.mrs` / `.srs` 规则地址直接指向 VPS 同源 `/rules/*`（Caddy 静态直出 + 后端多源按需回源缓存 + 离线 302 兜底），彻底避免国内网络拉取 jsDelivr 抽风卡首启；裸 IP 自签证书自动回退公共镜像。
+- **协议开关与订阅联动**：面板关闭 HY2 或 VLESS 后，订阅自动隐藏已停用节点并将存活节点设为默认（保留纯手动选择模式，不自动切换）。
+- **两端 TUN 与 DNS 边界对齐**：两端统一 `stack: mixed` 并排除 `PUBLIC_IP/32` 防环路，Clash 补齐 `100.64.0.0/10`、`169.254.0.0/16`、`224.0.0.0/4` 私网段，sing-box 1.12+ 补齐 `HTTPS/SVCB` DNS 查询拦截。
+- **双内核双向分流验收**：`tools/verify-domestic-routing.py` 支持同时拉起真 `mihomo` 与真 `sing-box` 校验“国内必直连 + 海外必代理”，Linux 全量 713 项单测通过。
 
 ### v2.0.1
 - **面板体验修复**：修复 `#vlessOffBanner` 误写 `class="banner banner-muted"` 导致 VLESS 运行时仍在顶部裸露显示的问题，对齐 `class="notice"` 样式与显隐逻辑。
