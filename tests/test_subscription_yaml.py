@@ -57,8 +57,19 @@ class ClashGeoSiteSplitTests(unittest.TestCase):
         self.assertNotIn("GEOIP,", self.rules)
 
     def test_private_networks_direct(self):
-        for cidr in ("127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"):
-            self.assertIn("IP-CIDR,%s,DIRECT" % cidr, self.rules)
+        for cidr in (
+            "127.0.0.0/8",
+            "10.0.0.0/8",
+            "100.64.0.0/10",
+            "169.254.0.0/16",
+            "172.16.0.0/12",
+            "192.168.0.0/16",
+            "224.0.0.0/4",
+        ):
+            self.assertIn("IP-CIDR,%s,DIRECT,no-resolve" % cidr, self.rules)
+
+    def test_tun_uses_mixed_stack(self):
+        self.assertEqual("mixed", self.cfg["tun"]["stack"])
 
     def test_lan_direct(self):
         self.assertIn("DOMAIN-SUFFIX,lan,DIRECT", self.cfg["rules"])

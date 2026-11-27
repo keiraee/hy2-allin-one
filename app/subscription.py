@@ -186,6 +186,17 @@ CUSTOM_DIRECT_SUFFIXES: tuple[str, ...] = (
     "jinritemai.com",
 )
 
+# 完整私有/保留 IPv4 网段（对齐 sing-box ip_is_private，含 CGNAT/Tailscale 与组播）
+PRIVATE_IPV4_CIDRS: tuple[str, ...] = (
+    "127.0.0.0/8",
+    "10.0.0.0/8",
+    "100.64.0.0/10",
+    "169.254.0.0/16",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "224.0.0.0/4",
+)
+
 
 RULESET_FILES: dict[str, str] = {}
 for _rs in ROUTING_RULESETS:
@@ -422,6 +433,7 @@ def subscription_singbox(
             {"type": "local", "tag": "local"},
         ]
         dns_rules: list[dict[str, Any]] = [
+            {"query_type": ["HTTPS", "SVCB"], "action": "reject"},
             {"domain_suffix": [".cn", *CUSTOM_DIRECT_SUFFIXES], "server": "local"},
             {"rule_set": ["geosite-private", "geosite-cn"], "server": "local"},
         ]
@@ -482,9 +494,11 @@ def subscription_singbox(
                 {
                     "type": "tun",
                     "tag": "tun-in",
+                    "stack": "mixed",
                     "address": ["172.19.0.1/30"],
                     "auto_route": True,
                     "strict_route": True,
+                    "route_exclude_address": [f"{env['PUBLIC_IP']}/32"],
                     "mtu": 1400,
                 }
             ],
@@ -684,6 +698,9 @@ def subscription_yaml(
     custom_direct_rules = "\n".join(
         f"  - DOMAIN-SUFFIX,{suffix},DIRECT" for suffix in CUSTOM_DIRECT_SUFFIXES
     )
+    private_cidr_rules = "\n".join(
+        f"  - IP-CIDR,{cidr},DIRECT,no-resolve" for cidr in PRIVATE_IPV4_CIDRS
+    )
 
     content = f"""mixed-port: 7890
 allow-lan: false
@@ -693,7 +710,7 @@ ipv6: false
 
 tun:
   enable: true
-  stack: system
+  stack: mixed
   auto-route: true
   auto-detect-interface: true
   strict-route: true
@@ -776,10 +793,7 @@ rule-providers:
 
 rules:
 {custom_direct_rules}
-  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
-  - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
-  - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
-  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
+{private_cidr_rules}
   - RULE-SET,geosite-private,DIRECT
   - RULE-SET,geosite-cn,DIRECT
   - RULE-SET,geosite-geolocation-!cn,PROXY

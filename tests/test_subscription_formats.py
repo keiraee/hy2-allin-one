@@ -204,7 +204,19 @@ class SingBoxTests(unittest.TestCase):
         self.assertEqual("proxy", self.cfg["route"]["final"])
 
     def test_tun_inbound_present(self):
-        self.assertEqual("tun", self.cfg["inbounds"][0]["type"])
+        tun = self.cfg["inbounds"][0]
+        self.assertEqual("tun", tun["type"])
+        self.assertEqual("mixed", tun.get("stack"))
+        self.assertIn("203.0.113.9/32", tun.get("route_exclude_address", []))
+
+    def test_dns_rejects_https_and_svcb_on_112_plus(self):
+        rules = self.cfg["dns"]["rules"]
+        self.assertTrue(
+            any(
+                set(r.get("query_type", [])) == {"HTTPS", "SVCB"} and r.get("action") == "reject"
+                for r in rules
+            )
+        )
 
 
 class FormatSelectionTests(unittest.TestCase):
