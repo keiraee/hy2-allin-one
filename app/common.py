@@ -183,6 +183,20 @@ def atomic_bytes(path: Path, data: bytes, mode: Optional[int] = None) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def counter_delta(current: int, last: int) -> int:
+    """两个累计计数器之间的新增量。
+
+    只用于「同一个进程内」比较。Hysteria 重启后它自己的计数器会从 0 重来，
+    拿新值和旧值比就完全没意义了（新值可能大于旧值 → 只算差额，几乎全丢），
+    所以调用方必须先确认进程没换，换了就把基线清零。
+    """
+    current = max(int(current or 0), 0)
+    last = max(int(last or 0), 0)
+    if current >= last:
+        return current - last
+    return current
+
+
 def atomic_json(path: Path, data: Any) -> None:
     content = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
     atomic_bytes(path, content)

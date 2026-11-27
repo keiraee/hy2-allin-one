@@ -196,6 +196,7 @@ fetch_modules() {
     "lib/deps.sh"
     "bin/hy2.sh"
     "web/index.html"
+    "app/activity.py"
     "app/common.py"
     "app/subscription.py"
     "app/server.py"

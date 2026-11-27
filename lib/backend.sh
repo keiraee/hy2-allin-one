@@ -13,7 +13,7 @@ write_backend() {
   done
   [ -n "$src" ] || die "找不到后端源码：app/server.py（请重新执行 hy2 upgrade）"
   install -d -m 0755 "$APP_DIR"
-  for mod in common.py subscription.py; do
+  for mod in common.py subscription.py activity.py; do
     mod_src=""
     for candidate in \
       "${SCRIPT_DIR:-}/app/${mod}" \

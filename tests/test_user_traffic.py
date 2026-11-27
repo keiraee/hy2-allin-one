@@ -455,7 +455,7 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("trafficMix", panel)
         self.assertIn("function renderSiteMix", panel)
         self.assertIn("工作日 / 周末", panel)
-        self.assertIn("def root_host", (ROOT / "app" / "server.py").read_text(encoding="utf-8"))
+        self.assertIn("def root_host", (ROOT / "app" / "activity.py").read_text(encoding="utf-8"))
         self.assertIn("session_stats_from_logs", (ROOT / "app" / "server.py").read_text(encoding="utf-8"))
         self.assertIn("groupSitesByRoot", panel)
         self.assertIn("formatDuration", panel)
