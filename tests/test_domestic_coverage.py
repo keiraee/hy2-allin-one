@@ -191,7 +191,10 @@ class DomesticCoverageSourceTests(unittest.TestCase):
 
         cfg_sh = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
         self.assertIn("handle /rules/*", cfg_sh)
-        self.assertIn("@rules_cached file", cfg_sh)
+        # Caddy 2 禁止在 handle 块内定义 @matcher，否则 caddy validate 报 unrecognized directive
+        rules_block = cfg_sh[cfg_sh.index("handle /rules/*") : cfg_sh.index("@legacy_sub")]
+        self.assertNotIn("@rules_cached", rules_block)
+        self.assertIn("reverse_proxy", rules_block)
 
         src = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         ns = {"__name__": "hy2_rules_test"}

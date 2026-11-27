@@ -488,17 +488,9 @@ content = f"""{site_addr} {{
         }}
 
         handle /rules/* {{
-            root * {web_dir}
-            @rules_cached file
-            handle @rules_cached {{
-                header Cache-Control "public, max-age=3600"
-                file_server
-            }}
-            handle {{
-                reverse_proxy {backend_host}:{backend_port} {{
-                    header_up X-Forwarded-For {{remote_host}}
-                    header_up X-Real-IP {{remote_host}}
-                }}
+            reverse_proxy {backend_host}:{backend_port} {{
+                header_up X-Forwarded-For {{remote_host}}
+                header_up X-Real-IP {{remote_host}}
             }}
         }}
 
