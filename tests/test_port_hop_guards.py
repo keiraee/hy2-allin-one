@@ -189,7 +189,9 @@ class HopRollbackReachabilityTests(unittest.TestCase):
 class HopCliEntryTests(unittest.TestCase):
     def test_installed_cli_dispatches_hop(self):
         text = (ROOT / "bin" / "hy2.sh").read_text(encoding="utf-8")
-        self.assertRegex(text, r"(?m)^\s*hop\)\s+hop_cmd\s")
+        cli = (ROOT / "lib" / "cli.sh").read_text(encoding="utf-8")
+        self.assertIn("dispatch_cli_command", text)
+        self.assertRegex(cli, r"(?m)^\s*hop\)\s+hop_cmd\s")
         self.assertIn("hy2 hop on|off", text)
 
 

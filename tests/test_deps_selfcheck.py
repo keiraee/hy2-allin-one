@@ -272,13 +272,11 @@ class DepsEntryGuardTests(unittest.TestCase):
     d90e582 就是漏了后者，hop 只有菜单能用、命令行全落 usage。"""
 
     def test_both_entrypoints_dispatch_deps(self):
+        cli_text = (ROOT / "lib" / "cli.sh").read_text(encoding="utf-8")
+        self.assertRegex(cli_text, r"(?m)^\s*deps\)\s+deps_cmd\s", "lib/cli.sh 缺少 deps 命令分发")
         for rel in ("hy2.sh", "bin/hy2.sh"):
             text = (ROOT / rel).read_text(encoding="utf-8")
-            self.assertRegex(
-                text,
-                r"(?m)^\s*deps\)\s+deps_cmd\s",
-                f"{rel} 缺少 deps 命令分发",
-            )
+            self.assertIn("dispatch_cli_command", text, f"{rel} 未委托 dispatch_cli_command")
 
     def test_both_entrypoints_load_deps_module(self):
         root_script = (ROOT / "hy2.sh").read_text(encoding="utf-8")

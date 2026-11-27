@@ -35,8 +35,9 @@ class WelcomeAndPanelTests(unittest.TestCase):
         self.assertIn('23)', cli)
         self.assertIn("menu_call panel_cmd", cli)
         self.assertIn("hy2 panel", usage)
-        self.assertRegex(usage, r"panel\)\s+panel_cmd")
-        self.assertRegex(bootstrap, r"panel\)\s+panel_cmd")
+        self.assertRegex(cli, r"panel\)\s+panel_cmd")
+        self.assertIn("dispatch_cli_command", usage)
+        self.assertIn("dispatch_cli_command", bootstrap)
 
 
 if __name__ == "__main__":

@@ -61,9 +61,11 @@ class PortCmdTests(unittest.TestCase):
         self.assertIn("重新导入订阅", self.body)
 
     def test_dispatch_wired(self):
+        cli_text = CLI.read_text(encoding="utf-8")
+        self.assertRegex(cli_text, r"port\)\s+port_cmd")
         for f in (HY2SH, ROOT / "bin" / "hy2.sh"):
             text = f.read_text(encoding="utf-8")
-            self.assertRegex(text, r"port\)\s+port_cmd")
+            self.assertIn("dispatch_cli_command", text)
 
 
 class PortControlScriptTests(unittest.TestCase):

@@ -924,40 +924,12 @@ main() {
       ;;
   esac
 
-  # 解析命令
+  # 解析命令（入口特有命令在此处理，其余统一走 lib/cli.sh 的 dispatch_cli_command）
   case "$command" in
-    menu)       menu_interactive ;;
     install)    install_stack ;;
     repair)     repair_cmd "${2:-${HY2_UPGRADE_BANNER:-0}}" ;;
     upgrade)    repair_cmd 1 ;;   # 升级要连带把内核升到内置默认版本
-    status)     status_cmd ;;
-    show)       show_cmd ;;
-    panel)      panel_cmd ;;
-    sync)       sync_cmd ;;
-    mode)       mode_cmd "$@" ;;
-    backup)     backup_cmd ;;
-    rollback)   rollback_cmd ;;
-    logs)       logs_cmd "${2:-}" ;;
-    restart)    restart_cmd ;;
-    cert)       cert_cmd ;;
-    users)      users_cmd ;;
-    add-user)   modify_user "add-user" "${2:-}" ;;
-    remove-user) modify_user "remove-user" "${2:-}" ;;
-    rotate-user) modify_user "rotate-user" "${2:-}" ;;
-    note)       modify_user "note" "${2:-}" "${3:-}" ;;
-    disable)    modify_user "disable" "${2:-}" ;;
-    enable)     modify_user "enable" "${2:-}" ;;
-    on)         hy2_on_cmd ;;
-    off)        hy2_off_cmd ;;
-    update)     update_cmd "${2:-}" ;;
-    update-xray) update_xray_cmd ;;
-    uninstall)  uninstall_cmd ;;
-    obfs)       obfs_cmd "${2:-show}" ;;
-    hop)        hop_cmd "${2:-show}" "${3:-}" ;;
-    port)       port_cmd "${2:-show}" "${3:-}" ;;
-    deps)       deps_cmd "${2:-check}" ;;
-    help|-h|--help|-help) usage ;;
-    *)          usage; exit 1 ;;
+    *)          dispatch_cli_command "$@" ;;
   esac
 }
 

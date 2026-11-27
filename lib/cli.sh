@@ -669,3 +669,39 @@ menu_interactive() {
     read -r -p "按回车返回菜单..." _
   done
 }
+
+# 统一命令路由：hy2.sh 与 bin/hy2.sh 共同委托此处，避免双入口漏分发。
+dispatch_cli_command() {
+  local command="${1:-menu}"
+  case "$command" in
+    menu)        menu_interactive ;;
+    status)      status_cmd ;;
+    show)        show_cmd ;;
+    panel)       panel_cmd ;;
+    sync)        sync_cmd ;;
+    mode)        mode_cmd "$@" ;;
+    backup)      backup_cmd ;;
+    rollback)    rollback_cmd ;;
+    logs)        logs_cmd "${2:-}" ;;
+    restart)     restart_cmd ;;
+    cert)        cert_cmd ;;
+    users)       users_cmd ;;
+    add-user)    modify_user "add-user" "${2:-}" ;;
+    remove-user) modify_user "remove-user" "${2:-}" ;;
+    rotate-user) modify_user "rotate-user" "${2:-}" ;;
+    note)        modify_user "note" "${2:-}" "${3:-}" ;;
+    disable)     modify_user "disable" "${2:-}" ;;
+    enable)      modify_user "enable" "${2:-}" ;;
+    on)          hy2_on_cmd ;;
+    off)         hy2_off_cmd ;;
+    update)      update_cmd "${2:-}" ;;
+    update-xray) update_xray_cmd ;;
+    uninstall)   uninstall_cmd ;;
+    obfs)        obfs_cmd "${2:-show}" ;;
+    hop)         hop_cmd "${2:-show}" "${3:-}" ;;
+    port)        port_cmd "${2:-show}" "${3:-}" ;;
+    deps)        deps_cmd "${2:-check}" ;;
+    help|-h|--help|-help) usage ;;
+    *)           usage; exit 1 ;;
+  esac
+}
