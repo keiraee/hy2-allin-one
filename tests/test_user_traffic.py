@@ -487,7 +487,7 @@ class UserTrafficPanelTests(unittest.TestCase):
         ]
         self.assertLess(
             handler.index("self.send_json(200, response)"),
-            handler.index("schedule_apply_and_collect()"),
+            handler.index("schedule_apply_and_collect("),
         )
 
     def test_empty_hour_and_week_charts_keep_placeholder_without_series(self):
