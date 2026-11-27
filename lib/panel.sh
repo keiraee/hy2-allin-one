@@ -2430,11 +2430,13 @@ document.addEventListener("click",closeMenus);
 document.addEventListener("scroll",()=>{if(openMenu&&openMenu._btn)positionMenu(openMenu,openMenu._btn)},true);
 window.addEventListener("resize",()=>{if(openMenu&&openMenu._btn)positionMenu(openMenu,openMenu._btn)});
 document.addEventListener("keydown",event=>{
-  if(event.key==="Escape"){closeMenus();setDrawer(false);setNoteModal(false);setTrafficModal(false)}
+  if(event.key==="Escape"){closeMenus();setDrawer(false);setNoteModal(false);setTrafficModal(false);closeQr();setPortModal(false)}
 });
 const NOTICE_KEY="hy2-aio-notice-dismissed-v3";
 const ERROR_KEY="hy2-aio-error-dismissed";
-if(localStorage.getItem(NOTICE_KEY)!=="1")$("notice").classList.add("show");
+let noticeDismissed="";
+try{noticeDismissed=localStorage.getItem(NOTICE_KEY)||""}catch(e){}
+if(noticeDismissed!=="1")$("notice").classList.add("show");
 $("noticeClose").onclick=()=>{
   $("notice").classList.remove("show");
   try{localStorage.setItem(NOTICE_KEY,"1")}catch(e){}
