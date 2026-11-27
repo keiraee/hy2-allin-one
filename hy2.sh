@@ -196,6 +196,7 @@ fetch_modules() {
     "lib/deps.sh"
     "bin/hy2.sh"
     "web/index.html"
+    "app/common.py"
     "app/server.py"
     "app/rebuild_config.py"
     "app/rebuild_xray.py"

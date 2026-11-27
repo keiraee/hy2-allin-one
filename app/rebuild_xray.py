@@ -5,46 +5,19 @@ import sys
 import tempfile
 from pathlib import Path
 
+for _cand in (
+    str(Path(__file__).resolve().parent) if "__file__" in globals() else "",
+    "/usr/local/lib/hy2-aio",
+    str(Path.cwd() / "app"),
+):
+    if _cand and _cand not in sys.path and (Path(_cand) / "common.py").is_file():
+        sys.path.insert(0, _cand)
+
+from common import read_env_file as read_env, resolve_xray_port, user_is_disabled
+
 ENV_FILE = Path(os.environ.get("HY2_ENV_FILE", "/etc/hy2-aio/config.env"))
 USERS_FILE = Path(os.environ.get("HY2_USERS_FILE", "/etc/hy2-aio/users.json"))
 OUT_FILE = Path(os.environ.get("HY2_XRAY_CONFIG", "/etc/hy2-aio/xray.json"))
-
-
-def read_env(path: Path) -> dict:
-    values = {}
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        raw = raw.strip()
-        if not raw or raw.startswith("#") or "=" not in raw:
-            continue
-        key, value = raw.split("=", 1)
-        values[key] = value
-    return values
-
-
-def user_is_disabled(info: dict) -> bool:
-    value = info.get("disabled", False)
-    if value is True:
-        return True
-    if value is False or value is None:
-        return False
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return value != 0
-    if isinstance(value, str):
-        return value.strip().lower() in ("1", "true", "yes", "on")
-    return bool(value)
-
-
-def resolve_xray_port(env: dict) -> int:
-    raw = str(env.get("XRAY_PORT") or "").strip()
-    if raw:
-        return int(raw)
-    hy2 = str(env.get("HY2_PORT") or "8443")
-    panel = str(env.get("PANEL_PORT") or "443")
-    if hy2 != panel:
-        return int(hy2)
-    if panel != "8443":
-        return 8443
-    return 443
 
 
 env = read_env(ENV_FILE)

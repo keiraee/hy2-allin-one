@@ -13,6 +13,7 @@ import secrets
 import shutil
 import socket
 import subprocess
+import sys
 import tarfile
 import threading
 import time
@@ -25,6 +26,32 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import tempfile
 from typing import Any, Optional
+
+for _cand in (
+    str(Path(__file__).resolve().parent) if "__file__" in globals() else "",
+    "/usr/local/lib/hy2-aio",
+    str(Path.cwd() / "app"),
+):
+    if _cand and _cand not in sys.path and (Path(_cand) / "common.py").is_file():
+        sys.path.insert(0, _cand)
+
+from common import (
+    atomic_bytes,
+    atomic_json,
+    client_insecure,
+    country_code_to_flag,
+    obfs_enabled,
+    port_hop_enabled,
+    port_hop_interval,
+    port_hop_ports,
+    public_base_url,
+    read_env_file,
+    reality_dest,
+    reality_server_name,
+    subscription_sni,
+    user_is_disabled,
+    xray_port,
+)
 
 try:
     import fcntl
@@ -58,6 +85,7 @@ BACKUP_OPTIONAL = (
     "etc/caddy/hy2-aio.caddy",
     "etc/hy2-aio/hy2.off",
     "etc/systemd/system/hysteria-server.service.d/hy2-switch.conf",
+    "usr/local/lib/hy2-aio/common.py",
     "usr/local/lib/hy2-aio/hysteria-control.sh",
     "usr/local/lib/hy2-aio/xray-control.sh",
     "usr/local/lib/hy2-aio/xray-prestart.sh",
@@ -90,14 +118,7 @@ BACKUP_RETRY_AFTER = 0.0
 
 
 def load_env() -> dict[str, str]:
-    values: dict[str, str] = {}
-    for raw in ENV_FILE.read_text(encoding="utf-8").splitlines():
-        raw = raw.strip()
-        if not raw or raw.startswith("#") or "=" not in raw:
-            continue
-        key, value = raw.split("=", 1)
-        values[key.strip()] = value.strip().strip('"').strip("'")
-    return values
+    return read_env_file(ENV_FILE)
 
 
 def load_users() -> dict[str, dict[str, str]]:
@@ -105,19 +126,6 @@ def load_users() -> dict[str, dict[str, str]]:
     if not isinstance(data, dict):
         raise RuntimeError("users.json 格式错误")
     return data
-
-
-def user_is_disabled(info: dict[str, Any]) -> bool:
-    value = info.get("disabled", False)
-    if value is True:
-        return True
-    if value is False or value is None:
-        return False
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return value != 0
-    if isinstance(value, str):
-        return value.strip().lower() in ("1", "true", "yes", "on")
-    return bool(value)
 
 
 def has_enabled_users(users: Optional[dict[str, Any]] = None) -> bool:
@@ -195,33 +203,6 @@ def mode_label(mode: dict[str, Any]) -> str:
     up = float(mode.get("up_mbps", 0))
     down = float(mode.get("down_mbps", 0))
     return f"Brutal ↑{up:g} / ↓{down:g} Mbps"
-
-
-def atomic_bytes(path: Path, data: bytes, mode: Optional[int] = None) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if mode is None:
-        try:
-            mode = path.stat().st_mode & 0o777
-        except FileNotFoundError:
-            mode = 0o644
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
-    temporary = Path(temporary_name)
-    try:
-        with os.fdopen(descriptor, "wb") as file:
-            file.write(data)
-            file.flush()
-            os.fsync(file.fileno())
-        os.chmod(temporary, mode)
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-def atomic_json(path: Path, data: Any) -> None:
-    content = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
-    atomic_bytes(path, content)
 
 
 @contextmanager
@@ -515,84 +496,6 @@ def memory_info() -> dict[str, Any]:
     }
 
 
-def client_insecure(env: dict[str, str]) -> bool:
-    """订阅里要不要带 insecure / skip-cert-verify。
-
-    只有【真的没有可信证书】时才该打开：
-      - 用裸 IP 当域名（Let's Encrypt 签不了 IP）
-      - 证书申请失败、用户手动塞了自签证书
-
-    注意 sslip.io 不算这一类。它是通配 DNS，解析到 IP，但 Caddy 照样能
-    拿到 Let's Encrypt 的正式证书（实测 156-231-141-107.sslip.io 的
-    issuer 是 Let's Encrypt，verify return code 0）。之前把 sslip.io
-    一律当"需要跳过验证"是误判 —— 白白让客户端关掉证书校验，
-    还撞上 Clash 系 2026.8.1 要禁用 allowInsecure 的警告。
-
-    用户仍然可以显式覆盖：CLIENT_INSECURE=1 / 0。
-    """
-    raw = str(env.get("CLIENT_INSECURE", "")).strip().lower()
-    if raw in ("0", "false", "no", "off"):
-        return False
-    if raw in ("1", "true", "yes", "on"):
-        return True
-    domain = str(env.get("DOMAIN", "")).strip()
-    public_ip = str(env.get("PUBLIC_IP", "")).strip()
-    return bool(domain) and domain == public_ip
-
-
-def obfs_enabled(env: dict[str, str]) -> bool:
-    raw = str(env.get("OBFS_ENABLED", "true")).strip().lower()
-    return raw in ("1", "true", "yes", "on")
-
-
-def port_hop_enabled(env: dict[str, str]) -> bool:
-    raw = str(env.get("PORT_HOP_ENABLED", "false")).strip().lower()
-    return raw in ("1", "true", "yes", "on")
-
-
-def port_hop_ports(env: dict[str, str]) -> str:
-    """端口跳跃范围；无效时返回空串，订阅/直链退回单端口，别把坏配置发出去。"""
-    if not port_hop_enabled(env):
-        return ""
-    try:
-        base = int(str(env.get("HY2_PORT") or "8443"))
-    except ValueError:
-        return ""
-    raw = str(env.get("PORT_HOP_RANGE") or "").strip()
-    if not raw:
-        raw = f"{base}-{min(base + 1000, 65535)}"
-    match = re.fullmatch(r"([0-9]{1,5})-([0-9]{1,5})", raw)
-    if not match:
-        return ""
-    start, end = int(match.group(1)), int(match.group(2))
-    if start != base or end <= start or end > 65535 or end - start > 2000:
-        return ""
-    return f"{start}-{end}"
-
-
-def port_hop_interval(env: dict[str, str]) -> str:
-    raw = str(env.get("PORT_HOP_INTERVAL") or "30").strip()
-    if raw.isdigit() and 5 <= int(raw) <= 3600:
-        return str(int(raw))
-    return "30"
-
-
-def public_base_url(env: dict[str, str]) -> str:
-    """Panel/subscription base URL (always HTTPS)."""
-    domain = str(env.get("DOMAIN", "") or "")
-    port = str(env.get("PANEL_PORT", "443") or "443")
-    if port in ("443", ""):
-        return f"https://{domain}"
-    return f"https://{domain}:{port}"
-
-
-def country_code_to_flag(code: str) -> str:
-    cc = str(code or "").strip().upper()
-    if len(cc) != 2 or not cc.isalpha():
-        return ""
-    return "".join(chr(127397 + ord(ch)) for ch in cc)
-
-
 def _http_get_json(url: str) -> Optional[dict[str, Any]]:
     try:
         req = urllib.request.Request(url, headers={"accept": "application/json"})
@@ -644,23 +547,6 @@ def flag_prefix(env: dict[str, str]) -> str:
     return flag + " " if flag else ""
 
 
-def subscription_sni(env: dict[str, str]) -> str:
-    """订阅里给客户端的 SNI。
-
-    优先用域名 —— 因为 create_certificate 会把 Caddy 的 Let's Encrypt 证书
-    复制给 Hysteria，证书 SAN 就是 DOMAIN。这样客户端 sni=域名 +
-    insecure=false 能真校验通过。
-
-    只有纯 IP 部署（DOMAIN 为空或等于 IP）才退回旧的自定义 SNI，
-    否则退到 IP（自签证书的 SAN）。
-    """
-    explicit = str(env.get("SNI") or "").strip()
-    domain = str(env.get("DOMAIN") or "").strip()
-    public_ip = str(env.get("PUBLIC_IP") or "").strip()
-    if domain and domain != public_ip:
-        return domain
-    return explicit or public_ip
-
 def direct_link(env: dict[str, str], username: str, password: str) -> str:
     """单节点 HY2 直链。
 
@@ -702,31 +588,6 @@ def direct_link(env: dict[str, str], username: str, password: str) -> str:
     query = urllib.parse.urlencode(query_items)
     name = urllib.parse.quote(flag_prefix(env) + f"HY2-{username}", safe="")
     return f"hysteria2://{auth}@{env['PUBLIC_IP']}:{port}/?{query}#{name}"
-
-
-def xray_port(env: dict[str, str]) -> str:
-    raw = str(env.get("XRAY_PORT") or "").strip()
-    if raw:
-        return raw
-    hy2 = str(env.get("HY2_PORT") or "8443")
-    panel = str(env.get("PANEL_PORT") or "443")
-    if hy2 != panel:
-        return hy2
-    if panel != "8443":
-        return "8443"
-    return "443"
-
-
-def reality_dest(env: dict[str, str]) -> str:
-    return str(env.get("REALITY_DEST") or "www.cloudflare.com:443").strip() or "www.cloudflare.com:443"
-
-
-def reality_server_name(env: dict[str, str]) -> str:
-    names = str(env.get("REALITY_SERVER_NAMES") or "").strip()
-    if names:
-        return names.split(",")[0].strip()
-    dest = reality_dest(env)
-    return dest.rsplit(":", 1)[0]
 
 
 def new_vless_id() -> str:

@@ -4,16 +4,31 @@
 write_access_file() {
   read_env
   python3 - "$ENV_FILE" "$USERS_FILE" "$MODE_FILE" "$ACCESS_FILE" "${WEB_DIR}/data.json" <<'PY'
-import json, pathlib, re, sys, urllib.parse
+import json, pathlib, sys, urllib.parse
+
+for _cand in (
+    "/usr/local/lib/hy2-aio",
+    "/usr/local/lib/hy2-aio/modules/app",
+    str(pathlib.Path.cwd() / "app"),
+):
+    if _cand and _cand not in sys.path and (pathlib.Path(_cand) / "common.py").is_file():
+        sys.path.insert(0, _cand)
+
+from common import (
+    client_insecure,
+    country_code_to_flag,
+    obfs_enabled,
+    port_hop_ports,
+    public_base_url,
+    read_env_file,
+    reality_server_name,
+    subscription_sni,
+    user_is_disabled as is_disabled,
+    xray_port as resolve_xray_port_str,
+)
 
 env_file, users_file, mode_file, out_file, data_file = map(pathlib.Path, sys.argv[1:])
-env = {}
-for raw in env_file.read_text(encoding="utf-8").splitlines():
-    raw = raw.strip()
-    if raw and not raw.startswith("#") and "=" in raw:
-        key, value = raw.split("=", 1)
-        env[key] = value
-
+env = read_env_file(env_file)
 users = json.loads(users_file.read_text(encoding="utf-8"))
 
 
@@ -28,52 +43,12 @@ def node_flag() -> str:
             code = str(data["server"]["country_code"] or "")
         except Exception:
             code = ""
-    code = code.strip().upper()
-    if len(code) != 2 or not code.isalpha():
-        return ""
-    return "".join(chr(127397 + ord(char)) for char in code) + " "
+    flag = country_code_to_flag(code)
+    return flag + " " if flag else ""
 
 
 FLAG = node_flag()
-
-
-def hop_ports():
-    # 与 backend 的 port_hop_ports 同语义：范围无效就退回单端口，别让资料文件带坏数据。
-    raw_enabled = str(env.get("PORT_HOP_ENABLED", "false")).strip().lower()
-    if raw_enabled not in ("1", "true", "yes", "on"):
-        return ""
-    base_raw = str(env.get("HY2_PORT") or "8443")
-    try:
-        base = int(base_raw)
-    except ValueError:
-        return ""
-    raw = str(env.get("PORT_HOP_RANGE") or "").strip()
-    if not raw:
-        raw = f"{base}-{min(base + 1000, 65535)}"
-    match = re.fullmatch(r"([0-9]{1,5})-([0-9]{1,5})", raw)
-    if not match:
-        return ""
-    start, end = int(match.group(1)), int(match.group(2))
-    if start != base or end <= start or end > 65535 or end - start > 2000:
-        return ""
-    return f"{start}-{end}"
-
-
-HOP_PORTS = hop_ports()
-
-
-def is_disabled(info):
-    # 与后端 user_is_disabled 同语义："false"/"0" 是启用，True/"true"/1 才是禁用。
-    value = (info or {}).get("disabled", False)
-    if value is True:
-        return True
-    if value is False or value is None:
-        return False
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return value != 0
-    if isinstance(value, str):
-        return value.strip().lower() in ("1", "true", "yes", "on")
-    return bool(value)
+HOP_PORTS = port_hop_ports(env)
 try:
     modes = json.loads(mode_file.read_text(encoding="utf-8"))
 except Exception:
@@ -97,23 +72,15 @@ def mode_label(value):
         return "BBR 自动估速"
     return f"Brutal 上传 {up:g} / 下载 {down:g} Mbps"
 
-def public_base_url():
-    domain = env["DOMAIN"]
-    port = str(env.get("PANEL_PORT", "443") or "443")
-    if port in ("443", ""):
-        return f"https://{domain}"
-    return f"https://{domain}:{port}"
-
-base = public_base_url()
-obfs_raw = str(env.get("OBFS_ENABLED", "true")).strip().lower()
-obfs_label = "salamander（开）" if obfs_raw in ("1", "true", "yes", "on") else "关"
+base = public_base_url(env)
+obfs_label = "salamander（开）" if obfs_enabled(env) else "关"
 lines = [
     "HY2 AIO 访问资料",
     "=" * 64,
     f"版本：{env.get('AIO_VERSION', '')}",
     f"服务器：{env['PUBLIC_IP']}",
     f"HY2 端口：{HOP_PORTS or env.get('HY2_PORT', '443')}/UDP" + ("（端口跳跃）" if HOP_PORTS else ""),
-    f"VLESS 端口：{env.get('XRAY_PORT') or env.get('HY2_PORT', '443')}/TCP",
+    f"VLESS 端口：{resolve_xray_port_str(env)}/TCP",
     f"混淆：{obfs_label}",
     f"面板：{base}/{env['PANEL_PATH']}/",
     f"面板用户名：{env['PANEL_USER']}",
@@ -126,36 +93,17 @@ for username, info in sorted(users.items()):
     password = str(info["password"])
     token = str(info["token"])
     subscription = f"{base}/s/{token}"
-    # 冒号是 userinfo 的分隔符，不能编码（同上，见 backend.sh 的说明）
+    # 冒号是 userinfo 的分隔符，不能编码（同上，见 server.py 的说明）
     auth = (
         urllib.parse.quote(str(username), safe="")
         + ":"
         + urllib.parse.quote(str(password), safe="")
     )
-    query_items = {
-        # 与 backend 同规则：有域名就用域名（证书 SAN 就是它）
-        "sni": (lambda d, i, e: d if d and d != i else (e or i))(
-            str(env.get("DOMAIN") or "").strip(),
-            str(env.get("PUBLIC_IP") or "").strip(),
-            str(env.get("SNI") or "").strip(),
-        ),
-    }
-    obfs_raw = str(env.get("OBFS_ENABLED", "true")).strip().lower()
-    if obfs_raw in ("1", "true", "yes", "on"):
+    query_items = {"sni": subscription_sni(env)}
+    if obfs_enabled(env):
         query_items["obfs"] = "salamander"
         query_items["obfs-password"] = env["OBFS_PASSWORD"]
-    insecure_raw = str(env.get("CLIENT_INSECURE", "")).strip().lower()
-    if insecure_raw in ("0", "false", "no", "off"):
-        insecure = False
-    elif insecure_raw in ("1", "true", "yes", "on"):
-        insecure = True
-    else:
-        # 只有裸 IP 当域名才需要跳过验证。sslip.io 也能拿 Let's Encrypt
-        # 正式证书（实测 issuer=Let's Encrypt，verify code 0），
-        # 之前一律判 insecure 是误判，还撞上 Clash 系禁用 allowInsecure 的警告。
-        domain = str(env.get("DOMAIN", "")).strip()
-        insecure = bool(domain) and domain == str(env.get("PUBLIC_IP", "")).strip()
-    if insecure:
+    if client_insecure(env):
         query_items["insecure"] = "1"
     node = urllib.parse.quote(f"{FLAG}HY2-{username}", safe="")
     # 端口范围不能塞进 host:port（"8443-9443" 不是合法 URI 端口，
@@ -167,22 +115,11 @@ for username, info in sorted(users.items()):
         hy2_port = env.get("HY2_PORT", "443")
     query = urllib.parse.urlencode(query_items)
     direct = f"hysteria2://{auth}@{env['PUBLIC_IP']}:{hy2_port}/?{query}#{node}"
-    xray_port = str(env.get("XRAY_PORT") or "").strip()
-    if not xray_port:
-        hy2 = str(env.get("HY2_PORT") or "8443")
-        panel = str(env.get("PANEL_PORT") or "443")
-        if hy2 != panel:
-            xray_port = hy2
-        elif panel != "8443":
-            xray_port = "8443"
-        else:
-            xray_port = "443"
+    xray_port_val = resolve_xray_port_str(env)
     vless_id = str(info.get("vless_id") or "").strip()
     public_key = str(env.get("REALITY_PUBLIC_KEY") or "").strip()
     short_id = str(env.get("REALITY_SHORT_ID") or "").strip()
-    names = str(env.get("REALITY_SERVER_NAMES") or "").strip()
-    dest = str(env.get("REALITY_DEST") or "www.cloudflare.com:443").strip() or "www.cloudflare.com:443"
-    server_name = names.split(",")[0].strip() if names else dest.rsplit(":", 1)[0]
+    server_name = reality_server_name(env)
     vless = ""
     if vless_id and public_key and short_id:
         vless_query = urllib.parse.urlencode(
@@ -198,7 +135,7 @@ for username, info in sorted(users.items()):
             }
         )
         vless_name = urllib.parse.quote(f"{FLAG}hy2超时备用临时节点", safe="")
-        vless = f"vless://{vless_id}@{env['PUBLIC_IP']}:{xray_port}?{vless_query}#{vless_name}"
+        vless = f"vless://{vless_id}@{env['PUBLIC_IP']}:{xray_port_val}?{vless_query}#{vless_name}"
     access_lines = [
         f"【{username}】",
         f"用户名：{username}",

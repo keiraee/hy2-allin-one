@@ -2,7 +2,7 @@
 # config.sh - Hysteria/Caddy/systemd 配置生成
 
 write_rebuild_helper() {
-  local src="" candidate
+  local src="" common_src="" candidate
   for candidate in \
     "${SCRIPT_DIR:-}/app/rebuild_config.py" \
     "/usr/local/lib/hy2-aio/modules/app/rebuild_config.py"; do
@@ -13,6 +13,15 @@ write_rebuild_helper() {
   done
   [ -n "$src" ] || die "找不到配置重建脚本：app/rebuild_config.py（请重新执行 hy2 upgrade）"
   install -d -m 0755 "$APP_DIR"
+  for candidate in \
+    "${SCRIPT_DIR:-}/app/common.py" \
+    "/usr/local/lib/hy2-aio/modules/app/common.py"; do
+    if [ -n "$candidate" ] && [ -s "$candidate" ]; then
+      common_src="$candidate"
+      break
+    fi
+  done
+  [ -n "$common_src" ] && install -m 0644 "$common_src" "${APP_DIR}/common.py"
   install -m 0755 "$src" "$REBUILD_FILE"
 }
 
