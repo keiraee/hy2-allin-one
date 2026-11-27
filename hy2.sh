@@ -198,6 +198,7 @@ fetch_modules() {
     "bin/hy2.sh"
     "web/index.html"
     "app/activity.py"
+    "app/backup_ops.py"
     "app/common.py"
     "app/subscription.py"
     "app/server.py"
