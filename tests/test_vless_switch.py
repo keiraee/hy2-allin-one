@@ -50,7 +50,7 @@ class VlessSwitchTests(unittest.TestCase):
         config = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
 
         self.assertIn('id="vlessToggle"', panel)
-        self.assertIn('id="vlessOffBanner"', panel)
+        self.assertIn('<div id="vlessOffBanner" class="notice" role="status">', panel)
         self.assertIn("api/vless/off", panel)
         self.assertIn("api/vless/on", panel)
         self.assertIn("vless_enabled", panel)

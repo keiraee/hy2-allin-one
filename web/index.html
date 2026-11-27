@@ -404,7 +404,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
     <div id="hy2OffBanner" class="notice" role="status">
       HY2 已关闭。UDP 未监听，Hysteria 节点无法连接；VLESS+Reality 仍可用。整机流量仍计入面板与 SSH。
     </div>
-    <div id="vlessOffBanner" class="banner banner-muted" role="status">
+    <div id="vlessOffBanner" class="notice" role="status">
       VLESS 已关闭。Xray 未监听，VLESS+Reality 节点无法连接；Hysteria 仍可用。
     </div>
     <div id="notice" class="notice" role="note">
@@ -2214,8 +2214,24 @@ $("restartBtn").onclick=async function(){
   },"正在重启内核…");
 };
 $("upgradeBtn").onclick=async function(){
-  if(!confirm("确认检查并更新到最新版本？更新过程会自动重启服务（约 15–30 秒），在线连接会短暂断开。"))return;
   setDrawer(false);
+  let check=null;
+  await runMutate($("upgradeBtn"),async()=>{
+    try{
+      check=await apiPost("api/upgrade/check",{});
+    }catch(error){
+      toast("检查更新失败："+error.message);
+    }
+  },"正在检查更新…");
+  if(!check||!check.ok)return;
+  if(check.up_to_date){
+    const hash=check.latest_commit?" · "+check.latest_commit:"";
+    toast("已是最新版本（"+(check.latest||check.current)+hash+"），哈希一致，无需更新");
+    return;
+  }
+  const cur=check.current+(check.current_commit?" ("+check.current_commit+")":"");
+  const nxt=(check.latest||"最新版")+(check.latest_commit?" ("+check.latest_commit+")":"");
+  if(!confirm("发现新版本：\n当前："+cur+"\n最新："+nxt+"\n\n是否立即更新并重启服务（约 15–30 秒，在线连接会短暂断开）？"))return;
   await runMutate($("upgradeBtn"),async()=>{
     try{
       await apiPost("api/upgrade",{});

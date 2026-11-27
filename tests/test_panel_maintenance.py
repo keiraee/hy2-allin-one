@@ -43,11 +43,36 @@ class PanelMaintenanceTests(unittest.TestCase):
         self.assertIn('id="restartBtn"', panel)
         self.assertIn('id="upgradeBtn"', panel)
         self.assertIn("api/restart", panel)
+        self.assertIn("api/upgrade/check", panel)
         self.assertIn("api/upgrade", panel)
+        self.assertIn("up_to_date", panel)
         self.assertIn("location.reload()", panel)
 
         self.assertIn('path == "/restart"', backend)
+        self.assertIn('path == "/upgrade/check"', backend)
         self.assertIn('path == "/upgrade"', backend)
+
+    def test_check_upgrade_status_compares_version_and_commit_hash(self):
+        sha_same = "a" * 40
+        sha_new = "b" * 40
+
+        def fake_gh(url):
+            if url.endswith("/releases/latest"):
+                return {"tag_name": "v2.0.0"}
+            return {"sha": sha_same}
+
+        self.namespace["_github_get_json"] = fake_gh
+        same = self.namespace["check_upgrade_status"](
+            {"AIO_VERSION": "v2.0.0.aaaaaaa", "HY2_REPO_SHA": sha_same}
+        )
+        self.assertTrue(same["up_to_date"])
+        self.assertEqual("v2.0.0", same["latest"])
+        self.assertEqual("aaaaaaa", same["latest_commit"])
+
+        diff = self.namespace["check_upgrade_status"](
+            {"AIO_VERSION": "v2.0.0.bbbbbbb", "HY2_REPO_SHA": sha_new}
+        )
+        self.assertFalse(diff["up_to_date"])
 
     def test_request_upgrade_writes_upgrade_cmd_and_returns(self):
         seen = []

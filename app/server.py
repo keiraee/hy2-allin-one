@@ -1029,6 +1029,65 @@ def request_restart_services() -> dict[str, Any]:
     raise RuntimeError("等待服务重启超时")
 
 
+def _github_get_json(url: str) -> dict[str, Any]:
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "hy2-aio-panel",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=8) as resp:
+        data = json.loads(resp.read().decode("utf-8", "replace"))
+    if not isinstance(data, dict):
+        raise RuntimeError("GitHub API 返回格式异常")
+    return data
+
+
+def check_upgrade_status(env: Optional[dict[str, str]] = None) -> dict[str, Any]:
+    """Compare local version & commit SHA against GitHub latest release/ref before upgrading."""
+    cfg = env if isinstance(env, dict) else load_env()
+    repo = str(cfg.get("HY2_REPO") or "keiraee/hy2-allin-one").strip() or "keiraee/hy2-allin-one"
+    track = str(cfg.get("HY2_TRACK_REF") or "").strip()
+    current = str(cfg.get("AIO_VERSION") or "未知").strip() or "未知"
+    saved_commit = str(cfg.get("HY2_REPO_SHA") or "").strip().lower()
+
+    if track and track.lower() != "latest":
+        target = track
+    else:
+        rel = _github_get_json(f"https://api.github.com/repos/{repo}/releases/latest")
+        target = str(rel.get("tag_name") or "").strip()
+        if not target:
+            raise RuntimeError("未能获取最新 Release 标签")
+
+    commit_data = _github_get_json(f"https://api.github.com/repos/{repo}/commits/{urllib.parse.quote(target)}")
+    remote_commit = str(commit_data.get("sha") or "").strip().lower()
+    if not re.fullmatch(r"[0-9a-f]{40}", remote_commit):
+        raise RuntimeError("未能获取远端提交哈希")
+
+    m = re.match(r"^(v?\d+\.\d+\.\d+)", current)
+    current_base = m.group(1).lstrip("v") if m else ""
+    target_is_semver = bool(re.match(r"^v?\d+\.\d+\.\d+", target))
+    if target_is_semver:
+        up_to_date = bool(
+            current_base
+            and current_base == target.lstrip("v")
+            and saved_commit
+            and saved_commit == remote_commit
+        )
+    else:
+        up_to_date = bool(saved_commit and saved_commit == remote_commit)
+
+    return {
+        "ok": True,
+        "up_to_date": up_to_date,
+        "current": current,
+        "current_commit": saved_commit[:7] if saved_commit else "",
+        "latest": target,
+        "latest_commit": remote_commit[:7],
+    }
+
+
 def request_upgrade() -> None:
     """Ask root path unit to launch `hy2 upgrade` asynchronously."""
     _unlink_quiet(HYSTERIA_RELOAD_FLAG)
@@ -2134,6 +2193,10 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/restart":
                 data = request_restart_services()
                 self.send_json(200, {"ok": True, "generated_at": data["generated_at"]})
+                return
+            if path == "/upgrade/check":
+                result = check_upgrade_status()
+                self.send_json(200, result)
                 return
             if path == "/upgrade":
                 request_upgrade()
