@@ -526,14 +526,26 @@ dns:
     - 119.29.29.29
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16
-  fake-ip-filter-mode: whitelist
+  fake-ip-filter-mode: blacklist
   fake-ip-filter:
     - "+.lan"
     - "+.local"
+    - "+.arpa"
+    - "localhost.ptlogin2.qq.com"
+    - "+.msftconnecttest.com"
+    - "+.msftncsi.com"
+    - "time.*.com"
+    - "ntp.*.com"
+    - "+.push.apple.com"
+    - "geosite:cn"
   nameserver:
     - https://1.1.1.1/dns-query#PROXY
     - https://8.8.8.8/dns-query#PROXY
   nameserver-policy:
+    "+.lan":
+      - system
+    "+.local":
+      - system
     "geosite:cn":
       - https://doh.pub/dns-query
       - https://dns.alidns.com/dns-query
@@ -541,8 +553,9 @@ dns:
     - 223.5.5.5
     - 119.29.29.29
   direct-nameserver:
-    - system
-  direct-nameserver-follow-policy: false
+    - https://doh.pub/dns-query
+    - https://dns.alidns.com/dns-query
+  direct-nameserver-follow-policy: true
 
 proxies:
   - name: {node}

@@ -148,12 +148,23 @@ class ClashDnsDomesticFirstTests(unittest.TestCase):
         self.assertIn("223.5.5.5", seg)
         self.assertNotIn("dns-query", seg)
 
-    def test_direct_nameserver_system(self):
-        self.assertIn("direct-nameserver", self.dns)
+    def test_direct_nameserver_clean_doh(self):
+        seg = self.dns[self.dns.index("direct-nameserver:"):]
+        self.assertIn("doh.pub", seg)
+        self.assertIn("alidns", seg)
+        self.assertNotIn("- system", seg)
+        self.assertIn("direct-nameserver-follow-policy: true", seg)
 
-    def test_fake_ip_filter(self):
-        self.assertIn("fake-ip-filter", self.dns)
-        self.assertIn("+.lan", self.dns)
+    def test_fake_ip_filter_uses_blacklist_mode(self):
+        """fake-ip-filter-mode 必须是 blacklist（列表内跳过 Fake-IP 返回真 IP）。
+
+        之前误写成 whitelist，导致只有 +.lan / +.local 拿 Fake-IP（反噬局域网），
+        全网常规域名全退化成远程同步查真实 IP，Fake-IP 实际失效。
+        """
+        self.assertIn("fake-ip-filter-mode: blacklist", self.dns)
+        self.assertNotIn("fake-ip-filter-mode: whitelist", self.dns)
+        for item in ("+.lan", "+.local", "+.push.apple.com", "time.*.com"):
+            self.assertIn(item, self.dns)
 
 
 class SubscriptionYamlShapeTests(unittest.TestCase):
