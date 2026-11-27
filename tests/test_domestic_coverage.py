@@ -57,6 +57,17 @@ CRITICAL_DOMESTIC_DOMAINS = [
     "sns-webpic-qc.xhscdn.com",  # 小红书图片/头像 CDN
 ]
 
+# 必须走代理的海外关键域名（防止被国内 CDN IP 抢跑直连或 DNS 污染）
+CRITICAL_OVERSEAS_DOMAINS = [
+    "www.youtube.com",
+    "rr5---sn-a5msenes.googlevideo.com",
+    "www.google.com",
+    "api.openai.com",
+    "chatgpt.com",
+    "telegram.org",
+    "github.com",
+]
+
 # 必须国内直连的国内 IP（不依赖域名解析，微信/抖音 CDN 大量直接用 IP）
 CRITICAL_DOMESTIC_IPS = [
     "183.61.35.28",     # 微信图片 CDN (Tencent)
@@ -244,6 +255,15 @@ class CriticalDomainListTests(unittest.TestCase):
             len(CRITICAL_DOMESTIC_DOMAINS),
             len(set(CRITICAL_DOMESTIC_DOMAINS)),
         )
+        self.assertEqual(
+            len(CRITICAL_OVERSEAS_DOMAINS),
+            len(set(CRITICAL_OVERSEAS_DOMAINS)),
+        )
+
+    def test_overseas_list_nonempty_and_disjoint_from_domestic(self):
+        self.assertGreaterEqual(len(CRITICAL_OVERSEAS_DOMAINS), 5)
+        self.assertIn("www.youtube.com", CRITICAL_OVERSEAS_DOMAINS)
+        self.assertFalse(set(CRITICAL_DOMESTIC_DOMAINS) & set(CRITICAL_OVERSEAS_DOMAINS))
 
 
 class DomainBeforeIpRuleOrderTests(unittest.TestCase):
