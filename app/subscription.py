@@ -133,6 +133,69 @@ def new_vless_id() -> str:
 
 VLESS_NODE_NAME = "hy2超时备用临时节点"
 
+# 单一分流意图层（Single IR）：Clash (.mrs) 与 sing-box (.srs) 均由此编译生成，
+# 确保两端规则集同源、顺序一致、手写补丁零遗漏。
+RULESET_MIRROR_BASES: tuple[str, ...] = (
+    "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat",
+    "https://fastly.jsdelivr.net/gh/MetaCubeX/meta-rules-dat",
+    "https://gcore.jsdelivr.net/gh/MetaCubeX/meta-rules-dat",
+    "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat",
+)
+RULESET_DEFAULT_MIRROR = RULESET_MIRROR_BASES[0]
+
+ROUTING_RULESETS: tuple[dict[str, str], ...] = (
+    {
+        "tag": "geosite-private",
+        "behavior": "domain",
+        "mrs_file": "geosite-private.mrs",
+        "srs_file": "geosite-private.srs",
+        "mrs_upstream": "@meta/geo/geosite/private.mrs",
+        "srs_upstream": "@sing/geo/geosite/private.srs",
+    },
+    {
+        "tag": "geosite-cn",
+        "behavior": "domain",
+        "mrs_file": "geosite-cn.mrs",
+        "srs_file": "geosite-cn.srs",
+        "mrs_upstream": "@meta/geo/geosite/cn.mrs",
+        "srs_upstream": "@sing/geo/geosite/cn.srs",
+    },
+    {
+        "tag": "geosite-geolocation-!cn",
+        "behavior": "domain",
+        "mrs_file": "geosite-geolocation-!cn.mrs",
+        "srs_file": "geosite-geolocation-!cn.srs",
+        "mrs_upstream": "@meta/geo/geosite/geolocation-!cn.mrs",
+        "srs_upstream": "@sing/geo/geosite/geolocation-!cn.srs",
+    },
+    {
+        "tag": "geoip-cn",
+        "behavior": "ipcidr",
+        "mrs_file": "geoip-cn.mrs",
+        "srs_file": "geoip-cn.srs",
+        "mrs_upstream": "@meta/geo/geoip/cn.mrs",
+        "srs_upstream": "@sing/geo/geoip/cn.srs",
+    },
+)
+
+# 两端共享的手写补充直连域名后缀（仅做极少数缺口补丁）
+CUSTOM_DIRECT_SUFFIXES: tuple[str, ...] = (
+    "lan",
+    "local",
+    "jinritemai.com",
+)
+
+
+def _ruleset_upstream_url(upstream: str, base: str = RULESET_DEFAULT_MIRROR) -> str:
+    if "raw.githubusercontent.com" in base and upstream.startswith("@"):
+        return f"{base}/{upstream[1:]}"
+    return f"{base}{upstream}"
+
+
+def ruleset_url(env: dict[str, str], filename: str, upstream: str) -> str:
+    """规则集下载地址（先统一走镜像，后续由同源托管层接管）。"""
+    return _ruleset_upstream_url(upstream)
+
 
 def vless_link(env: dict[str, str], username: str, info: Optional[dict[str, Any]] = None) -> str:
     payload = info if isinstance(info, dict) else {}
@@ -314,8 +377,8 @@ def subscription_singbox(
             {"type": "local", "tag": "local"},
         ]
         dns_rules: list[dict[str, Any]] = [
-            {"domain_suffix": [".cn"], "server": "local"},
-            {"rule_set": "geosite-cn", "server": "local"},
+            {"domain_suffix": [".cn", *CUSTOM_DIRECT_SUFFIXES], "server": "local"},
+            {"rule_set": ["geosite-private", "geosite-cn"], "server": "local"},
         ]
     else:
         dns_servers = [
@@ -325,30 +388,25 @@ def subscription_singbox(
         ]
         dns_rules = [
             {"outbound": "any", "server": "local"},
-            {"domain_suffix": [".cn"], "server": "local"},
-            {"rule_set": "geosite-cn", "server": "local"},
+            {"domain_suffix": [".cn", *CUSTOM_DIRECT_SUFFIXES], "server": "local"},
+            {"rule_set": ["geosite-private", "geosite-cn"], "server": "local"},
         ]
 
     route_block: dict[str, Any] = {
         "rule_set": [
             _ruleset_item(
-                "geosite-cn",
-                "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/cn.srs",
-            ),
-            _ruleset_item(
-                "geoip-cn",
-                "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip/cn.srs",
-            ),
-            _ruleset_item(
-                "geosite-geolocation-!cn",
-                "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/geolocation-!cn.srs",
-            ),
+                rs["tag"],
+                ruleset_url(env, rs["srs_file"], rs["srs_upstream"]),
+            )
+            for rs in ROUTING_RULESETS
         ],
         "rules": [
             {"action": "sniff"},
             {"protocol": "dns", "action": "hijack-dns"},
             {"ip_is_private": True, "outbound": "direct"},
-            # 顺序：国内域名直连 → 海外域名代理 → 国内纯 IP 兜底直连（禁止合并成 OR 单条）
+            {"domain_suffix": list(CUSTOM_DIRECT_SUFFIXES), "outbound": "direct"},
+            # 顺序：私有域名 → 国内域名直连 → 海外域名代理 → 国内纯 IP 兜底直连（禁止合并成 OR 单条）
+            {"rule_set": ["geosite-private"], "outbound": "direct"},
             {"rule_set": ["geosite-cn"], "outbound": "direct"},
             {"rule_set": ["geosite-geolocation-!cn"], "outbound": "proxy"},
             {"rule_set": ["geoip-cn"], "outbound": "direct"},
@@ -511,13 +569,27 @@ def subscription_yaml(
             f"      public-key: {q(public_key)}\n"
             f"      short-id: {q(short_id)}\n"
         )
+    provider_blocks = []
+    for rs in ROUTING_RULESETS:
+        url = ruleset_url(env, rs["mrs_file"], rs["mrs_upstream"])
+        provider_blocks.append(
+            f"  {rs['tag']}:\n"
+            "    type: http\n"
+            f"    behavior: {rs['behavior']}\n"
+            "    format: mrs\n"
+            f"    path: ./ruleset/{rs['mrs_file']}\n"
+            "    interval: 86400\n"
+            f"    url: {url}"
+        )
+    rule_providers_yaml = "\n".join(provider_blocks)
+    custom_direct_rules = "\n".join(
+        f"  - DOMAIN-SUFFIX,{suffix},DIRECT" for suffix in CUSTOM_DIRECT_SUFFIXES
+    )
+
     content = f"""mixed-port: 7890
 allow-lan: false
 mode: rule
 log-level: info
-geodata-mode: true
-geox-url:
-  geosite: "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite-lite.dat"
 ipv6: false
 
 tun:
@@ -569,7 +641,8 @@ dns:
     - "time.*.com"
     - "ntp.*.com"
     - "+.push.apple.com"
-    - "geosite:cn"
+    - "rule-set:geosite-private"
+    - "rule-set:geosite-cn"
   nameserver:
     - https://1.1.1.1/dns-query#PROXY
     - https://8.8.8.8/dns-query#PROXY
@@ -578,7 +651,9 @@ dns:
       - system
     "+.local":
       - system
-    "geosite:cn":
+    "rule-set:geosite-private":
+      - system
+    "rule-set:geosite-cn":
       - https://doh.pub/dns-query
       - https://dns.alidns.com/dns-query
   proxy-server-nameserver:
@@ -608,24 +683,18 @@ proxy-groups:
 {vless_group}      - DIRECT
 
 rule-providers:
-  china-ip:
-    type: http
-    behavior: ipcidr
-    format: mrs
-    path: ./ruleset/china-ip.mrs
-    interval: 86400
-    url: https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@meta/geo/geoip/cn.mrs
+{rule_providers_yaml}
 
 rules:
-  - DOMAIN-SUFFIX,lan,DIRECT
-  - DOMAIN-SUFFIX,jinritemai.com,DIRECT
+{custom_direct_rules}
   - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
-  - GEOSITE,cn,DIRECT
-  - GEOSITE,geolocation-!cn,PROXY
-  - RULE-SET,china-ip,DIRECT
+  - RULE-SET,geosite-private,DIRECT
+  - RULE-SET,geosite-cn,DIRECT
+  - RULE-SET,geosite-geolocation-!cn,PROXY
+  - RULE-SET,geoip-cn,DIRECT
   - MATCH,PROXY
 """
     return content.encode("utf-8")

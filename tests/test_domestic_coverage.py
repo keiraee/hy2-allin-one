@@ -67,76 +67,77 @@ CRITICAL_DOMESTIC_IPS = [
 
 
 class DomesticCoverageSourceTests(unittest.TestCase):
-    """分流数据源必须是 MetaCubeX geosite(11 万条,持续更新)。
+    """Clash (.mrs) 与 sing-box (.srs) 必须共享同一套 MetaCubeX 二进制规则集。
 
-    而不是黑名单式的手写域名 / 第三方零散清单 —— 那种必然漏。
+    不再混用裁剪版 geosite-lite.dat 与全量 .srs，确保两端命中集合逐条一致。
     """
 
     @classmethod
     def setUpClass(cls):
-        cls.src = (ROOT / "app" / "subscription.py").read_text(encoding="utf-8")
+        import json
+        import sys
+        import yaml
 
-    def test_clash_uses_geosite_rule(self):
-        """Clash 的 rules 必须含 GEOSITE,cn(不是只靠手写域名)。"""
-        self.assertIn("GEOSITE,cn,DIRECT", self.src)
+        sys.path.insert(0, str(ROOT / "app"))
+        import subscription
+
+        cls.src = (ROOT / "app" / "subscription.py").read_text(encoding="utf-8")
+        env = {
+            "PUBLIC_IP": "203.0.113.10",
+            "DOMAIN": "example.test",
+            "HY2_PORT": "8443",
+            "OBFS_ENABLED": "false",
+        }
+        cls.clash_text = subscription.subscription_yaml(env, "alice", "pw", {}).decode("utf-8")
+        cls.clash = yaml.safe_load(cls.clash_text)
+        cls.singbox = json.loads(
+            subscription.subscription_singbox(env, "alice", "pw", {}).decode("utf-8")
+        )
+
+    def test_clash_and_singbox_share_identical_ruleset_tags(self):
+        """Clash .mrs 与 sing-box .srs 必须 1:1 对齐 4 组同源规则集。"""
+        clash_tags = list(self.clash["rule-providers"].keys())
+        sb_tags = [rs["tag"] for rs in self.singbox["route"]["rule_set"]]
+        expected = ["geosite-private", "geosite-cn", "geosite-geolocation-!cn", "geoip-cn"]
+        self.assertEqual(expected, clash_tags)
+        self.assertEqual(expected, sb_tags)
+        for tag, prov in self.clash["rule-providers"].items():
+            self.assertEqual("mrs", prov["format"], tag)
+        for rs in self.singbox["route"]["rule_set"]:
+            self.assertEqual("binary", rs["format"], rs["tag"])
 
     def test_has_china_ip_ruleset(self):
-        """纯 IP 流量也要直连 —— 微信/抖音 CDN 大量用 IP 直连不走域名。
+        """纯 IP 流量也要直连 —— 微信/抖音 CDN 大量用 IP 直连不走域名。"""
+        self.assertIn("RULE-SET,geoip-cn,DIRECT", self.clash["rules"])
+        self.assertEqual("ipcidr", self.clash["rule-providers"]["geoip-cn"]["behavior"])
+        self.assertEqual("mrs", self.clash["rule-providers"]["geoip-cn"]["format"])
 
-        真机现象(2026-11-22):两台手机微信图片/视频加载不动,关掉代理就好。
-        根因:规则里只有 GEOSITE,cn(匹配域名),微信 CDN 的纯 IP 连接
-        落到 MATCH → 走日本代理 → 加载转圈。必须补 IP 段规则。
-        china-ip.mrs 只有 37KB(jsdelivr 0.3 秒下完),不影响首启。
-        """
-        self.assertIn("RULE-SET,china-ip,DIRECT", self.src)
-        self.assertIn("behavior: ipcidr", self.src)
-        self.assertIn("format: mrs", self.src)
+    def test_no_geoip_or_geosite_dat_download(self):
+        """不使用 .dat 全量文件（避免首启下载大包及 lite 裁剪差异）。"""
+        self.assertNotIn("geodata-mode:", self.clash_text)
+        self.assertNotIn("geosite-lite.dat", self.clash_text)
+        for rule in self.clash["rules"]:
+            self.assertFalse(rule.startswith("GEOIP,"), rule)
+            self.assertFalse(rule.startswith("GEOSITE,"), rule)
 
-    def test_no_geoip_rule(self):
-        """不用 GEOIP,CN —— 会触发 6.5MB geoip.dat 下载,中国网络首启必卡。
+    def test_custom_direct_suffixes_synced_to_both_engines(self):
+        """手写直连补充域名（如 jinritemai.com / lan / local）必须双端同步。"""
+        sb_domain_rules = [
+            r for r in self.singbox["route"]["rules"] if "domain_suffix" in r and r.get("outbound") == "direct"
+        ]
+        sb_suffixes = set()
+        for r in sb_domain_rules:
+            sb_suffixes.update(r["domain_suffix"])
+        for suffix in ("lan", "local", "jinritemai.com"):
+            self.assertIn(f"DOMAIN-SUFFIX,{suffix},DIRECT", self.clash["rules"])
+            self.assertIn(suffix, sb_suffixes)
 
-        实测(2026-11-21):geoip.dat 6.5MB,jsdelivr 在国内 30 秒只拉到
-        620KB,mihomo 卡在 "Can't find GeoIP.dat, start download" 起不来。
-        GEOSITE,cn 11 万条已足够覆盖,不需要 IP 兜底。
-        """
-        rules_start = self.src.index("rules:")
-        rules_end = self.src.index("MATCH,PROXY", rules_start)
-        self.assertNotIn("GEOIP", self.src[rules_start:rules_end])
-
-    def test_geosite_dat_is_lite(self):
-        """geosite 用 lite 版(176KB,CN 分类仍 110177 条),不用全量 4.3MB。
-
-        lite 版实测:10 秒内下完,CN 分类记录数与全量版一致。
-        """
-        self.assertIn("geosite-lite.dat", self.src)
-        seg = self.src[self.src.index("geox-url:"): self.src.index("dns:")]
-        self.assertNotIn("geoip:", seg)
-        self.assertNotIn(chr(103)+chr(101)+chr(111)+chr(115)+chr(105)+chr(116)+chr(101)+chr(46)+chr(100)+chr(97)+chr(116), seg)
-
-    def test_singbox_uses_geosite_cn_ruleset(self):
-        """sing-box 必须引用 geosite cn 规则集。"""
-        i = self.src.index("def subscription_singbox(")
-        j = self.src.index("\ndef subscription_body", i)
-        sb = self.src[i:j]
-        self.assertIn("geosite-cn", sb)
-        self.assertIn("geoip-cn", sb)
-
-    def test_ruleset_urls_use_mirror(self):
-        """规则集 URL 走 jsdelivr —— 中国网络拉 raw.githubusercontent 会超时。"""
-        i = self.src.index("def subscription_singbox(")
-        j = self.src.index("\ndef subscription_body", i)
-        sb = self.src[i:j]
-        self.assertNotIn(
-            "raw.githubusercontent.com",
-            sb,
-            "规则集 URL 不能用 raw.githubusercontent(中国网络拉不动)",
-        )
-        self.assertIn("jsdelivr", sb)
-
-    def test_geox_url_uses_mirror(self):
-        self.assertIn("geox-url:", self.src)
-        seg = self.src[self.src.index("geox-url:"): self.src.index("dns:")]
-        self.assertIn("jsdelivr", seg)
+    def test_ruleset_urls_do_not_use_raw_github_directly(self):
+        """默认规则集 URL 不能直连 raw.githubusercontent（中国网络拉不动）。"""
+        for prov in self.clash["rule-providers"].values():
+            self.assertNotIn("raw.githubusercontent.com", prov["url"])
+        for rs in self.singbox["route"]["rule_set"]:
+            self.assertNotIn("raw.githubusercontent.com", rs["url"])
 
 
 class CriticalDomainListTests(unittest.TestCase):
@@ -204,10 +205,10 @@ class DomainBeforeIpRuleOrderTests(unittest.TestCase):
         self.assertIn("geolocation-!cn.srs", tags["geosite-geolocation-!cn"])
 
     def test_clash_overseas_domain_before_china_ip(self):
-        i_overseas = self.src.find("GEOSITE,geolocation-!cn,PROXY")
-        i_chinaip = self.src.find("RULE-SET,china-ip,DIRECT")
-        self.assertGreater(i_overseas, 0, "Clash 缺少 GEOSITE,geolocation-!cn,PROXY")
-        self.assertLess(i_overseas, i_chinaip, "Clash 的海外域名规则必须排在 china-ip 之前")
+        i_overseas = self.src.find("RULE-SET,geosite-geolocation-!cn,PROXY")
+        i_chinaip = self.src.find("RULE-SET,geoip-cn,DIRECT")
+        self.assertGreater(i_overseas, 0, "Clash 缺少 RULE-SET,geosite-geolocation-!cn,PROXY")
+        self.assertLess(i_overseas, i_chinaip, "Clash 的海外域名规则必须排在 geoip-cn 之前")
 
 
 class DnsPollutionGuardTests(unittest.TestCase):
@@ -243,8 +244,15 @@ class DnsPollutionGuardTests(unittest.TestCase):
 
     def test_singbox_domestic_domains_use_local_dns(self):
         """国内域名仍用 local（快且不会被污染）。"""
-        self.assertIn('{"domain_suffix": [".cn"], "server": "local"}', self.src)
-        self.assertIn('{"rule_set": "geosite-cn", "server": "local"}', self.src)
+        import json
+        import sys
+        sys.path.insert(0, str(ROOT / "app"))
+        import subscription
+        env = {"PUBLIC_IP": "203.0.113.10", "DOMAIN": "example.test", "HY2_PORT": "8443", "OBFS_ENABLED": "false"}
+        cfg = json.loads(subscription.subscription_singbox(env, "alice", "pw", {}).decode("utf-8"))
+        rules = cfg["dns"]["rules"]
+        self.assertTrue(any(".cn" in r.get("domain_suffix", []) and r.get("server") == "local" for r in rules))
+        self.assertTrue(any("geosite-cn" in r.get("rule_set", []) and r.get("server") == "local" for r in rules))
 
     def test_clash_foreign_dns_goes_through_proxy(self):
         """Clash 的境外 nameserver 必须带 #PROXY，否则国内 DoH 也拿到污染结果。"""
@@ -255,7 +263,7 @@ class DnsPollutionGuardTests(unittest.TestCase):
         """国内域名策略仍指向国内 DoH。"""
         i = self.src.index("nameserver-policy:")
         seg = self.src[i:i + 400]
-        self.assertIn("geosite:cn", seg)
+        self.assertIn("rule-set:geosite-cn", seg)
         self.assertIn("doh.pub", seg)
 
 

@@ -31,71 +31,63 @@ def backend_source():
 
 
 class ClashGeoSiteSplitTests(unittest.TestCase):
-    """国内分流用 GEOSITE,cn + GEOIP,CN（mihomo 内置，不依赖远程清单）。"""
+    """国内分流用同源 .mrs 二进制规则集（与 sing-box .srs 1:1 对齐）。"""
 
     @classmethod
     def setUpClass(cls):
+        import yaml
+
         cls.src = backend_source()
-        i = cls.src.index("rules:\n  - DOMAIN-SUFFIX,lan,DIRECT")
-        cls.rules = cls.src[i : cls.src.index("MATCH,PROXY", i) + len("MATCH,PROXY")]
+        ns = load_backend_namespace()
+        env = {
+            "PUBLIC_IP": "203.0.113.10",
+            "DOMAIN": "example.test",
+            "HY2_PORT": "8443",
+            "OBFS_ENABLED": "false",
+        }
+        cls.yaml_text = ns["subscription_yaml"](env, "alice", "pw", {}).decode("utf-8")
+        cls.cfg = yaml.safe_load(cls.yaml_text)
+        cls.rules = "\n".join(cls.cfg["rules"])
 
     def test_geosite_cn_direct(self):
-        self.assertIn("GEOSITE,cn,DIRECT", self.rules)
+        self.assertIn("RULE-SET,geosite-cn,DIRECT", self.cfg["rules"])
 
     def test_no_geoip_rule(self):
         """不用 GEOIP —— geoip.dat 6.5MB,中国网络首启拉不下来会卡死。"""
-        self.assertNotIn("GEOIP", self.rules)
+        self.assertNotIn("GEOIP,", self.rules)
 
     def test_private_networks_direct(self):
         for cidr in ("127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"):
             self.assertIn("IP-CIDR,%s,DIRECT" % cidr, self.rules)
 
     def test_lan_direct(self):
-        self.assertIn("DOMAIN-SUFFIX,lan,DIRECT", self.rules)
+        self.assertIn("DOMAIN-SUFFIX,lan,DIRECT", self.cfg["rules"])
 
     def test_match_last(self):
-        self.assertTrue(self.rules.rstrip().endswith("MATCH,PROXY"))
+        self.assertEqual("MATCH,PROXY", self.cfg["rules"][-1])
 
     def test_minimal_handwritten_supplement(self):
-        """手写域名规则只补 geosite 的缺口,不铺开清单。
-
-        geosite-lite.dat 实测缺 jinritemai.com(抖店)——
-        由 tools/verify-domestic-routing.py 自动发现。
-        主力是 GEOSITE,cn(11 万条),手写只做 gap fill(≤3 条)。
-        """
+        """手写域名规则只补极少数缺口（≤3 条）。"""
         handwritten = [
-            ln for ln in self.rules.splitlines()
-            if "DOMAIN-SUFFIX," in ln and ",lan," not in ln
+            ln for ln in self.cfg["rules"]
+            if ln.startswith("DOMAIN-SUFFIX,")
         ]
         self.assertLessEqual(len(handwritten), 3,
                              "手写域名规则应 ≤3 条,当前 %d" % len(handwritten))
-        self.assertIn("GEOSITE,cn,DIRECT", self.rules)
+        self.assertIn("RULE-SET,geosite-cn,DIRECT", self.cfg["rules"])
 
-    def test_only_china_ip_provider(self):
-        """只保留 china-ip 一个 provider(IP 段必须直连);域名靠 geosite.
+    def test_mrs_rule_providers_match_singbox_sets(self):
+        """四个同源 .mrs 规则集全部到位，无需整包 geosite.dat。"""
+        providers = self.cfg["rule-providers"]
+        for tag in ("geosite-private", "geosite-cn", "geosite-geolocation-!cn", "geoip-cn"):
+            self.assertIn(tag, providers)
+            self.assertEqual("mrs", providers[tag]["format"])
+        self.assertNotIn("geodata-mode:", self.yaml_text)
 
-        真机现象(2026-11-22):微信图片/视频加载不动 —— 微信 CDN 大量用
-        纯 IP 直连不走域名,GEOSITE 匹配不到 -> 落到 MATCH 走代理。
-        china-ip.mrs 只有 37KB,不像 geoip.dat 那样 6.5MB 拖垮首启。
-        """
-        dns_start = self.src.index("dns:")
-        tail = self.src[dns_start:]
-        self.assertIn("rule-providers:", tail)
-        self.assertIn("china-ip:", tail)
-        self.assertNotIn("china-domain:", tail)
-
-    def test_geox_url_uses_mirror(self):
-        """geosite.dat 走 jsdelivr 镜像（中国网络拉 GitHub release 会超时）。"""
-        self.assertIn("geox-url:", self.src)
-        seg = self.src[self.src.index("geox-url:"): self.src.index("dns:")]
-        self.assertIn("jsdelivr", seg)
-
-    def test_geodata_mode_enabled(self):
-        self.assertIn("geodata-mode: true", self.src)
-
-    def test_dns_policy_uses_geosite_cn(self):
-        dns = self.src[self.src.index("dns:\n  enable: true"): self.src.index("proxies:")]
-        self.assertIn('"geosite:cn":', dns)
+    def test_dns_policy_uses_ruleset_geosite_cn(self):
+        policy = self.cfg["dns"]["nameserver-policy"]
+        self.assertIn("rule-set:geosite-cn", policy)
+        self.assertIn("rule-set:geosite-private", policy)
 
 
 class ClashDnsNoCommentsTests(unittest.TestCase):
@@ -128,7 +120,7 @@ class ClashDnsDomesticFirstTests(unittest.TestCase):
         # 1) 国内域名策略必须指向国内 DoH
         policy = self.dns[self.dns.index("nameserver-policy"):]
         policy = policy[: policy.index("proxy-server-nameserver")] if "proxy-server-nameserver" in policy else policy
-        self.assertIn("geosite:cn", policy)
+        self.assertIn("rule-set:geosite-cn", policy)
         self.assertIn("doh.pub", policy)
         self.assertIn("alidns", policy)
 
