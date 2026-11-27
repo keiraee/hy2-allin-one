@@ -1,4 +1,4 @@
-# HY2 AIO v1.8.7
+# HY2 AIO v2.0.0
 
 一键部署 Hysteria 2 + VLESS+Reality + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -7,10 +7,10 @@
 
 ## 快速开始（新机器安装）
 
-当前版本：**v1.8.7**
+当前版本：**v2.0.0**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.7/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v2.0.0/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -52,7 +52,7 @@ sudo HY2_REPO_REF=main hy2 upgrade && sudo hy2 restart
 如果 `hy2 upgrade` 一直显示「已是 vX.Y.Z，提交未变化」，说明它钉在旧 tag 轨道上。用新引导脚本强制切轨道：
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.7/hy2.sh?nocache=$(date +%s)" -o hy2.sh
+curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v2.0.0/hy2.sh?nocache=$(date +%s)" -o hy2.sh
 sudo HY2_REPO_REF=main bash hy2.sh upgrade && sudo hy2 restart
 ```
 
@@ -169,7 +169,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.8.7` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v2.0.0` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `COUNTRY_CODE` | 节点名国旗（ISO 码如 `SG`）；留空=按服务器 IP 自动识别 | 自动识别 |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
@@ -218,6 +218,12 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v2.0.0
+- **模块化架构重构**：前端独立拆出 `web/index.html`，后端拆分为 `app/server.py`、`app/common.py`、`app/subscription.py`、`app/activity.py`、`app/backup_ops.py`、`app/rebuild_config.py`、`app/rebuild_xray.py`，Shell 拆出 `lib/network.sh` 并统一 `dispatch_cli_command`，全部 22 个模块纳入 `SHA256SUMS` 校验。
+- **安全修复（防 Cloudflare ProxyIP 盗刷）**：默认 Reality 回落站改为 `www.apple.com:443`，老版本升级时自动将旧 `www.cloudflare.com:443` 迁移至 `www.apple.com:443` 并保留原有密钥与端口。
+- **面板新功能**：服务卡片新增「关闭 VLESS / 开启 VLESS」独立开关（重启持久化）；功能抽屉新增「维护」区块，支持「检查更新（异步升级并自动刷新）」与「重启内核」。
+- **兼容性验证**：新增 `v1.8.7` 旧结构升级到模块化架构的端到端自动化演练，全量 706 条单测在 Linux 通过。
 
 ### v1.8.7
 
