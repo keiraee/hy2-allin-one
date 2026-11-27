@@ -27,7 +27,7 @@ def load_backend_namespace():
 
 
 def backend_source():
-    return (ROOT / "app" / "server.py").read_text(encoding="utf-8")
+    return (ROOT / "app" / "subscription.py").read_text(encoding="utf-8")
 
 
 class ClashGeoSiteSplitTests(unittest.TestCase):

@@ -197,6 +197,7 @@ fetch_modules() {
     "bin/hy2.sh"
     "web/index.html"
     "app/common.py"
+    "app/subscription.py"
     "app/server.py"
     "app/rebuild_config.py"
     "app/rebuild_xray.py"

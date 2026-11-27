@@ -605,7 +605,7 @@ class SingboxChinaSplitTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        src = BACKEND.read_text(encoding="utf-8")
+        src = (ROOT / "app" / "subscription.py").read_text(encoding="utf-8")
         i = src.index('def subscription_singbox(')
         j = src.index("\ndef subscription_body", i)
         cls.fn = src[i:j]
@@ -667,7 +667,7 @@ class SingboxHy2TlsTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        src = BACKEND.read_text(encoding="utf-8")
+        src = (ROOT / "app" / "subscription.py").read_text(encoding="utf-8")
         i = src.index('def subscription_singbox(')
         j = src.index("\ndef subscription_body", i)
         cls.fn = src[i:j]
