@@ -243,9 +243,20 @@ def vless_link(env: dict[str, str], username: str, info: Optional[dict[str, Any]
     return f"vless://{vless_id}@{env['PUBLIC_IP']}:{xray_port(env)}?{query}#{name}"
 
 
-def direct_links(env: dict[str, str], username: str, password: str, info: Optional[dict[str, Any]] = None) -> str:
-    lines = [direct_link(env, username, password)]
-    extra = vless_link(env, username, info)
+def direct_links(
+    env: dict[str, str],
+    username: str,
+    password: str,
+    info: Optional[dict[str, Any]] = None,
+    *,
+    hy2_enabled: bool = True,
+    vless_enabled: bool = True,
+) -> str:
+    extra = vless_link(env, username, info) if vless_enabled else ""
+    emit_hy2 = bool(hy2_enabled) or not extra
+    lines: list[str] = []
+    if emit_hy2:
+        lines.append(direct_link(env, username, password))
     if extra:
         lines.append(extra)
     return "\n".join(lines)
@@ -256,6 +267,9 @@ def subscription_base64(
     username: str,
     password: str,
     info: Optional[dict[str, Any]] = None,
+    *,
+    hy2_enabled: bool = True,
+    vless_enabled: bool = True,
 ) -> bytes:
     """通用订阅：节点 URI 按行拼起来再整个 base64。
 
@@ -266,7 +280,9 @@ def subscription_base64(
     直接用已有的 direct_link/vless_link，保证三种格式的节点完全一致 ——
     分叉成两份实现迟早会出现「Clash 能连、v2ray 连不上」这种鬼问题。
     """
-    text = direct_links(env, username, password, info)
+    text = direct_links(
+        env, username, password, info, hy2_enabled=hy2_enabled, vless_enabled=vless_enabled
+    )
     return base64.b64encode(text.encode("utf-8"))
 
 
@@ -302,6 +318,8 @@ def subscription_singbox(
     sb_version: Optional[tuple[int, int]] = None,
     user_agent: str = "",
     sbver: str = "",
+    hy2_enabled: bool = True,
+    vless_enabled: bool = True,
 ) -> bytes:
     """sing-box 远程配置（Remote Profile），按客户端版本自适应兼容 1.11 / 1.12~1.13 / 1.14+。
 
@@ -323,37 +341,41 @@ def subscription_singbox(
     tag_hy2 = flag_prefix(env) + "HY2-" + username
     mode = mode if isinstance(mode, dict) else {"mode": "bbr", "up_mbps": 0.0, "down_mbps": 0.0}
 
-    outbounds: list[dict[str, Any]] = []
-
-    hy2: dict[str, Any] = {
-        "type": "hysteria2",
-        "tag": tag_hy2,
-        "server": env["PUBLIC_IP"],
-        "password": f"{username}:{password}",   # userpass 组合，不是裸密码
-        "tls": {
-            "enabled": True,
-            "server_name": subscription_sni(env),
-            "insecure": bool(client_insecure(env)),
-        },
-    }
-    hop_ports = port_hop_ports(env)
-    if hop_ports:
-        hy2["server_ports"] = [hop_ports.replace("-", ":")]
-        _hop = str(port_hop_interval(env) or "30").strip()
-        hy2["hop_interval"] = _hop if _hop.endswith("s") else _hop + "s"
-    else:
-        hy2["server_port"] = int(env.get("HY2_PORT", "443") or 443)
-    if obfs_enabled(env):
-        hy2["obfs"] = {"type": "salamander", "password": env["OBFS_PASSWORD"]}
-    if mode.get("mode") == "brutal":
-        hy2["up_mbps"] = int(float(mode["up_mbps"]))
-        hy2["down_mbps"] = int(float(mode["down_mbps"]))
-    outbounds.append(hy2)
-
     vless_id = str(payload.get("vless_id") or "").strip()
     public_key = str(env.get("REALITY_PUBLIC_KEY") or "").strip()
     short_id = str(env.get("REALITY_SHORT_ID") or "").strip()
-    if vless_id and public_key and short_id:
+    has_vless = bool(vless_enabled and vless_id and public_key and short_id)
+    emit_hy2 = bool(hy2_enabled) or not has_vless
+
+    outbounds: list[dict[str, Any]] = []
+
+    if emit_hy2:
+        hy2: dict[str, Any] = {
+            "type": "hysteria2",
+            "tag": tag_hy2,
+            "server": env["PUBLIC_IP"],
+            "password": f"{username}:{password}",   # userpass 组合，不是裸密码
+            "tls": {
+                "enabled": True,
+                "server_name": subscription_sni(env),
+                "insecure": bool(client_insecure(env)),
+            },
+        }
+        hop_ports = port_hop_ports(env)
+        if hop_ports:
+            hy2["server_ports"] = [hop_ports.replace("-", ":")]
+            _hop = str(port_hop_interval(env) or "30").strip()
+            hy2["hop_interval"] = _hop if _hop.endswith("s") else _hop + "s"
+        else:
+            hy2["server_port"] = int(env.get("HY2_PORT", "443") or 443)
+        if obfs_enabled(env):
+            hy2["obfs"] = {"type": "salamander", "password": env["OBFS_PASSWORD"]}
+        if mode.get("mode") == "brutal":
+            hy2["up_mbps"] = int(float(mode["up_mbps"]))
+            hy2["down_mbps"] = int(float(mode["down_mbps"]))
+        outbounds.append(hy2)
+
+    if has_vless:
         outbounds.append(
             {
                 "type": "vless",
@@ -484,18 +506,49 @@ def subscription_body(
     mode: Optional[dict[str, Any]] = None,
     user_agent: str = "",
     sbver: str = "",
+    hy2_enabled: bool = True,
+    vless_enabled: bool = True,
 ) -> tuple[bytes, str]:
     """按格式返回 (内容, Content-Type)。fmt 已归一化。"""
     if fmt == "singbox":
         return (
             subscription_singbox(
-                env, username, password, info, mode=mode, user_agent=user_agent, sbver=sbver
+                env,
+                username,
+                password,
+                info,
+                mode=mode,
+                user_agent=user_agent,
+                sbver=sbver,
+                hy2_enabled=hy2_enabled,
+                vless_enabled=vless_enabled,
             ),
             "application/json; charset=utf-8",
         )
     if fmt == "v2ray":
-        return subscription_base64(env, username, password, info), "text/plain; charset=utf-8"
-    return subscription_yaml(env, username, password, info, mode=mode), "text/yaml; charset=utf-8"
+        return (
+            subscription_base64(
+                env,
+                username,
+                password,
+                info,
+                hy2_enabled=hy2_enabled,
+                vless_enabled=vless_enabled,
+            ),
+            "text/plain; charset=utf-8",
+        )
+    return (
+        subscription_yaml(
+            env,
+            username,
+            password,
+            info,
+            mode=mode,
+            hy2_enabled=hy2_enabled,
+            vless_enabled=vless_enabled,
+        ),
+        "text/yaml; charset=utf-8",
+    )
 
 
 def subscription_format_from_ua(user_agent: str) -> str:
@@ -539,6 +592,8 @@ def subscription_yaml(
     info: Optional[dict[str, Any]] = None,
     *,
     mode: Optional[dict[str, Any]] = None,
+    hy2_enabled: bool = True,
+    vless_enabled: bool = True,
 ) -> bytes:
     def q(value: str) -> str:
         return json.dumps(str(value), ensure_ascii=False)
@@ -573,7 +628,28 @@ def subscription_yaml(
     vless_id = str(payload.get("vless_id") or "").strip()
     public_key = str(env.get("REALITY_PUBLIC_KEY") or "").strip()
     short_id = str(env.get("REALITY_SHORT_ID") or "").strip()
-    if vless_id and public_key and short_id:
+    has_vless = bool(vless_enabled and vless_id and public_key and short_id)
+    emit_hy2 = bool(hy2_enabled) or not has_vless
+
+    hy2_block = ""
+    hy2_group = ""
+    if emit_hy2:
+        hy2_group = f"      - {node}\n"
+        hy2_block = (
+            f"  - name: {node}\n"
+            "    type: hysteria2\n"
+            f"    server: {q(env['PUBLIC_IP'])}\n"
+            f"    port: {env.get('HY2_PORT', '443')}\n"
+            f"{rate_lines}"
+            f"    password: {q(username + ':' + password)}\n"
+            f"{obfs_lines}{hop_lines}"
+            f"    sni: {q(subscription_sni(env))}\n"
+            f"    skip-cert-verify: {'true' if client_insecure(env) else 'false'}\n"
+            "    udp: true\n"
+            "    keepalive: 5s\n"
+        )
+
+    if has_vless:
         vless_name = q(flag_prefix(env) + VLESS_NODE_NAME)
         vless_group = f"      - {vless_name}\n"
         vless_block = (
@@ -688,22 +764,12 @@ dns:
   direct-nameserver-follow-policy: true
 
 proxies:
-  - name: {node}
-    type: hysteria2
-    server: {q(env["PUBLIC_IP"])}
-    port: {env.get('HY2_PORT', '443')}
-{rate_lines}    password: {q(username + ":" + password)}
-{obfs_lines}{hop_lines}    sni: {q(subscription_sni(env))}
-    skip-cert-verify: {"true" if client_insecure(env) else "false"}
-    udp: true
-    keepalive: 5s
-{vless_block}
+{hy2_block}{vless_block}
 proxy-groups:
   - name: PROXY
     type: select
     proxies:
-      - {node}
-{vless_group}      - DIRECT
+{hy2_group}{vless_group}      - DIRECT
 
 rule-providers:
 {rule_providers_yaml}

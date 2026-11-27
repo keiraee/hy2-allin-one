@@ -722,3 +722,72 @@ class SingboxHy2TlsTests(unittest.TestCase):
         """VLESS+Reality 节点保留 REALITY 的 SNI(那是 Reality 协议的一部分)。"""
         seg = self.fn[self.fn.index('"type": "vless"'):]
         self.assertIn('"server_name": reality_server_name(env)', seg)
+
+
+class ProtocolSwitchSubscriptionSyncTests(unittest.TestCase):
+    """订阅节点必须联动面板 HY2 / VLESS 开关状态，同时保持纯手动选择模式。"""
+
+    def setUp(self):
+        self.ns = load_ns()
+        self.env = make_env()
+
+    def test_hy2_off_hides_hy2_and_defaults_to_vless(self):
+        import yaml
+
+        sb = json.loads(
+            self.ns["subscription_singbox"](
+                self.env, "alice", "pw123", INFO, hy2_enabled=False, vless_enabled=True
+            )
+        )
+        types = [o["type"] for o in sb["outbounds"]]
+        self.assertNotIn("hysteria2", types)
+        self.assertIn("vless", types)
+        sel = next(o for o in sb["outbounds"] if o["type"] == "selector")
+        self.assertEqual(1, len(sel["outbounds"]))
+        self.assertIn("hy2超时备用临时节点", sel["default"])
+
+        clash = yaml.safe_load(
+            self.ns["subscription_yaml"](
+                self.env, "alice", "pw123", INFO, hy2_enabled=False, vless_enabled=True
+            ).decode("utf-8")
+        )
+        self.assertEqual(["vless"], [p["type"] for p in clash["proxies"]])
+        self.assertEqual("select", clash["proxy-groups"][0]["type"])
+        self.assertIn("hy2超时备用临时节点", clash["proxy-groups"][0]["proxies"][0])
+
+        b64 = base64.b64decode(
+            self.ns["subscription_base64"](
+                self.env, "alice", "pw123", INFO, hy2_enabled=False, vless_enabled=True
+            )
+        ).decode("utf-8")
+        self.assertNotIn("hysteria2://", b64)
+        self.assertIn("vless://", b64)
+
+    def test_vless_off_hides_vless_node(self):
+        import yaml
+
+        sb = json.loads(
+            self.ns["subscription_singbox"](
+                self.env, "alice", "pw123", INFO, hy2_enabled=True, vless_enabled=False
+            )
+        )
+        types = [o["type"] for o in sb["outbounds"]]
+        self.assertIn("hysteria2", types)
+        self.assertNotIn("vless", types)
+
+        clash = yaml.safe_load(
+            self.ns["subscription_yaml"](
+                self.env, "alice", "pw123", INFO, hy2_enabled=True, vless_enabled=False
+            ).decode("utf-8")
+        )
+        self.assertEqual(["hysteria2"], [p["type"] for p in clash["proxies"]])
+
+    def test_both_off_keeps_hy2_fallback_for_valid_config(self):
+        sb = json.loads(
+            self.ns["subscription_singbox"](
+                self.env, "alice", "pw123", INFO, hy2_enabled=False, vless_enabled=False
+            )
+        )
+        sel = next(o for o in sb["outbounds"] if o["type"] == "selector")
+        self.assertEqual(1, len(sel["outbounds"]))
+        self.assertIn("HY2-alice", sel["default"])

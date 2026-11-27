@@ -599,6 +599,8 @@ def subscription_singbox(
     sb_version: Optional[tuple[int, int]] = None,
     user_agent: str = "",
     sbver: str = "",
+    hy2_enabled: Optional[bool] = None,
+    vless_enabled: Optional[bool] = None,
 ) -> bytes:
     return _subscription_singbox(
         env,
@@ -609,6 +611,8 @@ def subscription_singbox(
         sb_version=sb_version,
         user_agent=user_agent,
         sbver=sbver,
+        hy2_enabled=(not hy2_is_off()) if hy2_enabled is None else hy2_enabled,
+        vless_enabled=(not xray_is_off()) if vless_enabled is None else vless_enabled,
     )
 
 
@@ -617,8 +621,19 @@ def subscription_yaml(
     username: str,
     password: str,
     info: Optional[dict[str, Any]] = None,
+    *,
+    hy2_enabled: Optional[bool] = None,
+    vless_enabled: Optional[bool] = None,
 ) -> bytes:
-    return _subscription_yaml(env, username, password, info, mode=mode_for_user(username))
+    return _subscription_yaml(
+        env,
+        username,
+        password,
+        info,
+        mode=mode_for_user(username),
+        hy2_enabled=(not hy2_is_off()) if hy2_enabled is None else hy2_enabled,
+        vless_enabled=(not xray_is_off()) if vless_enabled is None else vless_enabled,
+    )
 
 
 def subscription_body(
@@ -630,6 +645,8 @@ def subscription_body(
     *,
     user_agent: str = "",
     sbver: str = "",
+    hy2_enabled: Optional[bool] = None,
+    vless_enabled: Optional[bool] = None,
 ) -> tuple[bytes, str]:
     return _subscription_body(
         fmt,
@@ -640,6 +657,8 @@ def subscription_body(
         mode=mode_for_user(username),
         user_agent=user_agent,
         sbver=sbver,
+        hy2_enabled=(not hy2_is_off()) if hy2_enabled is None else hy2_enabled,
+        vless_enabled=(not xray_is_off()) if vless_enabled is None else vless_enabled,
     )
 
 
@@ -1834,7 +1853,14 @@ def user_credential_value(username: str, kind: str) -> str:
         base = f"{public_base_url(env)}/s/{token}"
         fmt = {"subscription-v2ray": "v2ray", "subscription-singbox": "singbox"}.get(kind, "")
         return f"{base}?fmt={fmt}" if fmt else base
-    return direct_links(env, username, password, info)
+    return direct_links(
+        env,
+        username,
+        password,
+        info,
+        hy2_enabled=not hy2_is_off(),
+        vless_enabled=not xray_is_off(),
+    )
 
 
 RATE_BUCKETS: dict[str, list[float]] = {}
