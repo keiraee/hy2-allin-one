@@ -1,4 +1,4 @@
-# HY2 AIO v1.8.6
+# HY2 AIO v1.8.7
 
 一键部署 Hysteria 2 + VLESS+Reality + 多用户订阅 + 轻量 Web 面板（512MB 小机友好）。
 
@@ -7,10 +7,10 @@
 
 ## 快速开始（新机器安装）
 
-当前版本：**v1.8.6**
+当前版本：**v1.8.7**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.6/hy2.sh -o hy2.sh
+curl -fsSL https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.7/hy2.sh -o hy2.sh
 sudo bash hy2.sh install
 ```
 
@@ -52,7 +52,7 @@ sudo HY2_REPO_REF=main hy2 upgrade && sudo hy2 restart
 如果 `hy2 upgrade` 一直显示「已是 vX.Y.Z，提交未变化」，说明它钉在旧 tag 轨道上。用新引导脚本强制切轨道：
 
 ```bash
-curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.6/hy2.sh?nocache=$(date +%s)" -o hy2.sh
+curl -fsSL "https://raw.githubusercontent.com/keiraee/hy2-allin-one/v1.8.7/hy2.sh?nocache=$(date +%s)" -o hy2.sh
 sudo HY2_REPO_REF=main bash hy2.sh upgrade && sudo hy2 restart
 ```
 
@@ -169,7 +169,7 @@ sudo HY2_NONINTERACTIVE=1 HY2_USERS=5 HY2_TOTAL_TB=1 bash hy2.sh install
 | `HY2_BACKUP_DAYS` | 备份保留天数 | 14 |
 | `HY2_RATE_LIMIT_SUBSCRIPTION` | 订阅 `/s/` 每 IP 每分钟上限 | 30 |
 | `HY2_RATE_LIMIT_API` | 面板 API 每 IP 每分钟上限 | 120 |
-| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.8.6` |
+| `HY2_REPO_REF` | 模块 Git ref；`upgrade` 空值=已记住的 `HY2_TRACK_REF` 或 latest | install 默认 `v1.8.7` |
 | `HY2_CLIENT_INSECURE` | 客户端 skip-cert-verify | sslip/IP 默认 true |
 | `COUNTRY_CODE` | 节点名国旗（ISO 码如 `SG`）；留空=按服务器 IP 自动识别 | 自动识别 |
 | `HYSTERIA_VERSION` | Hysteria 版本 | `v2.12.1` |
@@ -218,6 +218,27 @@ hy2-allin-one/
 - **备份**：敏感备份仅 CLI，不放在 Web 可下载目录。
 
 ## 更新日志
+
+### v1.8.7
+
+全仓自检与稳定性修复汇总（重构前的稳定基线版本）：
+
+- **升级与版本检测**：修复 `AIO_VERSION` 带 commit 后缀导致 release 轨道 `hy2 upgrade` 无法跳过、以及交互菜单永久误报「可升级」的问题。
+- **端口修改（CLI 与面板）**：
+  - 修复 `hy2 port hy2 <范围>` 新起点被拒、同起点跳过、从端口跳跃切回单端口时残留 `PORT_HOP_ENABLED=true` 导致配置撕裂的问题；
+  - 补齐范围与 VLESS 端口冲突校验、重建失败显式报错与本机 ufw/firewalld 放行同步；
+  - 面板改端口（`POST /ports`）改为通过 `/run/hy2-aio/port-result` 回传 root 侧真实错误，不再静默吞错报「成功」。
+- **面板静态资源与依赖自检**：
+  - 安装与 `repair` 时同步复制 `assets/` 到 `modules/`，资源回退下载兼容 `REPO_URL`（二维码库无环境变量时仍可走 jsdelivr 镜像）；
+  - 修复 `hy2 deps fix` 补装成功后仍误报「缺少基础依赖」并返回 1 的 Bug，以及 `hy2 deps` 只读体检越权安装二维码库的问题。
+- **后端、CLI 与前端细节**：
+  - 面板禁用/删除/轮换用户改为在 Hysteria 重载新配置完成后再踢下线，避免窗口期重连绕过；
+  - `hy2 restart` 检测到 `XRAY_PORT` 变更时直接重建并等待后端就绪后再同步；
+  - 补齐 `bash hy2.sh cert` 命令分发；
+  - 修复日志站点重复计次与客户端 IP 最近活跃时间漂移；
+  - sing-box VLESS 节点 tag 补齐国旗前缀；
+  - 面板补齐 `localStorage` 异常兜底与 `Escape` 关闭二维码/端口弹窗；
+  - 隔离 `test_caddy_install.py` 对宿主机 `/usr/bin/caddy` 的依赖（Linux 全量 692 例单测通过）。
 
 ### v1.8.6
 
