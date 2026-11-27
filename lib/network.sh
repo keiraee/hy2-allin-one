@@ -534,7 +534,7 @@ PY
     systemctl start hysteria-server.service
     wait_hysteria_stats_api
   fi
-  if hy2_has_enabled_user 2>/dev/null; then
+  if ! xray_is_off && hy2_has_enabled_user 2>/dev/null; then
     restart_hy2_xray_or_die
   fi
 

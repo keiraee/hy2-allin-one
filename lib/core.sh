@@ -64,6 +64,7 @@ XRAY_PRESTART_FILE="${APP_DIR}/xray-prestart.sh"
 HYSTERIA_DROPIN_DIR="/etc/systemd/system/hysteria-server.service.d"
 HYSTERIA_DROPIN_FILE="${HYSTERIA_DROPIN_DIR}/hy2-switch.conf"
 HY2_OFF_FILE="${CONFIG_DIR}/hy2.off"
+XRAY_OFF_FILE="${CONFIG_DIR}/xray.off"
 HYSTERIA_CMD_FILE="/run/hy2-aio/hysteria-cmd"
 HYSTERIA_RELOAD_FLAG="/run/hy2-aio/reload-hysteria"
 XRAY_CMD_FILE="/run/hy2-aio/xray-cmd"
@@ -71,6 +72,10 @@ XRAY_RELOAD_FLAG="/run/hy2-aio/reload-xray"
 REALITY_DEST_DEFAULT="www.apple.com:443"
 SELF_INSTALL="/usr/local/bin/hy2"
 SELF_INSTALL_SBIN="/usr/local/sbin/hy2"
+
+xray_is_off() {
+  [ -f "${XRAY_OFF_FILE:-/etc/hy2-aio/xray.off}" ]
+}
 
 log() { printf '\033[1;36m[%s]\033[0m %s\n' "$(date '+%H:%M:%S')" "$*"; }
 warn() { printf '\033[1;33m[WARN]\033[0m %s\n' "$*" >&2; }

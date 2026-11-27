@@ -176,6 +176,7 @@ Documentation=https://github.com/XTLS/Xray-core
 After=network-online.target xray.service xray@.service
 Wants=network-online.target
 Conflicts=xray.service xray@.service
+ConditionPathExists=!/etc/hy2-aio/xray.off
 
 [Service]
 Type=simple

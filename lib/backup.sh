@@ -376,7 +376,7 @@ PY
   fi
   systemctl start hy2-aio-reload-hysteria.path || true
   systemctl start hy2-aio-reload-xray.path || true
-  if hy2_has_enabled_user; then
+  if ! xray_is_off && hy2_has_enabled_user; then
     restart_hy2_xray_or_die
   else
     systemctl stop hy2-xray.service || true

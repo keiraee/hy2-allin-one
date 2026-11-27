@@ -404,6 +404,9 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
     <div id="hy2OffBanner" class="notice" role="status">
       HY2 已关闭。UDP 未监听，Hysteria 节点无法连接；VLESS+Reality 仍可用。整机流量仍计入面板与 SSH。
     </div>
+    <div id="vlessOffBanner" class="banner banner-muted" role="status">
+      VLESS 已关闭。Xray 未监听，VLESS+Reality 节点无法连接；Hysteria 仍可用。
+    </div>
     <div id="notice" class="notice" role="note">
       <button id="noticeClose" class="notice-close" type="button" aria-label="关闭"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-x"/></svg></button>
       套餐用量以「本月整机流量」为准（网卡本地计数，对齐云厂商限制）；Clash 订阅进度与此同步。用户表为 HY2 代理分摊参考。云厂商控制台仍是最终账单。
@@ -423,7 +426,7 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
     <section class="section">
       <div class="section-h">
         <h2><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-server"/></svg>服务</h2>
-        <div style="display:flex;gap:8px"><button id="portBtn" class="btn" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-server"/></svg>端口</button><button id="hy2Toggle" class="btn" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-power"/></svg>关闭 HY2</button></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button id="portBtn" class="btn" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-server"/></svg>端口</button><button id="hy2Toggle" class="btn" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-power"/></svg>关闭 HY2</button><button id="vlessToggle" class="btn" type="button"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-power"/></svg>关闭 VLESS</button></div>
       </div>
       <div id="services" class="pills"></div>
     </section>
@@ -1975,6 +1978,17 @@ async function toggleHy2(){
     }catch(error){toast("操作失败："+error.message)}
   },enabled?"正在关闭 HY2…":"正在开启 HY2…");
 }
+async function toggleVless(){
+  const enabled=window.__vlessEnabled!==false;
+  if(enabled&&!confirm("确认关闭 VLESS (Xray)？VLESS+Reality 节点将无法连接，HY2 仍可用。"))return;
+  await runMutate($("vlessToggle"),async()=>{
+    try{
+      await apiPost(enabled?"api/vless/off":"api/vless/on",{});
+      toast(enabled?"VLESS 已关闭":"VLESS 已开启");
+      await load();
+    }catch(error){toast("操作失败："+error.message)}
+  },enabled?"正在关闭 VLESS…":"正在开启 VLESS…");
+}
 const SUB_ICONS=new Set(["clash","v2ray","singbox"]);
 function menuItem(text,handler,bad,disabled,icon){
   // 注意第三个参数是「危险操作标红」，不是「禁用」。要置灰请传第四个参数。
@@ -2133,6 +2147,14 @@ async function load(){
       setBtnIcon(toggle,"power",hy2On?"关闭 HY2":"开启 HY2");
       toggle.classList.toggle("bad",hy2On);
     }
+    const vlessOn=data.server.vless_enabled!==false;
+    window.__vlessEnabled=vlessOn;
+    $("vlessOffBanner").classList.toggle("show",!vlessOn);
+    const vToggle=$("vlessToggle");
+    if(vToggle){
+      setBtnIcon(vToggle,"power",vlessOn?"关闭 VLESS":"开启 VLESS");
+      vToggle.classList.toggle("bad",vlessOn);
+    }
     renderUsers(data.users);
     $("errorText").textContent=(data.errors||[]).join("；");
     const errorText=$("errorText").textContent;
@@ -2159,6 +2181,7 @@ function scheduleLoadRetry(){
 }
 
 $("hy2Toggle").onclick=toggleHy2;
+$("vlessToggle").onclick=toggleVless;
 $("syncBtn").onclick=syncNow;
 $("themeBtn").onclick=()=>applyTheme(currentTheme()==="dark"?"light":"dark");
 $("drawerSync").onclick=()=>{setDrawer(false);syncNow()};

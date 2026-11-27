@@ -85,6 +85,7 @@ BACKUP_REQUIRED_MEMBERS = (
 BACKUP_OPTIONAL = (
     "etc/caddy/hy2-aio.caddy",
     "etc/hy2-aio/hy2.off",
+    "etc/hy2-aio/xray.off",
     "etc/systemd/system/hysteria-server.service.d/hy2-switch.conf",
     "usr/local/lib/hy2-aio/activity.py",
     "usr/local/lib/hy2-aio/backup_ops.py",
@@ -101,6 +102,7 @@ REBUILD_FILE = Path("/usr/local/lib/hy2-aio/rebuild_config.py")
 XRAY_REBUILD_FILE = Path("/usr/local/lib/hy2-aio/rebuild_xray.py")
 XRAY_CONFIG = Path("/etc/hy2-aio/xray.json")
 HY2_OFF_FILE = Path("/etc/hy2-aio/hy2.off")
+XRAY_OFF_FILE = Path("/etc/hy2-aio/xray.off")
 HYSTERIA_CMD_FILE = Path("/run/hy2-aio/hysteria-cmd")
 HYSTERIA_RELOAD_FLAG = Path("/run/hy2-aio/reload-hysteria")
 PORT_RESULT_FILE = Path("/run/hy2-aio/port-result")
@@ -156,6 +158,27 @@ def set_hy2_off() -> None:
 def set_hy2_on() -> None:
     try:
         HY2_OFF_FILE.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+
+def xray_is_off() -> bool:
+    return XRAY_OFF_FILE.exists()
+
+
+def set_xray_off() -> None:
+    XRAY_OFF_FILE.write_text("1\n", encoding="utf-8")
+    try:
+        os.chmod(XRAY_OFF_FILE, 0o640)
+    except OSError:
+        pass
+
+
+def set_xray_on() -> None:
+    try:
+        XRAY_OFF_FILE.unlink()
     except FileNotFoundError:
         pass
     except OSError:
@@ -629,6 +652,7 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
 
         errors: list[str] = [state_error] if state_error else []
         hy2_enabled = not hy2_is_off()
+        vless_enabled = not xray_is_off()
         traffic: dict[str, Any] = {}
         online: dict[str, Any] = {}
         stream_dump: list[Any] = []
@@ -765,11 +789,14 @@ def collect(run_backup: bool = True) -> dict[str, Any]:
                     "Hysteria": (
                         "off" if not hy2_enabled else service_status("hysteria-server.service")
                     ),
-                    "Xray": service_status("hy2-xray.service"),
+                    "Xray": (
+                        "off" if not vless_enabled else service_status("hy2-xray.service")
+                    ),
                     "HY2 AIO": service_status("hy2-aio.service"),
                     "Caddy": service_status("caddy.service"),
                 },
                 "hy2_enabled": hy2_enabled,
+                "vless_enabled": vless_enabled,
                 # 端口：面板「端口设置」弹窗要显示当前值。
                 # HY2 范围（端口跳跃）优先展示完整范围。
                 "ports": {
@@ -1028,6 +1055,8 @@ def apply_xray_after_users(users: dict[str, Any]) -> None:
     if not has_enabled_users(users):
         request_xray("stop")
         return
+    if xray_is_off():
+        return
     request_xray("restart")
 
 
@@ -1062,6 +1091,26 @@ def hy2_turn_on() -> dict[str, Any]:
         set_hy2_off()
         raise
     request_hysteria("restart")
+    return collect()
+
+
+def xray_turn_off() -> dict[str, Any]:
+    set_xray_off()
+    request_xray("stop")
+    return collect()
+
+
+def xray_turn_on() -> dict[str, Any]:
+    users = load_users()
+    if not has_enabled_users(users):
+        raise ValueError("请先启用至少一个用户")
+    set_xray_on()
+    try:
+        rebuild_xray_config()
+    except Exception:
+        set_xray_off()
+        raise
+    request_xray("restart")
     return collect()
 
 
@@ -1365,6 +1414,7 @@ def publish_users_to_panel(users: dict[str, Any], timestamp: str) -> None:
         server = {}
         data["server"] = server
     server["hy2_enabled"] = not hy2_is_off()
+    server["vless_enabled"] = not xray_is_off()
     summary = data.get("summary")
     if not isinstance(summary, dict):
         summary = {}
@@ -1384,7 +1434,10 @@ def mutation_snapshot(users: dict[str, Any]) -> dict[str, Any]:
     publish_users_to_panel(users, timestamp)
     return {
         "generated_at": timestamp,
-        "server": {"hy2_enabled": not hy2_is_off()},
+        "server": {
+            "hy2_enabled": not hy2_is_off(),
+            "vless_enabled": not xray_is_off(),
+        },
     }
 
 
@@ -2020,6 +2073,32 @@ class Handler(BaseHTTPRequestHandler):
                     {
                         "ok": True,
                         "hy2_enabled": True,
+                        "generated_at": data["generated_at"],
+                    },
+                )
+                return
+            if path == "/vless/off":
+                data = xray_turn_off()
+                self.send_json(
+                    200,
+                    {
+                        "ok": True,
+                        "vless_enabled": False,
+                        "generated_at": data["generated_at"],
+                    },
+                )
+                return
+            if path == "/vless/on":
+                try:
+                    data = xray_turn_on()
+                except ValueError as error:
+                    self.send_json(400, {"ok": False, "error": str(error)})
+                    return
+                self.send_json(
+                    200,
+                    {
+                        "ok": True,
+                        "vless_enabled": True,
                         "generated_at": data["generated_at"],
                     },
                 )
