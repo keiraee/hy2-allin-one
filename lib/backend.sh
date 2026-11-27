@@ -855,7 +855,7 @@ def subscription_singbox(
         outbounds.append(
             {
                 "type": "vless",
-                "tag": VLESS_NODE_NAME,
+                "tag": flag_prefix(env) + VLESS_NODE_NAME,
                 "server": env["PUBLIC_IP"],
                 "server_port": int(xray_port(env)),
                 "uuid": vless_id,
