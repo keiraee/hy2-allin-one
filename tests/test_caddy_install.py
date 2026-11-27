@@ -194,6 +194,7 @@ exit 1
         env.update(
             {
                 "PATH": f"{self.commands}:{self.caddy_dir}:{self.legacy_bin.parent}:{env['PATH']}",
+                "MOCK_ROOT": str(self.root),
                 "MOCK_CADDY_DIR": str(self.caddy_dir),
                 "MOCK_CREATE_VENDOR_UNIT": "1" if package_unit else "0",
                 "MOCK_LOCAL_UNIT": str(self.local_unit),
@@ -210,6 +211,17 @@ exit 1
                 "-c",
                 """
 set -Eeuo pipefail
+command() {
+  if [ "${1:-}" = "-v" ] && [ "${2:-}" = "caddy" ]; then
+    local found
+    found="$(builtin command -v caddy 2>/dev/null || true)"
+    case "$found" in
+      "$MOCK_ROOT"/*) printf '%s\\n' "$found"; return 0 ;;
+      *) return 1 ;;
+    esac
+  fi
+  builtin command "$@"
+}
 source "$1"
 log() { :; }
 warn() { printf 'WARN: %s\\n' "$*" >&2; }
