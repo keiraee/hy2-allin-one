@@ -145,6 +145,27 @@ case "$cmd" in
     fi
     chmod 0644 "$res_file" 2>/dev/null || :
     ;;
+  restart-all)
+    if [ ! -f /etc/hy2-aio/hy2.off ]; then
+      /bin/systemctl restart hysteria-server.service || true
+    fi
+    if [ ! -f /etc/hy2-aio/xray.off ]; then
+      /bin/systemctl restart hy2-xray.service || true
+    fi
+    ;;
+  upgrade)
+    # 异步放到独立 transient unit 中执行，避免 hy2-aio 重启时连带中断升级进程。
+    rm -f "$cmd_file" "$flag"
+    if [ -x /usr/local/bin/hy2 ]; then
+      if command -v systemd-run >/dev/null 2>&1; then
+        /usr/bin/systemd-run --unit="hy2-aio-upgrade-$(date +%s)" --no-block \
+          /usr/local/bin/hy2 upgrade >/dev/null 2>&1 || true
+      else
+        nohup /usr/local/bin/hy2 upgrade >/var/log/hy2-aio-upgrade.log 2>&1 </dev/null &
+      fi
+    fi
+    exit 0
+    ;;
   *)
     /bin/systemctl restart hysteria-server.service
     ;;

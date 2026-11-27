@@ -1017,6 +1017,30 @@ def request_hysteria(action: str) -> None:
     raise RuntimeError("等待 Hysteria 操作超时")
 
 
+def request_restart_services() -> dict[str, Any]:
+    """Ask root path unit to restart enabled proxy cores (Hysteria + Xray)."""
+    _unlink_quiet(HYSTERIA_RELOAD_FLAG)
+    HYSTERIA_CMD_FILE.write_text("restart-all\n", encoding="utf-8")
+    HYSTERIA_RELOAD_FLAG.write_text(str(time.time()), encoding="utf-8")
+    for _ in range(75):
+        time.sleep(0.2)
+        if not HYSTERIA_RELOAD_FLAG.exists():
+            return collect(run_backup=False)
+    raise RuntimeError("等待服务重启超时")
+
+
+def request_upgrade() -> None:
+    """Ask root path unit to launch `hy2 upgrade` asynchronously."""
+    _unlink_quiet(HYSTERIA_RELOAD_FLAG)
+    HYSTERIA_CMD_FILE.write_text("upgrade\n", encoding="utf-8")
+    HYSTERIA_RELOAD_FLAG.write_text(str(time.time()), encoding="utf-8")
+    for _ in range(25):
+        time.sleep(0.2)
+        if not HYSTERIA_RELOAD_FLAG.exists():
+            return
+    raise RuntimeError("触发更新超时（root 侧未响应）")
+
+
 def request_xray(action: str) -> None:
     """Ask root path unit to stop/start/restart hy2-xray (backend is unprivileged)."""
     if action not in ("stop", "start", "restart"):
@@ -2106,6 +2130,14 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/sync":
                 data = collect()
                 self.send_json(200, {"ok": True, "generated_at": data["generated_at"]})
+                return
+            if path == "/restart":
+                data = request_restart_services()
+                self.send_json(200, {"ok": True, "generated_at": data["generated_at"]})
+                return
+            if path == "/upgrade":
+                request_upgrade()
+                self.send_json(200, {"ok": True, "started": True})
                 return
             if path == "/logs/export":
                 payload = self.read_body()

@@ -495,6 +495,14 @@ th.sortable.active::after{content:attr(data-dir);margin-left:4px;font-size:10px}
       </div>
     </div>
     <div class="drawer-sec">
+      <h3>维护</h3>
+      <div class="stack">
+        <button id="restartBtn" class="btn" type="button">重启内核</button>
+        <button id="upgradeBtn" class="btn primary" type="button">检查更新</button>
+        <p class="hint">检查更新会拉取 GitHub 最新版并自动重启服务（约 15–30 秒，在线连接会短暂断开）。</p>
+      </div>
+    </div>
+    <div class="drawer-sec">
       <h3>说明</h3>
       <p class="hint">整机流量对齐云厂商套餐；用户行为 HY2 分摊参考。速率模式只写入 Clash 订阅。</p>
     </div>
@@ -2193,6 +2201,40 @@ $("backupBtn").onclick=async function(){
       toast("备份完成"+(result.backup?"："+result.backup:""));
     }catch(error){toast("备份失败："+error.message)}
   },"正在备份…");
+};
+$("restartBtn").onclick=async function(){
+  if(!confirm("确认重启代理内核（Hysteria / Xray）？在线连接会短暂断开。"))return;
+  setDrawer(false);
+  await runMutate($("restartBtn"),async()=>{
+    try{
+      await apiPost("api/restart",{});
+      toast("内核已重启");
+      await load();
+    }catch(error){toast("重启失败："+error.message)}
+  },"正在重启内核…");
+};
+$("upgradeBtn").onclick=async function(){
+  if(!confirm("确认检查并更新到最新版本？更新过程会自动重启服务（约 15–30 秒），在线连接会短暂断开。"))return;
+  setDrawer(false);
+  await runMutate($("upgradeBtn"),async()=>{
+    try{
+      await apiPost("api/upgrade",{});
+      toast("已开始更新，等待服务重启后自动刷新…");
+      const startedAt=Date.now();
+      await new Promise(r=>setTimeout(r,6000));
+      while(Date.now()-startedAt<90000){
+        try{
+          const resp=await fetch("data.json?t="+Date.now(),{cache:"no-store"});
+          if(resp.ok){
+            location.reload();
+            return;
+          }
+        }catch(e){}
+        await new Promise(r=>setTimeout(r,3000));
+      }
+      toast("更新耗时较长，请稍后手动刷新页面查看结果");
+    }catch(error){toast("触发更新失败："+error.message)}
+  },"正在更新并重启服务…");
 };
 $("menuBtn").onclick=()=>setDrawer(true);
 // 二维码弹窗的事件绑定
