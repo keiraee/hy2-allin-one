@@ -319,17 +319,33 @@ class PanelVendorArrayGuardTests(unittest.TestCase):
         self.assertNotIn("unbound variable", combined)
 
     def test_qr_check_still_active_when_panel_loaded(self):
-        """反向：panel 变量存在时，二维码缺失仍要报警（别修成永远不执行的死代码）。"""
+        """反向：panel 变量存在时，二维码缺失仍要报警且只读 check 不触发安装。"""
         result = run_bash(
             PRELUDE
             + 'PANEL_VENDOR_DIR="/nonexistent/hy2-vendor-probe"\n'
             + 'PANEL_VENDOR_FILES=("deadbeef  qrcode.min.js")\n'
-            + "install_panel_vendor() { return 1; }\n"
+            + 'install_panel_vendor() { echo "MUTATED"; return 1; }\n'
             + "deps_cmd check || true\n"
         )
         combined = result.stdout + result.stderr
         self.assertNotIn("bad substitution", combined)
         self.assertIn("二维码库", combined)
+        self.assertNotIn("MUTATED", combined)
+
+    def test_fix_returns_zero_after_installing_missing_core_dep(self):
+        result = run_bash(
+            PRELUDE
+            + 'PKG_MANAGER="apt"\n'
+            + 'TMPBIN="$(mktemp -d)"\n'
+            + 'trap "rm -rf \\"$TMPBIN\\"" EXIT\n'
+            + 'export PATH="$TMPBIN:$PATH"\n'
+            + 'DEPS_TABLE="hy2-fixed-cmd|pkg-ok|pkg-ok|pkg-ok|core|small|always"\n'
+            + 'pkg_install_quiet() { printf "#!/bin/sh\\nexit 0\\n" > "$TMPBIN/hy2-fixed-cmd"; chmod +x "$TMPBIN/hy2-fixed-cmd"; }\n'
+            + "deps_cmd fix\n"
+        )
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        self.assertIn("已补装 1 项", result.stdout)
+        self.assertNotIn("跑不起来", result.stdout + result.stderr)
 
 
 class PanelVendorDownloadTests(unittest.TestCase):
