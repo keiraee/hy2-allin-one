@@ -48,6 +48,14 @@ echo SURVIVED
         self.assertNotIn("refresh_update_hint", status)
         self.assertNotIn("releases/latest", status)
 
+    def test_commit_suffixed_version_does_not_false_prompt_or_block_skip(self):
+        cli = (ROOT / "lib" / "cli.sh").read_text(encoding="utf-8")
+        hy2 = (ROOT / "hy2.sh").read_text(encoding="utf-8")
+        bin_hy2 = (ROOT / "bin" / "hy2.sh").read_text(encoding="utf-8")
+        self.assertIn('version_is_newer "$latest" "$current"', cli)
+        self.assertIn('from_base="$from"', hy2)
+        self.assertIn('current_base="$current"', bin_hy2)
+
 
 if __name__ == "__main__":
     unittest.main()

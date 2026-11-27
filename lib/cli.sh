@@ -485,7 +485,7 @@ print(str(data.get("latest") or "").strip())
 PY
 )"; then
       latest="$(normalize_hint_version "$latest")"
-      if [ -n "$latest" ] && [ "$latest" != "$current" ]; then
+      if [ -n "$latest" ] && version_is_newer "$latest" "$current"; then
         UPDATE_HINT="当前 v${current} · 可升级 v${latest}（hy2 upgrade && hy2 restart）"
       fi
       return 0
@@ -507,7 +507,7 @@ path.parent.mkdir(parents=True, exist_ok=True)
 path.write_text(json.dumps({"checked_at": int(sys.argv[2]), "latest": sys.argv[3]}, ensure_ascii=False) + "\n", encoding="utf-8")
 PY
 
-  if [ "$latest" != "$current" ]; then
+  if version_is_newer "$latest" "$current"; then
     UPDATE_HINT="当前 v${current} · 可升级 v${latest}（hy2 upgrade && hy2 restart）"
   fi
 }

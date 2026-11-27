@@ -47,12 +47,16 @@ read_installed_aio_version() {
 }
 
 upgrade_already_current() {
-  local from to saved_commit
+  local from to saved_commit from_base
   from="$(read_installed_aio_version "${1:-}")"
   to="$(normalize_aio_version "${2:-}")"
+  from_base="$from"
+  if [[ "$from_base" =~ ^(v?[0-9]+\.[0-9]+\.[0-9]+) ]]; then
+    from_base="${BASH_REMATCH[1]}"
+  fi
   case "$to" in
     v[0-9]*|[0-9]*)
-      [ "$from" != "未知" ] && [ -n "$to" ] && [ "$from" = "$to" ] || return 1
+      [ "$from" != "未知" ] && [ -n "$to" ] && [ "$from_base" = "$to" ] || return 1
       ;;
     *)
       # 分支轨道（如 main）版本号不变，只认提交。

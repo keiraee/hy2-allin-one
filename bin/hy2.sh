@@ -83,9 +83,13 @@ if [ "${1:-}" = "upgrade" ]; then
     bootstrap_url="${raw_base}/hy2.sh"
   fi
   skip=0
+  current_base="$current"
+  if [[ "$current_base" =~ ^(v?[0-9]+\.[0-9]+\.[0-9]+) ]]; then
+    current_base="${BASH_REMATCH[1]}"
+  fi
   case "$ref" in
     v[0-9]*|[0-9]*)
-      if [ "$current" != "未知" ] && [ "$current" = "$target" ] \
+      if [ "$current" != "未知" ] && [ "$current_base" = "$target" ] \
         && printf '%s' "$saved_commit" | grep -qiE '^[0-9a-f]{40}$' \
         && printf '%s' "$remote_commit" | grep -qiE '^[0-9a-f]{40}$' \
         && [ "$saved_commit" = "$remote_commit" ]; then
