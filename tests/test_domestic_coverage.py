@@ -193,8 +193,15 @@ class DomainBeforeIpRuleOrderTests(unittest.TestCase):
         self.assertLess(i_overseas, i_geoip, "海外域名规则必须排在 geoip-cn 之前")
 
     def test_singbox_has_overseas_ruleset(self):
-        self.assertIn('"tag": "geosite-geolocation-!cn"', self.src)
-        self.assertIn("geosite/geolocation-!cn.srs", self.src)
+        import json
+        import sys
+        sys.path.insert(0, str(ROOT / "app"))
+        import subscription
+        env = {"PUBLIC_IP": "203.0.113.10", "DOMAIN": "example.test", "HY2_PORT": "8443", "OBFS_ENABLED": "false"}
+        cfg = json.loads(subscription.subscription_singbox(env, "alice", "pw", {}).decode("utf-8"))
+        tags = {rs["tag"]: rs["url"] for rs in cfg["route"]["rule_set"]}
+        self.assertIn("geosite-geolocation-!cn", tags)
+        self.assertIn("geolocation-!cn.srs", tags["geosite-geolocation-!cn"])
 
     def test_clash_overseas_domain_before_china_ip(self):
         i_overseas = self.src.find("GEOSITE,geolocation-!cn,PROXY")

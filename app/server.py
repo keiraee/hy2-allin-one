@@ -520,6 +520,7 @@ from subscription import (
     flag_prefix,
     new_vless_id,
     normalize_subscription_format,
+    parse_singbox_version,
     server_country_code,
     subscription_base64,
     subscription_body as _subscription_body,
@@ -535,8 +536,21 @@ def subscription_singbox(
     username: str,
     password: str,
     info: Optional[dict[str, Any]] = None,
+    *,
+    sb_version: Optional[tuple[int, int]] = None,
+    user_agent: str = "",
+    sbver: str = "",
 ) -> bytes:
-    return _subscription_singbox(env, username, password, info, mode=mode_for_user(username))
+    return _subscription_singbox(
+        env,
+        username,
+        password,
+        info,
+        mode=mode_for_user(username),
+        sb_version=sb_version,
+        user_agent=user_agent,
+        sbver=sbver,
+    )
 
 
 def subscription_yaml(
@@ -554,8 +568,20 @@ def subscription_body(
     username: str,
     password: str,
     info: Optional[dict[str, Any]] = None,
+    *,
+    user_agent: str = "",
+    sbver: str = "",
 ) -> tuple[bytes, str]:
-    return _subscription_body(fmt, env, username, password, info, mode=mode_for_user(username))
+    return _subscription_body(
+        fmt,
+        env,
+        username,
+        password,
+        info,
+        mode=mode_for_user(username),
+        user_agent=user_agent,
+        sbver=sbver,
+    )
 
 
 def blank_state(iface: str) -> dict[str, Any]:
@@ -1957,9 +1983,13 @@ class Handler(BaseHTTPRequestHandler):
             # 真实运行时 do_GET/do_HEAD 一定有。缺了就当成没传 fmt。
             raw_path = getattr(self, "path", "") or ""
             query = urllib.parse.parse_qs(raw_path.split("?", 1)[1] if "?" in raw_path else "")
+            ua = self.headers.get("User-Agent", "")
             forced = normalize_subscription_format((query.get("fmt") or [""])[0])
-            fmt = forced or subscription_format_from_ua(self.headers.get("User-Agent", ""))
-            body, content_type = subscription_body(fmt, env, username, str(info["password"]), info)
+            sbver = (query.get("sbver") or [""])[0]
+            fmt = forced or subscription_format_from_ua(ua)
+            body, content_type = subscription_body(
+                fmt, env, username, str(info["password"]), info, user_agent=ua, sbver=sbver
+            )
             # Clash traffic bar must match panel "整机套餐" (NIC counters), not per-user HY2.
             cached = read_json(DATA_FILE, {})
             traffic = cached.get("server", {}).get("traffic", {})

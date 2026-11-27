@@ -627,21 +627,50 @@ class SingboxChinaSplitTests(unittest.TestCase):
         self.assertNotIn('"rule_set": ["geosite-cn", "geoip-cn"]', self.fn)
 
     def test_ruleset_download_via_direct(self):
-        """规则集更新走 direct,不能走代理(否则死循环:拉规则要先连上代理)。
-
-        sing-box 1.14 弃用 download_detour,改用 http_client.detour
-        (官方 deprecated 清单 + rule-set/index.zh.md 确认,1.16 移除)。
-        真机踩过:旧写法在 1.14 弹「弃用警告」,配置 1.16 将失效。
-        """
-        self.assertNotIn('"download_detour"', self.fn, '1.14 起弃用,1.16 移除')
-        # 不能用 {"detour": "direct"}:sing-box 1.14 对 http_client 拨号
-        # detour 到 direct 出站一律报「detour to an empty direct outbound
-        # makes no sense」(参数为空与否无关),服务直接起不来 —— 真机踩过。
+        """1.14+ 默认用顶层 http_clients + dl-direct，1.12~1.13 自动回退 download_detour。"""
+        ns = load_ns()
+        cfg_114 = json.loads(ns["subscription_singbox"](make_env(), "alice", "pw123", INFO))
+        self.assertEqual([{"tag": "dl-direct"}], cfg_114.get("http_clients"))
+        for rs in cfg_114["route"]["rule_set"]:
+            self.assertEqual("dl-direct", rs.get("http_client"))
+            self.assertNotIn("download_detour", rs)
         self.assertNotIn('"http_client": {"detour"', self.fn)
-        # 正解:顶层 http_clients 定义 + rule_set 引用 tag
-        self.assertIn('"http_clients": [', self.fn)
-        self.assertIn('{"tag": "dl-direct"}', self.fn)
-        self.assertIn('"http_client": "dl-direct"', self.fn)
+
+    def test_singbox_version_adaptive_112_and_111(self):
+        """1.12~1.13 不能含未知字段 http_clients；1.11 还需回退旧版 DNS server 格式。"""
+        ns = load_ns()
+        cfg_112 = json.loads(
+            ns["subscription_singbox"](
+                make_env(), "alice", "pw123", INFO, user_agent="SFI/1.12.10 (1; sing-box 1.12.10)"
+            )
+        )
+        self.assertNotIn("http_clients", cfg_112)
+        self.assertEqual("local", cfg_112["route"].get("default_domain_resolver"))
+        for rs in cfg_112["route"]["rule_set"]:
+            self.assertEqual("direct", rs.get("download_detour"))
+            self.assertNotIn("http_client", rs)
+
+        cfg_111 = json.loads(
+            ns["subscription_singbox"](
+                make_env(), "alice", "pw123", INFO, user_agent="SFA/1.11.4", sbver=""
+            )
+        )
+        self.assertNotIn("http_clients", cfg_111)
+        self.assertNotIn("default_domain_resolver", cfg_111["route"])
+        self.assertEqual(
+            "https://1.1.1.1/dns-query", cfg_111["dns"]["servers"][0].get("address")
+        )
+        self.assertTrue(
+            any(r.get("outbound") == "any" for r in cfg_111["dns"]["rules"])
+        )
+
+        # ?sbver= 显式覆盖优先于 UA
+        cfg_override = json.loads(
+            ns["subscription_singbox"](
+                make_env(), "alice", "pw123", INFO, user_agent="sing-box 1.14.4", sbver="1.12"
+            )
+        )
+        self.assertNotIn("http_clients", cfg_override)
 
     def test_sniff_and_dns_hijack(self):
         """分流依赖域名嗅探;DNS 劫持保证 tun 下解析走 sing-box。"""

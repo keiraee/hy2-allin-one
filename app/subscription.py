@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import sys
 import time
 import urllib.parse
@@ -183,6 +184,28 @@ def subscription_base64(
     return base64.b64encode(text.encode("utf-8"))
 
 
+def parse_singbox_version(user_agent: str = "", sbver: str = "") -> tuple[int, int]:
+    """提取客户端 sing-box 内核主次版本号；未识别时默认最新标准 (1, 14)。
+
+    优先级：显式 ?sbver= 参数 > UA 中的 sing-box X.Y > 官方客户端前缀 SFA/SFI/SFM/SFT X.Y。
+    这样第三方壳（如 Husi/0.5 (sing-box 1.12.8)）也能拿到真实内核版本而不是壳版本。
+    """
+    explicit = (sbver or "").strip()
+    if explicit:
+        m = re.search(r"v?(\d+)\.(\d+)", explicit, re.IGNORECASE)
+        if m:
+            return int(m.group(1)), int(m.group(2))
+    ua = (user_agent or "").strip()
+    if ua:
+        m = re.search(r"sing-?box[/\s]+v?(\d+)\.(\d+)", ua, re.IGNORECASE)
+        if m:
+            return int(m.group(1)), int(m.group(2))
+        m = re.search(r"(?:^|\s)(?:sfa|sfi|sfm|sft|sfl)/v?(\d+)\.(\d+)", ua, re.IGNORECASE)
+        if m:
+            return int(m.group(1)), int(m.group(2))
+    return (1, 14)
+
+
 def subscription_singbox(
     env: dict[str, str],
     username: str,
@@ -190,8 +213,11 @@ def subscription_singbox(
     info: Optional[dict[str, Any]] = None,
     *,
     mode: Optional[dict[str, Any]] = None,
+    sb_version: Optional[tuple[int, int]] = None,
+    user_agent: str = "",
+    sbver: str = "",
 ) -> bytes:
-    """sing-box 远程配置（Remote Profile）。
+    """sing-box 远程配置（Remote Profile），按客户端版本自适应兼容 1.11 / 1.12~1.13 / 1.14+。
 
     官方文档 docs/clients/general.md 写明：Remote Profile 代表一份远程
     **sing-box 配置**，图形客户端用
@@ -203,6 +229,10 @@ def subscription_singbox(
     sing-box 不提供 userpass 这层别名，必须把组合整个填进 password。
     填错会一直认证失败且很难查，这里单独拎出来注释。
     """
+    ver = sb_version if sb_version is not None else parse_singbox_version(user_agent, sbver)
+    is_114_plus = ver >= (1, 14)
+    is_112_plus = ver >= (1, 12)
+
     payload = info if isinstance(info, dict) else {}
     tag_hy2 = flag_prefix(env) + "HY2-" + username
     mode = mode if isinstance(mode, dict) else {"mode": "bbr", "up_mbps": 0.0, "down_mbps": 0.0}
@@ -216,21 +246,13 @@ def subscription_singbox(
         "password": f"{username}:{password}",   # userpass 组合，不是裸密码
         "tls": {
             "enabled": True,
-            # SNI 用订阅证书域名(与 Clash/直链一致),不能用 REALITY 的伪装
-            # 域名 —— Hysteria 的证书是 Let's Encrypt 签给 DOMAIN 的,SNI
-            # 必须对上才能严格校验。之前这里硬编码 insecure=True 且 SNI 用
-            # REALITY 伪装域名,既削弱安全(v2rayNG 26.2.6+ 直接拒绝连接:
-            # "未加密连接,请启用 TLS 或固定证书")又与证书不匹配。
             "server_name": subscription_sni(env),
             "insecure": bool(client_insecure(env)),
         },
     }
     hop_ports = port_hop_ports(env)
     if hop_ports:
-        # sing-box 1.11+ 用 server_ports（端口范围），跟 Clash 的 ports 语义一致
         hy2["server_ports"] = [hop_ports.replace("-", ":")]
-        # sing-box 的 hop_interval 要带时间单位（"30s"），裸数字 "30" 会报
-        # time: missing unit in duration。Clash 那边才是裸秒数。
         _hop = str(port_hop_interval(env) or "30").strip()
         hy2["hop_interval"] = _hop if _hop.endswith("s") else _hop + "s"
     else:
@@ -271,121 +293,103 @@ def subscription_singbox(
     outbounds.append({"type": "selector", "tag": "proxy", "outbounds": tags, "default": tags[0]})
     outbounds.append({"type": "direct", "tag": "direct"})
 
-    config = {
-        "log": {"level": "info"},
-        # 规则集下载用的 HTTP 客户端。sing-box 1.14 的坑:
-        #   - http_client 拨号 detour 到 direct 出站(不管 direct 有没有参数)
-        #     一律报「detour to an empty direct outbound makes no sense」
-        #     -> 服务起不来(真机踩过)
-        #   - 不写 http_clients 则触发 implicit default HTTP client 弃用警告
-        # 正解:顶层 http_clients 定义一个不带 detour 的客户端 --
-        # 走系统默认路由直连,等价于旧 download_detour=direct 的语义,
-        # 无警告无报错(真机 sing-box 1.14.4 run 验证 0 输出)。
-        "http_clients": [
-            {"tag": "dl-direct"}
+    def _ruleset_item(tag: str, url: str) -> dict[str, Any]:
+        item: dict[str, Any] = {
+            "tag": tag,
+            "type": "remote",
+            "format": "binary",
+            "url": url,
+            "update_interval": "48h",
+        }
+        if is_114_plus:
+            item["http_client"] = "dl-direct"
+        else:
+            item["download_detour"] = "direct"
+        return item
+
+    if is_112_plus:
+        dns_servers: list[dict[str, Any]] = [
+            {"type": "https", "tag": "remote", "server": "1.1.1.1", "detour": "proxy"},
+            {"type": "https", "tag": "remote-alt", "server": "8.8.8.8", "detour": "proxy"},
+            {"type": "local", "tag": "local"},
+        ]
+        dns_rules: list[dict[str, Any]] = [
+            {"domain_suffix": [".cn"], "server": "local"},
+            {"rule_set": "geosite-cn", "server": "local"},
+        ]
+    else:
+        dns_servers = [
+            {"tag": "remote", "address": "https://1.1.1.1/dns-query", "detour": "proxy"},
+            {"tag": "remote-alt", "address": "https://8.8.8.8/dns-query", "detour": "proxy"},
+            {"tag": "local", "address": "local"},
+        ]
+        dns_rules = [
+            {"outbound": "any", "server": "local"},
+            {"domain_suffix": [".cn"], "server": "local"},
+            {"rule_set": "geosite-cn", "server": "local"},
+        ]
+
+    route_block: dict[str, Any] = {
+        "rule_set": [
+            _ruleset_item(
+                "geosite-cn",
+                "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/cn.srs",
+            ),
+            _ruleset_item(
+                "geoip-cn",
+                "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip/cn.srs",
+            ),
+            _ruleset_item(
+                "geosite-geolocation-!cn",
+                "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/geolocation-!cn.srs",
+            ),
         ],
-        # DNS 用 sing-box 1.12+ 的新格式（type + server），旧写法
-        # {"address": "https://1.1.1.1/dns-query"} 在 1.14.0 已彻底移除，
-        # 导入会直接报「legacy DNS server formats are deprecated」。
-        # 官方 migration 文档：https://sing-box.sagernet.org/migration/
-        "dns": {
-            # ⚠️ 境外域名必须「走代理」去查，否则会被污染。
-            # 真机 2026-11-25：googlevideo.com（YouTube CDN）解析出一串
-            # 根本不属于 Google 的 IP —— 31.13.94.37/31.13.95.169（Facebook 段）、
-            # 199.59.149.230（Twitter）、59.24.3.173… 全是污染结果。
-            # 即使路由规则正确把流量交给代理，代理也是去连这些假 IP，
-            # 拿 SNI=googlevideo.com 去连 Facebook:443，必然失败 → YouTube 打不开。
-            # detour 让 DoH 查询本身经代理发出，绕开本地污染。
-            "servers": [
-                {"type": "https", "tag": "remote", "server": "1.1.1.1", "detour": "proxy"},
-                {"type": "https", "tag": "remote-alt", "server": "8.8.8.8", "detour": "proxy"},
-                {"type": "local", "tag": "local"},
-            ],
-            # 只解析 IPv4(等价于 Clash 订阅的 ipv6: false)。
-            # 2026-11-23 真机事故:WiFi 无 IPv6 时,sing-box 把国内域名
-            # 解析成 AAAA(2408:... 联通 v6 段),判为国内直连 → direct
-            # 经 wlan0 连 v6 → "network is unreachable",抖音搜索 /
-            # 小红书头像全部转圈。蜂窝有 v6 所以流量正常;Clash 有
-            # ipv6:false 所以正常 —— 只有 sing-box 在没有 v6 的 WiFi 上炸。
-            "strategy": "ipv4_only",
-            # 国内域名用本地 DNS（快，且国内域名不会被污染）。
-            # 其余一律走 remote（经代理的 DoH）—— 这是治污染的关键。
-            # 注意 dns.rules 的 server 字段在 1.12+ 仍可用（废弃的是 outbound）。
-            "rules": [
-                {"domain_suffix": [".cn"], "server": "local"},
-                {"rule_set": "geosite-cn", "server": "local"},
-            ],
-            "final": "remote",
-        },
-        "inbounds": [
-            {
-                "type": "tun",
-                "tag": "tun-in",
-                # 只给 tun 分配 IPv4。带 IPv6 地址会让系统误以为有 v6,
-                # 应用把 v6 包送进 tun、再被 direct 送回 wlan0 → unreachable
-                # (同 2026-11-23 事故)。
-                "address": ["172.19.0.1/30"],
-                "auto_route": True,
-                "strict_route": True,
-                # MTU 显式收窄:WiFi 默认 1500,代理封装后撞上 PPPoE(1492)
-                # 之类小 MTU 链路会分片丢包 → 大图 / 长页面加载卡。1400 为安全值。
-                "mtu": 1400,
-            }
+        "rules": [
+            {"action": "sniff"},
+            {"protocol": "dns", "action": "hijack-dns"},
+            {"ip_is_private": True, "outbound": "direct"},
+            # 顺序：国内域名直连 → 海外域名代理 → 国内纯 IP 兜底直连（禁止合并成 OR 单条）
+            {"rule_set": ["geosite-cn"], "outbound": "direct"},
+            {"rule_set": ["geosite-geolocation-!cn"], "outbound": "proxy"},
+            {"rule_set": ["geoip-cn"], "outbound": "direct"},
         ],
-        "outbounds": outbounds,
-        "route": {
-            # 国内分流:与 Clash 订阅的 china-domain + china-ip 对齐。
-            # 之前只有 ip_is_private 直连、final=proxy,微信图片上传等
-            # 国内大流量通道被 tun 全量代理绕道日本 → iOS 上发图必失败
-            # (sing-box 官方 issue #2492,Android 用 rule-set 分流即解决)。
-            "rule_set": [
-                {
-                    "tag": "geosite-cn",
-                    "type": "remote",
-                    "format": "binary",
-                    "url": "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/cn.srs",
-                    "http_client": "dl-direct",
-                    "update_interval": "48h",
-                },
-                {
-                    "tag": "geoip-cn",
-                    "type": "remote",
-                    "format": "binary",
-                    "url": "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip/cn.srs",
-                    "http_client": "dl-direct",
-                    "update_interval": "48h",
-                },
-                {
-                    # 明确「非要走代理」的海外域名。用途是挡住 geoip 误判：
-                    # googlevideo.com 这类海外域名会解析到国内 CDN IP，
-                    # 只有 IP 规则会把它判成直连 → 5s i/o timeout。
-                    "tag": "geosite-geolocation-!cn",
-                    "type": "remote",
-                    "format": "binary",
-                    "url": "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/geolocation-!cn.srs",
-                    "http_client": "dl-direct",
-                    "update_interval": "48h",
-                },
-            ],
-            "rules": [
-                {"action": "sniff"},
-                {"protocol": "dns", "action": "hijack-dns"},
-                {"ip_is_private": True, "outbound": "direct"},
-                # ⚠️ 顺序不能合并成 [geosite-cn, geoip-cn] 一条 —— 那是 OR 关系，
-                # geoip 命中就直连，域名判断被完全绕过。真机 2026-11-25：
-                # googlevideo.com(YouTube CDN) 解析到国内联通 IP →
-                # 被 geoip-cn 判直连 → i/o timeout 5s。
-                # 正确顺序：域名(国内→直连) → 域名(海外→代理) → IP(国内→直连)
-                {"rule_set": ["geosite-cn"], "outbound": "direct"},
-                {"rule_set": ["geosite-geolocation-!cn"], "outbound": "proxy"},
-                {"rule_set": ["geoip-cn"], "outbound": "direct"},
-            ],
-            "final": "proxy",
-            "auto_detect_interface": True,
-            # 替代已废弃的 dns.rules[].outbound
-            "default_domain_resolver": "local",
-        },
+        "final": "proxy",
+        "auto_detect_interface": True,
     }
+    if is_112_plus:
+        route_block["default_domain_resolver"] = "local"
+
+    cache_file: dict[str, Any] = {"enabled": True}
+    if is_114_plus:
+        cache_file["store_dns"] = True
+
+    config: dict[str, Any] = {"log": {"level": "info"}}
+    if is_114_plus:
+        # sing-box 1.14+ 专用顶层 http_clients（低于 1.14 出现未知字段会直接启动失败）
+        config["http_clients"] = [{"tag": "dl-direct"}]
+    config.update(
+        {
+            "dns": {
+                "servers": dns_servers,
+                "strategy": "ipv4_only",
+                "rules": dns_rules,
+                "final": "remote",
+            },
+            "inbounds": [
+                {
+                    "type": "tun",
+                    "tag": "tun-in",
+                    "address": ["172.19.0.1/30"],
+                    "auto_route": True,
+                    "strict_route": True,
+                    "mtu": 1400,
+                }
+            ],
+            "outbounds": outbounds,
+            "route": route_block,
+            "experimental": {"cache_file": cache_file},
+        }
+    )
     return json.dumps(config, ensure_ascii=False, indent=2).encode("utf-8")
 
 
@@ -397,10 +401,17 @@ def subscription_body(
     info: Optional[dict[str, Any]] = None,
     *,
     mode: Optional[dict[str, Any]] = None,
+    user_agent: str = "",
+    sbver: str = "",
 ) -> tuple[bytes, str]:
     """按格式返回 (内容, Content-Type)。fmt 已归一化。"""
     if fmt == "singbox":
-        return subscription_singbox(env, username, password, info, mode=mode), "application/json; charset=utf-8"
+        return (
+            subscription_singbox(
+                env, username, password, info, mode=mode, user_agent=user_agent, sbver=sbver
+            ),
+            "application/json; charset=utf-8",
+        )
     if fmt == "v2ray":
         return subscription_base64(env, username, password, info), "text/plain; charset=utf-8"
     return subscription_yaml(env, username, password, info, mode=mode), "text/yaml; charset=utf-8"
@@ -415,7 +426,11 @@ def subscription_format_from_ua(user_agent: str) -> str:
     ua = (user_agent or "").lower()
     if not ua:
         return "v2ray"          # 浏览器/curl：给通用 base64，兼容性最好
-    if "sing-box" in ua or "singbox" in ua or ua.startswith("sfa/") or ua.startswith("sfi/") or ua.startswith("sfm/"):
+    if (
+        "sing-box" in ua
+        or "singbox" in ua
+        or ua.startswith(("sfa/", "sfi/", "sfm/", "sft/", "sfl/"))
+    ):
         return "singbox"
     if "clash" in ua or "mihomo" in ua or "flclash" in ua or "stash" in ua:
         return "clash"
