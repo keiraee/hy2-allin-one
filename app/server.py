@@ -110,6 +110,7 @@ XRAY_CMD_FILE = Path("/run/hy2-aio/xray-cmd")
 XRAY_RELOAD_FLAG = Path("/run/hy2-aio/reload-xray")
 WEB_DIR = Path("/var/www/hy2-aio")
 DOWNLOAD_DIR = WEB_DIR / "downloads"
+RULES_DIR = WEB_DIR / "rules"
 DATA_FILE = WEB_DIR / "data.json"
 USERS_CSV = WEB_DIR / "users.csv"
 HISTORY_CSV = WEB_DIR / "history.csv"
@@ -118,6 +119,9 @@ BACKEND_PORT = 18081
 LISTEN = (BACKEND_HOST, BACKEND_PORT)
 LOCK = threading.RLock()
 BACKUP_LOCK = threading.Lock()
+RULES_LOCK = threading.Lock()
+RULES_REFRESH_INTERVAL = 86400.0
+LAST_RULES_SYNC = 0.0
 BACKUP_VALIDATED: dict[Path, tuple[int, int]] = {}
 LAST_BACKUP_ERROR: Optional[str] = None
 BACKUP_RETRY_AFTER = 0.0
@@ -512,6 +516,7 @@ def memory_info() -> dict[str, Any]:
 
 from subscription import (
     GEO_FAILURE_RETRY,
+    RULESET_FILES,
     VLESS_NODE_NAME,
     _GEO_CACHE,
     _http_get_json,
@@ -521,6 +526,7 @@ from subscription import (
     new_vless_id,
     normalize_subscription_format,
     parse_singbox_version,
+    ruleset_upstream_urls,
     server_country_code,
     subscription_base64,
     subscription_body as _subscription_body,
@@ -529,6 +535,59 @@ from subscription import (
     subscription_yaml as _subscription_yaml,
     vless_link,
 )
+
+
+def fetch_ruleset_bytes(filename: str) -> Optional[bytes]:
+    """按多源回退列表拉取规则集二进制内容，拦截空包或 HTML 错误页。"""
+    urls = ruleset_upstream_urls(filename)
+    for url in urls:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "hy2-aio-rules-sync"})
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                data = resp.read()
+            if len(data) >= 32 and not data[:16].lstrip().startswith(b"<"):
+                return data
+        except Exception:
+            continue
+    return None
+
+
+def sync_rulesets(force: bool = False, only: Optional[str] = None) -> int:
+    """将 MetaCubeX .mrs/.srs 规则集缓存到 WEB_DIR/rules 供 Caddy 同源直出。"""
+    targets = [only] if only else list(RULESET_FILES.keys())
+    updated = 0
+    now = time.time()
+    with RULES_LOCK:
+        try:
+            RULES_DIR.mkdir(parents=True, exist_ok=True)
+            os.chmod(RULES_DIR, 0o2750)
+            try:
+                shutil.chown(RULES_DIR, user="hy2-aio", group="caddy")
+            except Exception:
+                pass
+        except OSError:
+            pass
+        for name in targets:
+            if name not in RULESET_FILES:
+                continue
+            dest = RULES_DIR / name
+            if not force and dest.is_file():
+                try:
+                    st = dest.stat()
+                    if st.st_size >= 32 and (now - st.st_mtime) < RULES_REFRESH_INTERVAL:
+                        continue
+                except OSError:
+                    pass
+            data = fetch_ruleset_bytes(name)
+            if data is None:
+                continue
+            atomic_bytes(dest, data, mode=0o640)
+            try:
+                shutil.chown(dest, user="hy2-aio", group="caddy")
+            except Exception:
+                pass
+            updated += 1
+    return updated
 
 
 def subscription_singbox(
@@ -2024,6 +2083,35 @@ class Handler(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(body)
 
+    def send_ruleset(self, name: str) -> None:
+        if name not in RULESET_FILES:
+            self.send_error(404)
+            return
+        dest = RULES_DIR / name
+        if not dest.is_file() or dest.stat().st_size < 32:
+            try:
+                sync_rulesets(force=True, only=name)
+            except Exception as error:
+                print(f"[hy2-aio] ruleset fetch {name} failed: {error}", flush=True)
+        if dest.is_file() and dest.stat().st_size >= 32:
+            body = dest.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            if self.command != "HEAD":
+                self.wfile.write(body)
+            return
+        mirrors = ruleset_upstream_urls(name)
+        if mirrors:
+            self.send_response(302)
+            self.send_header("Location", mirrors[0])
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            return
+        self.send_error(503)
+
     def do_HEAD(self) -> None:
         self.do_GET()
 
@@ -2031,6 +2119,9 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path == "/health":
             self.send_json(200, {"ok": True, "time": iso_now()})
+            return
+        if path.startswith("/rules/"):
+            self.send_ruleset(path[7:].strip("/"))
             return
         if path.startswith("/s/"):
             self.send_subscription(path[3:].strip("/"))
@@ -2320,7 +2411,15 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
 
 
+def _sync_rulesets_background() -> None:
+    try:
+        sync_rulesets()
+    except Exception as error:
+        print(f"[hy2-aio] background ruleset sync failed: {error}", flush=True)
+
+
 def collector_loop() -> None:
+    global LAST_RULES_SYNC
     failures = 0
     while True:
         try:
@@ -2329,6 +2428,12 @@ def collector_loop() -> None:
         except Exception as error:
             failures += 1
             print(f"[hy2-aio] collect failed ({failures}): {error}", flush=True)
+        now = time.time()
+        if now - LAST_RULES_SYNC >= RULES_REFRESH_INTERVAL:
+            LAST_RULES_SYNC = now
+            threading.Thread(
+                target=_sync_rulesets_background, daemon=True, name="hy2-aio-rules-sync"
+            ).start()
         time.sleep(60)
 
 
@@ -2337,6 +2442,7 @@ def main() -> None:
     BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     WEB_DIR.mkdir(parents=True, exist_ok=True)
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    RULES_DIR.mkdir(parents=True, exist_ok=True)
     try:
         check_runtime_permissions()
     except Exception as error:

@@ -132,12 +132,100 @@ class DomesticCoverageSourceTests(unittest.TestCase):
             self.assertIn(f"DOMAIN-SUFFIX,{suffix},DIRECT", self.clash["rules"])
             self.assertIn(suffix, sb_suffixes)
 
-    def test_ruleset_urls_do_not_use_raw_github_directly(self):
-        """默认规则集 URL 不能直连 raw.githubusercontent（中国网络拉不动）。"""
+    def test_ruleset_urls_prefer_same_origin_vps_and_fallback_for_bare_ip(self):
+        """有受信 HTTPS 域名时规则集走 VPS 同源 /rules/*；裸 IP 自签证书回退镜像。"""
+        import json
+        import sys
+        import yaml
+
+        sys.path.insert(0, str(ROOT / "app"))
+        import subscription
+
         for prov in self.clash["rule-providers"].values():
-            self.assertNotIn("raw.githubusercontent.com", prov["url"])
+            self.assertTrue(prov["url"].startswith("https://example.test/rules/"), prov["url"])
         for rs in self.singbox["route"]["rule_set"]:
+            self.assertTrue(rs["url"].startswith("https://example.test/rules/"), rs["url"])
+
+        # 自定义面板端口也应带端口
+        env_port = {
+            "PUBLIC_IP": "203.0.113.10",
+            "DOMAIN": "example.test",
+            "PANEL_PORT": "8443",
+            "HY2_PORT": "8443",
+            "OBFS_ENABLED": "false",
+        }
+        sb_port = json.loads(subscription.subscription_singbox(env_port, "alice", "pw", {}).decode("utf-8"))
+        self.assertTrue(sb_port["route"]["rule_set"][0]["url"].startswith("https://example.test:8443/rules/"))
+
+        # 裸 IP 自签证书：自动回退公共镜像，避免严格校验客户端报 x509 错误
+        env_ip = {
+            "PUBLIC_IP": "203.0.113.10",
+            "DOMAIN": "203.0.113.10",
+            "HY2_PORT": "8443",
+            "OBFS_ENABLED": "false",
+        }
+        clash_ip = yaml.safe_load(subscription.subscription_yaml(env_ip, "alice", "pw", {}).decode("utf-8"))
+        sb_ip = json.loads(subscription.subscription_singbox(env_ip, "alice", "pw", {}).decode("utf-8"))
+        for prov in clash_ip["rule-providers"].values():
+            self.assertIn("jsdelivr", prov["url"])
+            self.assertNotIn("raw.githubusercontent.com", prov["url"])
+        for rs in sb_ip["route"]["rule_set"]:
+            self.assertIn("jsdelivr", rs["url"])
             self.assertNotIn("raw.githubusercontent.com", rs["url"])
+
+    def test_caddy_and_backend_serve_rules_directory(self):
+        """Caddy 暴露免鉴权 /rules/* 静态优先 + 后端按需回源，拒绝路径穿越。"""
+        import io
+        import tempfile
+
+        cfg_sh = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
+        self.assertIn("handle /rules/*", cfg_sh)
+        self.assertIn("@rules_cached file", cfg_sh)
+
+        src = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
+        ns = {"__name__": "hy2_rules_test"}
+        exec(compile(src, "server.py", "exec"), ns)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            rules_dir = Path(tmp) / "rules"
+            rules_dir.mkdir()
+            payload = b"SRS\x01" + b"\x00" * 64
+            (rules_dir / "geosite-cn.srs").write_bytes(payload)
+            ns["RULES_DIR"] = rules_dir
+
+            class StubHandler:
+                command = "GET"
+                def __init__(self, path):
+                    self.path = path
+                    self.status = None
+                    self.headers_out = {}
+                    self.wfile = io.BytesIO()
+                def send_response(self, code):
+                    self.status = code
+                def send_header(self, k, v):
+                    self.headers_out[k] = v
+                def end_headers(self):
+                    pass
+                def send_error(self, code):
+                    self.status = code
+
+            # 1) 命中本地缓存直接 200
+            h_ok = StubHandler("/rules/geosite-cn.srs")
+            ns["Handler"].send_ruleset(h_ok, "geosite-cn.srs")
+            self.assertEqual(200, h_ok.status)
+            self.assertEqual(payload, h_ok.wfile.getvalue())
+
+            # 2) 非白名单/路径穿越一律 404
+            h_bad = StubHandler("/rules/../config.env")
+            ns["Handler"].send_ruleset(h_bad, "../config.env")
+            self.assertEqual(404, h_bad.status)
+
+            # 3) 缓存缺失且离线拉取失败时 302 回退镜像
+            ns["fetch_ruleset_bytes"] = lambda _name: None
+            h_miss = StubHandler("/rules/geoip-cn.mrs")
+            ns["Handler"].send_ruleset(h_miss, "geoip-cn.mrs")
+            self.assertEqual(302, h_miss.status)
+            self.assertIn("jsdelivr", h_miss.headers_out.get("Location", ""))
 
 
 class CriticalDomainListTests(unittest.TestCase):

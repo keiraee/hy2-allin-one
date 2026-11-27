@@ -218,7 +218,7 @@ write_panel() {
     fi
   done
   [ -n "$src" ] || die "找不到面板模板：web/index.html（请重新执行 hy2 upgrade）"
-  install -d -o hy2-aio -g caddy -m 2750 "$WEB_DIR" "$WEB_DIR/downloads"
+  install -d -o hy2-aio -g caddy -m 2750 "$WEB_DIR" "$WEB_DIR/downloads" "$WEB_DIR/rules"
   log "写入面板：${WEB_DIR}/index.html"
   install -m 0640 -o hy2-aio -g caddy "$src" "$WEB_DIR/index.html"
 

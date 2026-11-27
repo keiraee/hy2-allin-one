@@ -27,6 +27,7 @@ from common import (
     obfs_enabled,
     port_hop_interval,
     port_hop_ports,
+    public_base_url,
     reality_server_name,
     subscription_sni,
     xray_port,
@@ -186,14 +187,36 @@ CUSTOM_DIRECT_SUFFIXES: tuple[str, ...] = (
 )
 
 
+RULESET_FILES: dict[str, str] = {}
+for _rs in ROUTING_RULESETS:
+    RULESET_FILES[_rs["mrs_file"]] = _rs["mrs_upstream"]
+    RULESET_FILES[_rs["srs_file"]] = _rs["srs_upstream"]
+
+
 def _ruleset_upstream_url(upstream: str, base: str = RULESET_DEFAULT_MIRROR) -> str:
     if "raw.githubusercontent.com" in base and upstream.startswith("@"):
         return f"{base}/{upstream[1:]}"
     return f"{base}{upstream}"
 
 
+def ruleset_upstream_urls(filename: str) -> list[str]:
+    """返回指定规则文件的多源回退下载地址列表（供 VPS 本机定时/按需缓存）。"""
+    upstream = RULESET_FILES.get(filename)
+    if not upstream:
+        return []
+    return [_ruleset_upstream_url(upstream, base) for base in RULESET_MIRROR_BASES]
+
+
 def ruleset_url(env: dict[str, str], filename: str, upstream: str) -> str:
-    """规则集下载地址（先统一走镜像，后续由同源托管层接管）。"""
+    """规则集下载地址：有受信 HTTPS 域名时走 VPS 同源 /rules/*，裸 IP 自签证书回退镜像。
+
+    客户端既然能拉下 https://{DOMAIN}/s/<token> 订阅，就一定能直连同源 /rules/*，
+    彻底免去国内网络拉 jsDelivr 抽风卡首启的问题；裸 IP 部署因自签证书会被严格校验
+    的规则下载器拒绝，因此自动回退公共镜像。
+    """
+    domain = str(env.get("DOMAIN") or "").strip()
+    if domain and not client_insecure(env):
+        return f"{public_base_url(env)}/rules/{filename}"
     return _ruleset_upstream_url(upstream)
 
 
