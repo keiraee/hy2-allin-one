@@ -645,6 +645,10 @@ EOF
   mkdir -p "$modules_dir/lib" "$modules_dir/bin"
   cp -a "${SCRIPT_DIR}/lib/"* "$modules_dir/lib/"
   cp -a "${SCRIPT_DIR}/bin/"* "$modules_dir/bin/"
+  if [ -d "${SCRIPT_DIR}/assets" ]; then
+    mkdir -p "$modules_dir/assets"
+    cp -a "${SCRIPT_DIR}/assets/." "$modules_dir/assets/"
+  fi
 
   # 先装 CLI：后面服务启动失败时 hy2 仍可用（同 repair 的顺序约定）
   install_hy2_cli "${modules_dir}/bin/hy2.sh"

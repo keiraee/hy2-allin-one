@@ -54,8 +54,17 @@ PANEL_VENDOR_FILES=(
   "4ee9e4db9666ed5c38c508c0cb57512465fcbc5a653ebf9fa33c0c37c71b15bf  qrcode.min.js"
 )
 
+_panel_curl() {
+  if declare -F _bootstrap_curl >/dev/null 2>&1; then
+    _bootstrap_curl "$@"
+  else
+    curl -fsSL --retry 3 --retry-delay 2 \
+      -H 'Cache-Control: no-cache' -H 'Pragma: no-cache' "$@"
+  fi
+}
+
 install_panel_vendor() {
-  local force="${1:-0}" name want got tmp ok=0
+  local force="${1:-0}" name want got tmp ok=0 repo_base="${HY2_REPO_URL:-${REPO_URL:-}}"
   install -d -o hy2-aio -g caddy -m 2750 "$PANEL_VENDOR_DIR" 2>/dev/null || return 1
 
   for entry in "${PANEL_VENDOR_FILES[@]}"; do
@@ -70,18 +79,19 @@ install_panel_vendor() {
       ok=$((ok + 1))
       continue
     fi
-    [ -n "${HY2_REPO_URL:-}" ] || continue
     tmp="$(mktemp)"
     # 拉取顺序:GitHub raw → jsdelivr CDN 镜像。国内 VPS 直连
     # raw.githubusercontent.com 经常超时,静默失败后面板二维码永远装不上
     # (真机踩过)。镜像内容和 raw 同源,SHA256 校验兜住一致性。
-    local fetch_urls=(
-      "${HY2_REPO_URL}/assets/vendor/${name}?nocache=$(date +%s)"
-      "https://testingcf.jsdelivr.net/gh/keiraee/hy2-allin-one@main/assets/vendor/${name}"
-    )
+    local fetch_urls=()
+    if [ -n "$repo_base" ]; then
+      fetch_urls+=("${repo_base%/}/assets/vendor/${name}?nocache=$(date +%s)")
+    fi
+    fetch_urls+=("https://testingcf.jsdelivr.net/gh/keiraee/hy2-allin-one@main/assets/vendor/${name}")
     local fetch_url
     for fetch_url in "${fetch_urls[@]}"; do
-      if _bootstrap_curl "$fetch_url" -o "$tmp" 2>/dev/null         && [ -s "$tmp" ] && head -c 200 "$tmp" | grep -q 'qrcode'; then
+      if _panel_curl "$fetch_url" -o "$tmp" 2>/dev/null \
+        && [ -s "$tmp" ] && head -c 200 "$tmp" | grep -q 'qrcode'; then
         got="$(font_sha256 "$tmp")"
         if [ "$got" = "$want" ]; then
           install -m 0640 -o hy2-aio -g caddy "$tmp" "${PANEL_VENDOR_DIR}/${name}"
@@ -99,7 +109,7 @@ install_panel_vendor() {
 }
 
 install_panel_icons() {
-  local force="${1:-0}" missing=() name want got tmp ok=0
+  local force="${1:-0}" missing=() name want got tmp ok=0 repo_base="${HY2_REPO_URL:-${REPO_URL:-}}"
   install -d -o hy2-aio -g caddy -m 2750 "$PANEL_ICON_DIR" 2>/dev/null || return 1
 
   if [ "$force" != "1" ]; then
@@ -120,10 +130,11 @@ install_panel_icons() {
       ok=$((ok + 1))
       continue
     fi
-    [ -n "${HY2_REPO_URL:-}" ] || continue
+    [ -n "$repo_base" ] || continue
     tmp="$(mktemp)"
     # WebP 魔数：RIFF....WEBP
-    if _bootstrap_curl "${HY2_REPO_URL}/assets/icons/${name}?nocache=$(date +%s)" -o "$tmp" 2>/dev/null       && [ -s "$tmp" ] && head -c4 "$tmp" | grep -q 'RIFF'; then
+    if _panel_curl "${repo_base%/}/assets/icons/${name}?nocache=$(date +%s)" -o "$tmp" 2>/dev/null \
+      && [ -s "$tmp" ] && head -c4 "$tmp" | grep -q 'RIFF'; then
       got="$(font_sha256 "$tmp")"
       if [ "$got" = "$want" ]; then
         install -m 0640 -o hy2-aio -g caddy "$tmp" "${PANEL_ICON_DIR}/${name}"
@@ -143,7 +154,7 @@ font_sha256() {
 }
 
 install_panel_fonts() {
-  local force="${1:-0}" missing=() name base
+  local force="${1:-0}" missing=() name base repo_base="${HY2_REPO_URL:-${REPO_URL:-}}"
   install -d -o hy2-aio -g caddy -m 2750 "$PANEL_FONT_DIR"
 
   # 已经齐全就不重复下载：repair 很频繁，每次都拉 91KB 没必要
@@ -171,9 +182,9 @@ install_panel_fonts() {
       continue
     fi
     # 再试远程（按当前 commit 钉住，避免 CDN 缓存旧文件）
-    [ -n "${HY2_REPO_URL:-}" ] || continue
+    [ -n "$repo_base" ] || continue
     tmp="$(mktemp)"
-    if _bootstrap_curl "${HY2_REPO_URL}/assets/fonts/${name}?nocache=$(date +%s)" -o "$tmp" 2>/dev/null \
+    if _panel_curl "${repo_base%/}/assets/fonts/${name}?nocache=$(date +%s)" -o "$tmp" 2>/dev/null \
       && [ -s "$tmp" ] \
       && head -c4 "$tmp" | grep -q 'wOF2'; then
       got="$(font_sha256 "$tmp")"
