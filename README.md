@@ -200,7 +200,7 @@ hy2-allin-one/
 ## 说明
 
 - **Clash 订阅**默认 `mode: rule`（国内直连、其余走代理）及 `keepalive: 5s`；同一订阅里有 **HY2** 和 **VLESS+Reality** 两个节点，Clash 里手动选择（不是自动 fallback）。服务端写入 QUIC `keepAlivePeriod: 5s`、`maxIdleTimeout: 120s`。
-- **VLESS+Reality** 用官方 [Xray-core](https://github.com/XTLS/Xray-core)（Vision），伪装站固定 `www.cloudflare.com:443`。默认与 HY2 同端口号：HY2 走 UDP，VLESS 走 TCP。`hy2 off` 只关 Hysteria，Xray 继续跑。
+- **VLESS+Reality** 用官方 [Xray-core](https://github.com/XTLS/Xray-core)（Vision），伪装站默认 `www.apple.com:443`。默认与 HY2 同端口号：HY2 走 UDP，VLESS 走 TCP。`hy2 off` 只关 Hysteria，Xray 继续跑。
 - **复制直链**一次给出两行：`hysteria2://` 和 `vless://`。
 - **混淆默认开启**；不稳时可 `sudo hy2 obfs off` 后让客户端更新订阅（关闭的是伪装，不是加密）。
 - **安装向导**默认代理 UDP `8443`（云上比 443 更稳）；仍可改成 `443`。
@@ -684,7 +684,7 @@ rules:
 ### v1.6.0
 - 加入官方 Xray-core **VLESS+Reality+Vision** 作为 TCP 兜底；新装与升级都会自动拉对应 CPU 架构的内核
 - Clash 订阅里两个节点手动选：主节点仍是 `HY2-用户名`，备用固定叫 **hy2超时备用临时节点**（不是自动 fallback）
-- 复制直链一次两行：`hysteria2://` 和 `vless://`；Reality 伪装站固定 `www.cloudflare.com:443`
+- 复制直链一次两行：`hysteria2://` 和 `vless://`；Reality 伪装站默认 `www.apple.com:443`
 - 默认与 HY2 同端口号：HY2 走 UDP，VLESS 走 TCP；面板仍占 443。`hy2 off` 只关 Hysteria，VLESS 继续可用
 - 单独升内核：`hy2 update` 升 Hysteria，`hy2 update-xray`（或 `hy2 update xray`）升 Xray
 - 修复：`hy2 restart` / 安装 / 回滚时 Xray 因 `/run/hy2-aio` 被清而 `226/NAMESPACE`

@@ -25,8 +25,8 @@ class XrayRebuildTests(unittest.TestCase):
                     "HY2_PORT=8443",
                     "PANEL_PORT=443",
                     "XRAY_PORT=8443",
-                    "REALITY_DEST=www.cloudflare.com:443",
-                    "REALITY_SERVER_NAMES=www.cloudflare.com",
+                    "REALITY_DEST=www.apple.com:443",
+                    "REALITY_SERVER_NAMES=www.apple.com",
                     "REALITY_PRIVATE_KEY=private-fixture",
                     "REALITY_SHORT_ID=abcd1234",
                 ]
@@ -80,7 +80,7 @@ class XrayRebuildTests(unittest.TestCase):
         self.assertEqual(8443, inbound["port"])
         self.assertEqual("reality", inbound["streamSettings"]["security"])
         self.assertEqual(
-            "www.cloudflare.com:443",
+            "www.apple.com:443",
             inbound["streamSettings"]["realitySettings"]["dest"],
         )
         self.assertEqual(
@@ -101,6 +101,79 @@ class XrayRebuildTests(unittest.TestCase):
         unit = config[config.index("Description=HY2 AIO Xray VLESS+Reality") :]
         unit = unit[: unit.index("[Install]")]
         self.assertNotIn("ReadWritePaths=/run/hy2-aio", unit)
+
+    def test_default_reality_dest_is_apple_not_cloudflare(self):
+        self.env_file.write_text(
+            "\n".join(
+                [
+                    "HY2_PORT=8443",
+                    "PANEL_PORT=443",
+                    "XRAY_PORT=8443",
+                    "REALITY_PRIVATE_KEY=private-fixture",
+                    "REALITY_SHORT_ID=abcd1234",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        source = load_xray_rebuild_source()
+        keys = {
+            "HY2_ENV_FILE": str(self.env_file),
+            "HY2_USERS_FILE": str(self.users_file),
+            "HY2_XRAY_CONFIG": str(self.out_file),
+        }
+        previous = {key: os.environ.get(key) for key in keys}
+        os.environ.update(keys)
+        try:
+            glob = {"__name__": "hy2_aio_xray_rebuild_default_test"}
+            exec(compile(source, "rebuild_xray.py", "exec"), glob)
+        finally:
+            for key, value in previous.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+        config = json.loads(self.out_file.read_text(encoding="utf-8"))
+        reality = config["inbounds"][0]["streamSettings"]["realitySettings"]
+        self.assertEqual("www.apple.com:443", reality["dest"])
+        self.assertEqual(["www.apple.com"], reality["serverNames"])
+
+    def test_ensure_reality_env_migrates_legacy_cloudflare_dest(self):
+        import shutil
+        import subprocess
+
+        if os.name == "nt" or not shutil.which("bash"):
+            self.skipTest("requires POSIX bash")
+        self.env_file.write_text(
+            "\n".join(
+                [
+                    "HY2_PORT=8443",
+                    "PANEL_PORT=443",
+                    "XRAY_PORT=8443",
+                    "REALITY_DEST=www.cloudflare.com:443",
+                    "REALITY_SERVER_NAMES=www.cloudflare.com",
+                    "REALITY_PRIVATE_KEY=priv-keep",
+                    "REALITY_PUBLIC_KEY=pub-keep",
+                    "REALITY_SHORT_ID=abcd1234",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        script = f"""
+set -euo pipefail
+source "{ROOT / 'lib' / 'core.sh'}"
+ENV_FILE="{self.env_file}"
+read_env
+ensure_reality_env
+"""
+        proc = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+        self.assertEqual(0, proc.returncode, proc.stderr)
+        updated = self.env_file.read_text(encoding="utf-8")
+        self.assertIn("REALITY_DEST=www.apple.com:443", updated)
+        self.assertIn("REALITY_SERVER_NAMES=www.apple.com", updated)
+        self.assertNotIn("www.cloudflare.com", updated)
+        self.assertIn("REALITY_PRIVATE_KEY=priv-keep", updated)
 
 
 if __name__ == "__main__":

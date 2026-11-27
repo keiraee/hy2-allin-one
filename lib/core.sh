@@ -68,7 +68,7 @@ HYSTERIA_CMD_FILE="/run/hy2-aio/hysteria-cmd"
 HYSTERIA_RELOAD_FLAG="/run/hy2-aio/reload-hysteria"
 XRAY_CMD_FILE="/run/hy2-aio/xray-cmd"
 XRAY_RELOAD_FLAG="/run/hy2-aio/reload-xray"
-REALITY_DEST_DEFAULT="www.cloudflare.com:443"
+REALITY_DEST_DEFAULT="www.apple.com:443"
 SELF_INSTALL="/usr/local/bin/hy2"
 SELF_INSTALL_SBIN="/usr/local/sbin/hy2"
 
@@ -516,8 +516,47 @@ append_env_kv() {
   printf '%s=%s\n' "$key" "$value" >> "$ENV_FILE"
 }
 
+upsert_env_kv() {
+  local key="$1" value="$2"
+  [ -f "$ENV_FILE" ] || return 0
+  python3 - "$ENV_FILE" "$key" "$value" <<'PY'
+import os
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+key = sys.argv[2]
+value = sys.argv[3]
+lines = path.read_text(encoding="utf-8").splitlines()
+found = False
+output = []
+for line in lines:
+    if line.startswith(f"{key}="):
+        output.append(f"{key}={value}")
+        found = True
+    else:
+        output.append(line)
+if not found:
+    output.append(f"{key}={value}")
+temporary = path.with_suffix(path.suffix + ".tmp")
+temporary.write_text("\n".join(output) + "\n", encoding="utf-8")
+os.replace(temporary, path)
+PY
+}
+
 ensure_reality_env() {
+  local migrated_cf="false"
   REALITY_DEST="${REALITY_DEST:-$REALITY_DEST_DEFAULT}"
+  case "${REALITY_DEST,,}" in
+    www.cloudflare.com|www.cloudflare.com:443|cloudflare.com|cloudflare.com:443)
+      warn "检测到旧版高危 Reality 回落目标 ${REALITY_DEST}（易被公开 ProxyIP 扫描器盗刷流量），自动迁移至 ${REALITY_DEST_DEFAULT}；升级完成后请刷新客户端 VLESS 订阅"
+      REALITY_DEST="$REALITY_DEST_DEFAULT"
+      if [ -z "${REALITY_SERVER_NAMES:-}" ] || [ "${REALITY_SERVER_NAMES,,}" = "www.cloudflare.com" ] || [ "${REALITY_SERVER_NAMES,,}" = "cloudflare.com" ]; then
+        REALITY_SERVER_NAMES="${REALITY_DEST%%:*}"
+      fi
+      migrated_cf="true"
+      ;;
+  esac
   if [ -z "${REALITY_SERVER_NAMES:-}" ]; then
     REALITY_SERVER_NAMES="${REALITY_DEST%%:*}"
   fi
@@ -542,8 +581,13 @@ ensure_reality_env() {
   fi
   if [ -f "$ENV_FILE" ]; then
     append_env_kv XRAY_PORT "$XRAY_PORT"
-    append_env_kv REALITY_DEST "$REALITY_DEST"
-    append_env_kv REALITY_SERVER_NAMES "$REALITY_SERVER_NAMES"
+    if [ "$migrated_cf" = "true" ]; then
+      upsert_env_kv REALITY_DEST "$REALITY_DEST"
+      upsert_env_kv REALITY_SERVER_NAMES "$REALITY_SERVER_NAMES"
+    else
+      append_env_kv REALITY_DEST "$REALITY_DEST"
+      append_env_kv REALITY_SERVER_NAMES "$REALITY_SERVER_NAMES"
+    fi
     append_env_kv REALITY_SHORT_ID "$REALITY_SHORT_ID"
     append_env_kv REALITY_PRIVATE_KEY "$REALITY_PRIVATE_KEY"
     append_env_kv REALITY_PUBLIC_KEY "$REALITY_PUBLIC_KEY"

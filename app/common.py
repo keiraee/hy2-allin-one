@@ -143,10 +143,13 @@ def country_code_to_flag(code: str) -> str:
     return "".join(chr(127397 + ord(ch)) for ch in cc)
 
 
+REALITY_DEST_DEFAULT = "www.apple.com:443"
+
+
 def reality_dest(env: dict[str, str]) -> str:
     return (
-        str(env.get("REALITY_DEST") or "www.cloudflare.com:443").strip()
-        or "www.cloudflare.com:443"
+        str(env.get("REALITY_DEST") or REALITY_DEST_DEFAULT).strip()
+        or REALITY_DEST_DEFAULT
     )
 
 

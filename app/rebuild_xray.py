@@ -13,7 +13,12 @@ for _cand in (
     if _cand and _cand not in sys.path and (Path(_cand) / "common.py").is_file():
         sys.path.insert(0, _cand)
 
-from common import read_env_file as read_env, resolve_xray_port, user_is_disabled
+from common import (
+    read_env_file as read_env,
+    reality_dest,
+    resolve_xray_port,
+    user_is_disabled,
+)
 
 ENV_FILE = Path(os.environ.get("HY2_ENV_FILE", "/etc/hy2-aio/config.env"))
 USERS_FILE = Path(os.environ.get("HY2_USERS_FILE", "/etc/hy2-aio/users.json"))
@@ -28,7 +33,7 @@ if not isinstance(users, dict) or not users:
 private_key = str(env.get("REALITY_PRIVATE_KEY") or "").strip()
 if not private_key:
     raise SystemExit("缺少 REALITY_PRIVATE_KEY")
-dest = str(env.get("REALITY_DEST") or "www.cloudflare.com:443").strip() or "www.cloudflare.com:443"
+dest = reality_dest(env)
 names_raw = str(env.get("REALITY_SERVER_NAMES") or "").strip()
 server_names = [item.strip() for item in names_raw.split(",") if item.strip()]
 if not server_names:
