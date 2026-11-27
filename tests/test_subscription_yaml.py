@@ -217,6 +217,23 @@ class SubscriptionYamlShapeTests(unittest.TestCase):
         self.assertIn("tun:", text)
         self.assertIn("auto-route: true", text)
 
+    def test_sniffer_enabled_for_pure_ip_and_doh_clients(self):
+        """开启 sniffer 域名嗅探（对齐 sing-box 的 action: sniff）。
+
+        浏览器内置 DoH 或 App HttpDNS 直接按 IP 发包进 TUN 时，靠嗅探 TLS SNI /
+        HTTP Host / QUIC 还原域名，避免域名分流规则失效退化成纯 IP 匹配。
+        """
+        import yaml
+        cfg = yaml.safe_load(self.yaml_text())
+        sniffer = cfg.get("sniffer")
+        self.assertIsInstance(sniffer, dict)
+        self.assertTrue(sniffer.get("enable"))
+        self.assertTrue(sniffer.get("parse-pure-ip"))
+        self.assertTrue(sniffer.get("override-destination"))
+        for proto in ("HTTP", "TLS", "QUIC"):
+            self.assertIn(proto, sniffer.get("sniff", {}))
+        self.assertIn("+.push.apple.com", sniffer.get("skip-domain", []))
+
 
 class ClashRealMihomoParseTests(unittest.TestCase):
     """用真 mihomo 二进制解析订阅 —— 静态断言看不见语法错误。"""
