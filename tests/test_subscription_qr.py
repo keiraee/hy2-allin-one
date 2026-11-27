@@ -14,18 +14,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PANEL = ROOT / "lib" / "panel.sh"
+PANEL_HTML = ROOT / "web" / "index.html"
 CONFIG = ROOT / "lib" / "config.sh"
 VENDOR = ROOT / "assets" / "vendor" / "qrcode.min.js"
 
 
 def panel_text() -> str:
-    return PANEL.read_text(encoding="utf-8")
+    return PANEL_HTML.read_text(encoding="utf-8")
 
 
 def js_block() -> str:
     t = panel_text()
     marker = chr(10) + "<script>" + chr(10)
-    start = t.index(marker, t.index("<<'HTML'")) + len(marker)
+    start = t.index(marker) + len(marker)
     end = t.index("</script>", start)
     return t[start:end]
 
@@ -87,7 +88,7 @@ class QrLibraryTests(unittest.TestCase):
 
     def test_hash_pinned_in_panel(self):
         want = hashlib.sha256(VENDOR.read_bytes()).hexdigest()
-        self.assertIn(want, panel_text(), "PANEL_VENDOR_FILES 里的哈希与实际不符")
+        self.assertIn(want, PANEL.read_text(encoding="utf-8"), "PANEL_VENDOR_FILES 里的哈希与实际不符")
 
     def test_loaded_same_origin(self):
         """必须同源：CSP script-src 只允许 self 和 inline，外域会被拦。"""

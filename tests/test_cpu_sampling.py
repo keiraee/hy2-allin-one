@@ -118,7 +118,7 @@ class PanelRefreshTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.text = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        cls.text = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
 
     def test_refresh_interval_is_not_a_full_minute(self):
         # 后端 60s 采集，前端若也 60s，用户最坏要等 2 分钟才看到变化

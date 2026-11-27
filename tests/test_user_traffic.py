@@ -391,7 +391,7 @@ class UserTrafficAnalysisTests(unittest.TestCase):
 
 class UserTrafficPanelTests(unittest.TestCase):
     def test_user_menu_opens_traffic_analysis_modal(self):
-        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        panel = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn("流量分析", panel)
         self.assertIn("api/user/traffic", panel)
         self.assertIn('id="trafficModal"', panel)
@@ -491,7 +491,7 @@ class UserTrafficPanelTests(unittest.TestCase):
         )
 
     def test_empty_hour_and_week_charts_keep_placeholder_without_series(self):
-        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        panel = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn("function chartEmpty", panel)
         self.assertIn('hourRoot.classList.add("empty")', panel)
         self.assertIn('root.classList.add("empty")', panel)
@@ -502,17 +502,17 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertLess(week.index("if(!hasSeries)"), week.index("week-card"))
 
     def test_user_table_numeric_headers_align_right(self):
-        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        panel = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn(".table-wrap th:nth-child(4),.table-wrap td:nth-child(4)", panel)
         self.assertIn("nth-child(7),.table-wrap td:nth-child(7){text-align:right}", panel)
 
     def test_tablet_collapses_traffic_insights(self):
-        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        panel = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         block = panel[panel.index("@media(max-width:1100px)"):panel.index("@media(max-width:900px)")]
         self.assertIn(".traffic-board,.traffic-tables,.traffic-insights{grid-template-columns:1fr}", block)
 
     def test_narrow_user_table_keeps_monthly_total(self):
-        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        panel = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         idx720 = panel.index("@media(max-width:720px)")
         idx560 = panel.index("@media(max-width:560px)")
         block720 = panel[idx720:idx560].split("#trafficLiveTable")[0]
@@ -525,7 +525,7 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertNotIn("nth-child(6)", block560)
 
     def test_narrow_dest_tables_hide_matching_columns(self):
-        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        panel = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         idx720 = panel.index("@media(max-width:720px)")
         idx560 = panel.index("@media(max-width:560px)")
         block720 = panel[idx720:idx560]
@@ -540,7 +540,7 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertNotIn("#trafficSiteTable th:nth-child(6)", block560)
 
     def test_topbar_omits_missing_version(self):
-        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        panel = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         self.assertNotIn('"v"+data.version', panel)
         self.assertIn("data.version", panel)
         self.assertIn("unknown", panel[panel.index("$(\"time\")"):panel.index("$(\"traffic\")")])

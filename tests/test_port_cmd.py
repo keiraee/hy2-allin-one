@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "lib" / "config.sh"
 BACKEND = ROOT / "lib" / "backend.sh"
-PANEL = ROOT / "lib" / "panel.sh"
+PANEL = ROOT / "web" / "index.html"
 CLI = ROOT / "lib" / "cli.sh"
 HY2SH = ROOT / "hy2.sh"
 

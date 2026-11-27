@@ -180,7 +180,7 @@ pin_github_raw_to_commit() {
 # 下载远程模块（先拉 SHA256SUMS，再逐文件校验）
 fetch_modules() {
   local target_dir="$1"
-  mkdir -p "$target_dir/lib" "$target_dir/bin"
+  mkdir -p "$target_dir/lib" "$target_dir/bin" "$target_dir/web"
   local files=(
     "lib/core.sh"
     "lib/install.sh"
@@ -195,6 +195,7 @@ fetch_modules() {
     "lib/cli.sh"
     "lib/deps.sh"
     "bin/hy2.sh"
+    "web/index.html"
   )
   # 面板字体与客户端图标（二进制，不进 SHA256SUMS——那份清单只登记 shell 模块）。
   # 单独下载，逐个校验后落到模块目录的 assets/，由 panel.sh 复制到 WEB_DIR。
@@ -224,7 +225,10 @@ fetch_modules() {
     _bootstrap_log "下载：$f"
     tmp="$(mktemp)"
     _bootstrap_curl "${REPO_URL}/${f}?nocache=$(date +%s)" -o "$tmp" || { rm -f "$tmp" "$sums"; _bootstrap_die "下载失败：$f"; }
-    head -1 "$tmp" | grep -qE '^#!|^#' || { rm -f "$tmp" "$sums"; _bootstrap_die "模块内容校验失败：$f"; }
+    case "$f" in
+      *.html) head -1 "$tmp" | grep -qiE '^<!doctype html|^<html' || { rm -f "$tmp" "$sums"; _bootstrap_die "模块内容校验失败：$f"; } ;;
+      *)      head -1 "$tmp" | grep -qE '^#!|^#' || { rm -f "$tmp" "$sums"; _bootstrap_die "模块内容校验失败：$f"; } ;;
+    esac
     [ -s "$tmp" ] || { rm -f "$tmp" "$sums"; _bootstrap_die "模块为空：$f"; }
     expected="$(awk -v name="$f" '{ gsub(/\r/, ""); if ($2 == name) { print $1; exit } }' "$sums")"
     [ -n "$expected" ] || { rm -f "$tmp" "$sums"; _bootstrap_die "SHA256SUMS 中缺少：$f"; }
@@ -648,6 +652,10 @@ EOF
   if [ -d "${SCRIPT_DIR}/assets" ]; then
     mkdir -p "$modules_dir/assets"
     cp -a "${SCRIPT_DIR}/assets/." "$modules_dir/assets/"
+  fi
+  if [ -d "${SCRIPT_DIR}/web" ]; then
+    mkdir -p "$modules_dir/web"
+    cp -a "${SCRIPT_DIR}/web/." "$modules_dir/web/"
   fi
 
   # 先装 CLI：后面服务启动失败时 hy2 仍可用（同 repair 的顺序约定）

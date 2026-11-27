@@ -12,7 +12,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PANEL = ROOT / "lib" / "panel.sh"
+PANEL = ROOT / "web" / "index.html"
 BACKEND = ROOT / "lib" / "backend.sh"
 
 
@@ -21,13 +21,9 @@ def panel_text() -> str:
 
 
 def extract_panel_js() -> str:
-    """取出 <script> 块正文（跳过 HTML 里的第一个小内联脚本）。
-
-    write_panel 用的是 <<'HTML'（带引号）heredoc，所以文件里的 \\n 会原样
-    进到生成物里 —— 前提是文件里存的确实是反斜杠字符，而不是真换行。
-    """
+    """取出 <script> 块正文（跳过 HTML 里的第一个小内联脚本）。"""
     t = panel_text()
-    start = t.index("\n<script>\n", t.index("<<'HTML'")) + len("\n<script>\n")
+    start = t.index("\n<script>\n") + len("\n<script>\n")
     end = t.index("</script>", start)
     return t[start:end]
 

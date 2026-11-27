@@ -65,7 +65,7 @@ class LogsExportTests(unittest.TestCase):
         self.assertEqual(captured["args"][captured["args"].index("-n") + 1], "10000")
 
     def test_panel_and_api_and_journal_group(self):
-        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        panel = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
         config = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
         self.assertIn("api/logs/export", panel)

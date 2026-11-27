@@ -4,15 +4,11 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PANEL = ROOT / "lib" / "panel.sh"
+PANEL = ROOT / "web" / "index.html"
 
 
 def panel_html() -> str:
-    src = PANEL.read_text(encoding="utf-8")
-    marker = "<<'HTML'\n"
-    start = src.index(marker) + len(marker)
-    end = src.index("\nHTML\n", start)
-    return src[start:end]
+    return PANEL.read_text(encoding="utf-8")
 
 
 def rule(html: str, selector: str) -> str:

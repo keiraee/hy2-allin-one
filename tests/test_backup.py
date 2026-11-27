@@ -137,7 +137,7 @@ class BackupTests(unittest.TestCase):
             self.assertIn("etc/hysteria/server.key", archive.getnames())
 
     def test_panel_error_banner_can_be_dismissed(self):
-        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        panel = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn('id="errorClose"', panel)
         self.assertIn("hy2-aio-error-dismissed", panel)
         self.assertIn("$(\"errorClose\").onclick", panel)

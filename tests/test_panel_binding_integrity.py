@@ -12,12 +12,12 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PANEL = ROOT / "lib" / "panel.sh"
+PANEL = ROOT / "web" / "index.html"
 
 
 def extract_js(src: str) -> str:
     marker = "\n<script>\n"
-    i = src.index(marker, src.index("<<'HTML'")) + len(marker)
+    i = src.index(marker) + len(marker)
     j = src.index("</script>", i)
     return src[i:j]
 

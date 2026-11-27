@@ -144,7 +144,7 @@ class AccessUnlimitedDisplayTests(unittest.TestCase):
 
 class PanelUnlimitedDisplayTests(unittest.TestCase):
     def test_panel_renders_unlimited_quota(self):
-        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        panel = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn("/ 无限", panel)
 
 

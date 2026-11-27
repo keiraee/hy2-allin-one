@@ -294,7 +294,11 @@ class Sha256SumsTests(unittest.TestCase):
             digest, name = line.split("  ", 1)
             listed[name] = digest
         expected = []
-        for path in sorted((ROOT / "bin").glob("*.sh")) + sorted((ROOT / "lib").glob("*.sh")):
+        for path in (
+            sorted((ROOT / "bin").glob("*.sh"))
+            + sorted((ROOT / "lib").glob("*.sh"))
+            + sorted((ROOT / "web").glob("*.html"))
+        ):
             expected.append(path.relative_to(ROOT).as_posix())
         self.assertEqual(expected, list(listed))
         for rel in expected:

@@ -30,7 +30,7 @@ class Hy2SwitchSourceTests(unittest.TestCase):
 
     def test_cli_and_panel_expose_the_switch(self):
         cli = (ROOT / "lib" / "cli.sh").read_text(encoding="utf-8")
-        panel = (ROOT / "lib" / "panel.sh").read_text(encoding="utf-8")
+        panel = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
         backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
         usage = (ROOT / "bin" / "hy2.sh").read_text(encoding="utf-8")
         self.assertIn("hy2_on_cmd()", cli)

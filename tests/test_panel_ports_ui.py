@@ -8,7 +8,7 @@
 import pathlib, unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-PANEL = ROOT / "lib" / "panel.sh"
+PANEL = ROOT / "web" / "index.html"
 
 
 class PortsModalTests(unittest.TestCase):

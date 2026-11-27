@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ICON_DIR = ROOT / "assets" / "icons"
 PANEL = ROOT / "lib" / "panel.sh"
+PANEL_HTML = ROOT / "web" / "index.html"
 
 
 def webp_size(path: Path) -> tuple[int, int]:
@@ -117,7 +118,7 @@ class ClientIconFallbackTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.src = PANEL.read_text(encoding="utf-8")
+        cls.src = PANEL_HTML.read_text(encoding="utf-8")
         start = cls.src.index("function clientIcon(")
         cls.body = cls.src[start : start + 900]
 

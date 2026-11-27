@@ -6,6 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PANEL = ROOT / "lib" / "panel.sh"
+PANEL_HTML = ROOT / "web" / "index.html"
 FONT_DIR = ROOT / "assets" / "fonts"
 
 
@@ -14,12 +15,8 @@ def panel_source() -> str:
 
 
 def panel_html() -> str:
-    """抽出写进 index.html 的那段 HTML。"""
-    src = panel_source()
-    marker = "<<'HTML'\n"
-    start = src.index(marker) + len(marker)
-    end = src.index("\nHTML\n", start)
-    return src[start:end]
+    """读取拆出后的面板 HTML 源文件。"""
+    return PANEL_HTML.read_text(encoding="utf-8")
 
 
 class FontAssetsTests(unittest.TestCase):
@@ -150,7 +147,7 @@ class FontInstallTests(unittest.TestCase):
 
     def test_runs_after_html_is_written(self):
         """字体要放在 HTML 之后：字体挂了面板也得是能用的。"""
-        html_write = self.src.index('cat > "$WEB_DIR/index.html"')
+        html_write = self.src.index('"$WEB_DIR/index.html"')
         font_call = self.src.rindex("install_panel_fonts || true")
         self.assertGreater(font_call, html_write)
 

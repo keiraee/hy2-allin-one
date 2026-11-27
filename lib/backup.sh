@@ -355,6 +355,10 @@ PY
     mkdir -p "$modules_dir/assets"
     cp -a "${src}/assets/." "$modules_dir/assets/"
   fi
+  if [ -d "${src}/web" ] && [ "${src}/web" != "${modules_dir}/web" ]; then
+    mkdir -p "$modules_dir/web"
+    cp -a "${src}/web/." "$modules_dir/web/"
+  fi
   install_hy2_cli "${modules_dir}/bin/hy2.sh"
 
   systemctl daemon-reload
