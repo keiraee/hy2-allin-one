@@ -2076,7 +2076,13 @@ def record_client_ip(
         items[host] = item
     if port:
         item["port"] = port
-    item["last_seen"] = timestamp
+    incoming = parse_history_time(timestamp)
+    current = parse_history_time(str(item.get("last_seen") or ""))
+    if incoming is not None:
+        if current is None or incoming >= current:
+            item["last_seen"] = incoming.isoformat(timespec="seconds")
+    elif not str(item.get("last_seen") or "").strip():
+        item["last_seen"] = timestamp
 
 
 def prune_client_ips(state: dict[str, Any]) -> None:
@@ -2197,9 +2203,13 @@ def remember_log_destinations(
             item["ip"] = host
         if port:
             item["port"] = port
-        apply_seen_time(item, stamp_from_log_line(text, timestamp))
+        line_stamp = stamp_from_log_line(text, timestamp)
+        prev_last = parse_history_time(str(item.get("last_seen") or ""))
+        incoming_last = parse_history_time(line_stamp)
+        is_newer = prev_last is None or (incoming_last is not None and incoming_last > prev_last)
+        apply_seen_time(item, line_stamp)
         key = (user, host)
-        if key not in created:
+        if is_newer and key not in created:
             item["hits"] = int(item.get("hits", 0) or 0) + 1
             created.add(key)
     for user, bucket in list(dest.items()):
@@ -2242,7 +2252,12 @@ def remember_client_ips(
         parsed = parse_hysteria_connect_line(str(line))
         if not parsed:
             continue
-        record_client_ip(state, canonical_username(parsed[0]), parsed[1], timestamp)
+        record_client_ip(
+            state,
+            canonical_username(parsed[0]),
+            parsed[1],
+            stamp_from_log_line(str(line), timestamp),
+        )
     prune_client_ips(state)
 
 
