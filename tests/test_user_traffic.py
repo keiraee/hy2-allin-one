@@ -24,13 +24,9 @@ HISTORY_HEADER = [
 
 
 def load_backend_namespace():
-    shell_source = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
-    start_marker = '  cat > "$APP_FILE" <<\'PY\'\n'
-    end_marker = '\nPY\n  chmod 0755 "$APP_FILE"'
-    start = shell_source.index(start_marker) + len(start_marker)
-    end = shell_source.index(end_marker, start)
+    source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
     namespace = {"__name__": "hy2_aio_user_traffic_test"}
-    exec(compile(shell_source[start:end], "server.py", "exec"), namespace)
+    exec(compile(source, "server.py", "exec"), namespace)
     return namespace
 
 
@@ -223,7 +219,7 @@ class UserTrafficAnalysisTests(unittest.TestCase):
         self.assertEqual(payload["month"]["share_percent"], 0.0)
 
     def test_handler_exposes_user_traffic_route(self):
-        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        backend = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         self.assertIn('path == "/user/traffic"', backend)
         self.assertIn("user_traffic_analysis", backend)
 
@@ -382,10 +378,10 @@ class UserTrafficAnalysisTests(unittest.TestCase):
         self.assertIn("alice:1:2", state["stream_bytes"])
 
     def test_hysteria_config_enables_sniff_for_hostnames(self):
-        config = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
+        config = (ROOT / "app" / "rebuild_config.py").read_text(encoding="utf-8")
         self.assertIn("sniff:", config)
         self.assertIn("enable: true", config)
-        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        backend = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         self.assertIn("/dump/streams", backend)
 
 
@@ -459,8 +455,8 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("trafficMix", panel)
         self.assertIn("function renderSiteMix", panel)
         self.assertIn("工作日 / 周末", panel)
-        self.assertIn("def root_host", (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8"))
-        self.assertIn("session_stats_from_logs", (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8"))
+        self.assertIn("def root_host", (ROOT / "app" / "server.py").read_text(encoding="utf-8"))
+        self.assertIn("session_stats_from_logs", (ROOT / "app" / "server.py").read_text(encoding="utf-8"))
         self.assertIn("groupSitesByRoot", panel)
         self.assertIn("formatDuration", panel)
         self.assertIn(".mix-legend span{display:flex;align-items:center;gap:8px;width:100%;min-width:0}", panel)
@@ -478,7 +474,7 @@ class UserTrafficPanelTests(unittest.TestCase):
         self.assertIn("async function syncUsersQuiet", panel)
         self.assertIn("if(!userInList(username))", panel)
         self.assertIn("if(userInList(username))", panel)
-        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        backend = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         self.assertIn("apply_hysteria=False", backend)
         self.assertIn("def schedule_apply_and_collect", backend)
         self.assertIn("BrokenPipeError, ConnectionResetError, ConnectionAbortedError", backend)

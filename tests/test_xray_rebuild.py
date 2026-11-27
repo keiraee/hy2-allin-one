@@ -9,12 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_xray_rebuild_source():
-    shell_source = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
-    start_marker = '  cat > "$XRAY_REBUILD_FILE" <<\'PY\'\n'
-    end_marker = "\nPY\n  chmod 0755 \"$XRAY_REBUILD_FILE\""
-    start = shell_source.index(start_marker) + len(start_marker)
-    end = shell_source.index(end_marker, start)
-    return shell_source[start:end]
+    return (ROOT / "app" / "rebuild_xray.py").read_text(encoding="utf-8")
 
 
 class XrayRebuildTests(unittest.TestCase):

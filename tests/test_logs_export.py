@@ -9,13 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_backend_namespace():
-    shell_source = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
-    start_marker = '  cat > "$APP_FILE" <<\'PY\'\n'
-    end_marker = '\nPY\n  chmod 0755 "$APP_FILE"'
-    start = shell_source.index(start_marker) + len(start_marker)
-    end = shell_source.index(end_marker, start)
+    source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
     namespace = {"__name__": "hy2_aio_logs_export_test"}
-    exec(compile(shell_source[start:end], "server.py", "exec"), namespace)
+    exec(compile(source, "server.py", "exec"), namespace)
     return namespace
 
 
@@ -66,7 +62,7 @@ class LogsExportTests(unittest.TestCase):
 
     def test_panel_and_api_and_journal_group(self):
         panel = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
-        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        backend = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         config = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
         self.assertIn("api/logs/export", panel)
         self.assertIn("导出日志", panel)

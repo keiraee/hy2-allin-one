@@ -10,11 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def rebuild_script() -> str:
-    text = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
-    start_marker = "  cat > \"$REBUILD_FILE\" <<'PY'\n"
-    start = text.index(start_marker) + len(start_marker)
-    end = text.index("\nPY\n", start)
-    return text[start:end]
+    return (ROOT / "app" / "rebuild_config.py").read_text(encoding="utf-8")
 
 
 class RebuildConfigTests(unittest.TestCase):

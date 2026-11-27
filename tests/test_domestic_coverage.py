@@ -74,7 +74,7 @@ class DomesticCoverageSourceTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.src = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        cls.src = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
 
     def test_clash_uses_geosite_rule(self):
         """Clash 的 rules 必须含 GEOSITE,cn(不是只靠手写域名)。"""
@@ -178,7 +178,7 @@ class DomainBeforeIpRuleOrderTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.src = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        cls.src = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
 
     def test_singbox_rules_are_not_merged(self):
         """不能合并成 ["geosite-cn", "geoip-cn"] 一条（OR 会让 IP 抢跑域名）。"""
@@ -223,7 +223,7 @@ class DnsPollutionGuardTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.src = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        cls.src = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
 
     def test_singbox_dns_final_is_not_local(self):
         """dns.final 不能是 local —— 那就是把境外域名交给被污染的系统 DNS。"""

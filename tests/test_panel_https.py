@@ -70,7 +70,7 @@ env BACKEND_HOST="$BACKEND_HOST" BACKEND_PORT="$BACKEND_PORT" \
         self.assertEqual(0, result.returncode, result.stderr or result.stdout)
 
     def test_generated_public_urls_have_no_plain_http_panel_fallback(self):
-        for relative in ("lib/access.sh", "lib/backend.sh", "lib/config.sh"):
+        for relative in ("lib/access.sh", "app/server.py", "lib/config.sh"):
             source = (ROOT / relative).read_text(encoding="utf-8")
             self.assertNotIn('port == "80"', source, relative)
             self.assertNotIn("f\"http://{domain}\"", source, relative)

@@ -11,16 +11,13 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BACKEND = ROOT / "lib" / "backend.sh"
+BACKEND = ROOT / "app" / "server.py"
 
 
 def load_ns():
     src = BACKEND.read_text(encoding="utf-8")
-    start = "#!/usr/bin/env python3"
-    i = src.index(start)
-    j = src.index("\nPY\n", i)
     ns = {"__name__": "hy2_sub_test"}
-    exec(compile(src[i:j], "server.py", "exec"), ns)
+    exec(compile(src, "server.py", "exec"), ns)
     return ns
 
 

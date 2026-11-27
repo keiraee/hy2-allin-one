@@ -180,7 +180,7 @@ pin_github_raw_to_commit() {
 # 下载远程模块（先拉 SHA256SUMS，再逐文件校验）
 fetch_modules() {
   local target_dir="$1"
-  mkdir -p "$target_dir/lib" "$target_dir/bin" "$target_dir/web"
+  mkdir -p "$target_dir/lib" "$target_dir/bin" "$target_dir/web" "$target_dir/app"
   local files=(
     "lib/core.sh"
     "lib/install.sh"
@@ -196,6 +196,9 @@ fetch_modules() {
     "lib/deps.sh"
     "bin/hy2.sh"
     "web/index.html"
+    "app/server.py"
+    "app/rebuild_config.py"
+    "app/rebuild_xray.py"
   )
   # 面板字体与客户端图标（二进制，不进 SHA256SUMS——那份清单只登记 shell 模块）。
   # 单独下载，逐个校验后落到模块目录的 assets/，由 panel.sh 复制到 WEB_DIR。
@@ -656,6 +659,10 @@ EOF
   if [ -d "${SCRIPT_DIR}/web" ]; then
     mkdir -p "$modules_dir/web"
     cp -a "${SCRIPT_DIR}/web/." "$modules_dir/web/"
+  fi
+  if [ -d "${SCRIPT_DIR}/app" ]; then
+    mkdir -p "$modules_dir/app"
+    cp -a "${SCRIPT_DIR}/app/." "$modules_dir/app/"
   fi
 
   # 先装 CLI：后面服务启动失败时 hy2 仍可用（同 repair 的顺序约定）

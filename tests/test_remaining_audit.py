@@ -14,13 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_backend_namespace():
-    shell_source = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
-    start_marker = '  cat > "$APP_FILE" <<\'PY\'\n'
-    end_marker = '\nPY\n  chmod 0755 "$APP_FILE"'
-    start = shell_source.index(start_marker) + len(start_marker)
-    end = shell_source.index(end_marker, start)
+    source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
     namespace = {"__name__": "hy2_aio_audit_test"}
-    exec(compile(shell_source[start:end], "server.py", "exec"), namespace)
+    exec(compile(source, "server.py", "exec"), namespace)
     return namespace
 
 
@@ -29,7 +25,7 @@ class TrafficDeltaTests(unittest.TestCase):
         self.ns = load_backend_namespace()
 
     def test_collect_does_not_clear_hysteria_counters(self):
-        source = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         self.assertNotIn('/traffic?clear=1', source)
         self.assertIn('hysteria_api("/traffic"', source)
 
@@ -295,7 +291,8 @@ class Sha256SumsTests(unittest.TestCase):
             listed[name] = digest
         expected = []
         for path in (
-            sorted((ROOT / "bin").glob("*.sh"))
+            sorted((ROOT / "app").glob("*.py"))
+            + sorted((ROOT / "bin").glob("*.sh"))
             + sorted((ROOT / "lib").glob("*.sh"))
             + sorted((ROOT / "web").glob("*.html"))
         ):

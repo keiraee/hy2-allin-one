@@ -7,13 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_backend_namespace():
-    shell_source = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
-    start_marker = '  cat > "$APP_FILE" <<\'PY\'\n'
-    end_marker = '\nPY\n  chmod 0755 "$APP_FILE"'
-    start = shell_source.index(start_marker) + len(start_marker)
-    end = shell_source.index(end_marker, start)
+    source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
     namespace = {"__name__": "hy2_aio_state_recovery_test"}
-    exec(compile(shell_source[start:end], "server.py", "exec"), namespace)
+    exec(compile(source, "server.py", "exec"), namespace)
     return namespace
 
 
@@ -93,7 +89,7 @@ class StaleUserStateGcTests(unittest.TestCase):
         self.assertIn("alice:3:4", state["stream_bytes"])
 
     def test_collect_calls_the_gc(self):
-        source = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         self.assertIn("drop_stale_user_state(state, users)", source)
 
 

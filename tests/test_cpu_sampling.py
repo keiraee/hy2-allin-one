@@ -7,13 +7,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_backend_namespace():
-    shell_source = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
-    start_marker = '  cat > "$APP_FILE" <<\'PY\'\n'
-    end_marker = '\nPY\n  chmod 0755 "$APP_FILE"'
-    start = shell_source.index(start_marker) + len(start_marker)
-    end = shell_source.index(end_marker, start)
+    source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
     namespace = {"__name__": "hy2_aio_cpu_test"}
-    exec(compile(shell_source[start:end], "server.py", "exec"), namespace)
+    exec(compile(source, "server.py", "exec"), namespace)
     return namespace
 
 
@@ -89,7 +85,7 @@ class CpuSamplingTests(unittest.TestCase):
     def test_idle_includes_iowait(self):
         """idle 必须含 iowait 列：等磁盘的时候 CPU 并没在算，
         不计入 idle 会把 IO 等待算成 CPU 忙（与 top 口径不一致）。"""
-        source = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         block = source[source.index("def read_cpu_counters") :]
         block = block[: block.index("\ndef ")]
         self.assertIn("values[4]", block)
@@ -109,7 +105,7 @@ class CpuPayloadTests(unittest.TestCase):
     """面板需要核数才能判断负载大小；缺了 cpu_cores 前端就没法换算。"""
 
     def test_cores_exposed_in_payload(self):
-        source = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         self.assertIn('"cpu_cores": os.cpu_count()', source)
 
 

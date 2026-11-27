@@ -359,6 +359,10 @@ PY
     mkdir -p "$modules_dir/web"
     cp -a "${src}/web/." "$modules_dir/web/"
   fi
+  if [ -d "${src}/app" ] && [ "${src}/app" != "${modules_dir}/app" ]; then
+    mkdir -p "$modules_dir/app"
+    cp -a "${src}/app/." "$modules_dir/app/"
+  fi
   install_hy2_cli "${modules_dir}/bin/hy2.sh"
 
   systemctl daemon-reload

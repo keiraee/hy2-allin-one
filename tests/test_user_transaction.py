@@ -14,13 +14,9 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_backend_namespace():
-    shell_source = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
-    start_marker = '  cat > "$APP_FILE" <<\'PY\'\n'
-    end_marker = '\nPY\n  chmod 0755 "$APP_FILE"'
-    start = shell_source.index(start_marker) + len(start_marker)
-    end = shell_source.index(end_marker, start)
+    source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
     namespace = {"__name__": "hy2_aio_transaction_test"}
-    exec(compile(shell_source[start:end], "server.py", "exec"), namespace)
+    exec(compile(source, "server.py", "exec"), namespace)
     return namespace
 
 
@@ -339,7 +335,7 @@ class BackendUserTransactionTests(unittest.TestCase):
         self.assertIn("injected restart timeout", message)
 
     def test_collect_includes_sticky_apply_error(self):
-        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        backend = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         self.assertIn("read_apply_error()", backend)
         self.assertIn("用户已保存，但内核未加载最新配置", backend)
         self.assertIn("for attempt in range(1, 4)", backend)
@@ -468,7 +464,7 @@ with namespace["user_mutation_lock"]():
 
     def test_lock_path_and_permissions_are_installed_for_both_callers(self):
         core = (ROOT / "lib" / "core.sh").read_text(encoding="utf-8")
-        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        backend = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
 
         self.assertIn('USER_MUTATION_LOCK="${CONFIG_DIR}/.users.lock"', core)
         self.assertIn('chmod 0660 "$USER_MUTATION_LOCK"', core)

@@ -10,28 +10,25 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_backend_namespace():
-    shell_source = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
-    start_marker = '  cat > "$APP_FILE" <<\'PY\'\n'
-    end_marker = '\nPY\n  chmod 0755 "$APP_FILE"'
-    start = shell_source.index(start_marker) + len(start_marker)
-    end = shell_source.index(end_marker, start)
+    source = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
     namespace = {"__name__": "hy2_aio_switch_test"}
-    exec(compile(shell_source[start:end], "server.py", "exec"), namespace)
+    exec(compile(source, "server.py", "exec"), namespace)
     return namespace
 
 
 class Hy2SwitchSourceTests(unittest.TestCase):
     def test_rebuild_has_no_placeholder_account(self):
         source = (ROOT / "lib" / "config.sh").read_text(encoding="utf-8")
-        self.assertNotIn(".hy2-disabled", source)
-        self.assertIn("userpass: {}", source)
+        rebuild = (ROOT / "app" / "rebuild_config.py").read_text(encoding="utf-8")
+        self.assertNotIn(".hy2-disabled", rebuild)
+        self.assertIn("userpass: {}", rebuild)
         self.assertIn("ConditionPathExists=!", source)
         self.assertIn("hysteria-cmd", source)
 
     def test_cli_and_panel_expose_the_switch(self):
         cli = (ROOT / "lib" / "cli.sh").read_text(encoding="utf-8")
         panel = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
-        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        backend = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         usage = (ROOT / "bin" / "hy2.sh").read_text(encoding="utf-8")
         self.assertIn("hy2_on_cmd()", cli)
         self.assertIn("hy2_off_cmd()", cli)
@@ -55,7 +52,7 @@ class Hy2SwitchSourceTests(unittest.TestCase):
         off = off[: off.index("\n}\n", 1) + 3]
         self.assertIn("systemctl stop hysteria-server.service", off)
         self.assertNotIn("hy2-xray", off)
-        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        backend = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         turn_off = backend[backend.index("def hy2_turn_off()") :]
         turn_off = turn_off[: turn_off.index("\n\ndef ", 1)]
         self.assertIn('request_hysteria("stop")', turn_off)
@@ -128,7 +125,7 @@ class Hy2SwitchBackendTests(unittest.TestCase):
         self.assertEqual("now", data["generated_at"])
 
     def test_collect_skips_hysteria_api_when_off(self):
-        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        backend = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         self.assertIn("hy2_enabled = not hy2_is_off()", backend)
         self.assertIn('hysteria_api("/traffic"', backend)
         self.assertIn('"off" if not hy2_enabled', backend)

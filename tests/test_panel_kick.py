@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PANEL = ROOT / "web" / "index.html"
-BACKEND = ROOT / "lib" / "backend.sh"
+BACKEND = ROOT / "app" / "server.py"
 
 
 def panel_text() -> str:

@@ -10,17 +10,13 @@ from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BACKEND = ROOT / "lib" / "backend.sh"
+BACKEND = ROOT / "app" / "server.py"
 
 
 def load_backend_namespace():
     src = BACKEND.read_text(encoding="utf-8")
-    start_marker = '  cat > "$APP_FILE" <<\'PY\'\n'
-    end_marker = '\nPY\n  chmod 0755 "$APP_FILE"'
-    i = src.index(start_marker) + len(start_marker)
-    j = src.index(end_marker, i)
     ns = {"__name__": "hy2_kick_test"}
-    exec(compile(src[i:j], "server.py", "exec"), ns)
+    exec(compile(src, "server.py", "exec"), ns)
     return ns
 
 

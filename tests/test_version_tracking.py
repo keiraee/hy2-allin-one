@@ -57,7 +57,7 @@ class VersionTrackingTests(unittest.TestCase):
 
     def test_backend_reads_env_version(self):
         """后端/面板读的是 config.env 的 AIO_VERSION(链路不变,哨兵)。"""
-        backend = (ROOT / "lib" / "backend.sh").read_text(encoding="utf-8")
+        backend = (ROOT / "app" / "server.py").read_text(encoding="utf-8")
         self.assertIn('env.get("AIO_VERSION"', backend)
 
 
