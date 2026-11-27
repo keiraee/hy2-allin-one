@@ -2812,7 +2812,7 @@ def _apply_services() -> None:
     raise RuntimeError(str(last_error) if last_error else "内核重启失败")
 
 
-def _apply_and_collect() -> None:
+def _apply_and_collect(kick_username: str = "") -> None:
     """按磁盘上的最新用户表重启内核，再采集。不回滚已提交的 users.json。"""
     with APPLY_LOCK:
         try:
@@ -2820,12 +2820,15 @@ def _apply_and_collect() -> None:
         except Exception as error:
             set_apply_error(f"用户已保存，但内核未加载最新配置：{error}")
             print(f"[hy2-aio] post-mutation service apply gave up: {error}", flush=True)
+        if kick_username:
+            kick_user_safely(kick_username)
         _collect_after_mutation()
 
 
-def schedule_apply_and_collect() -> None:
+def schedule_apply_and_collect(kick_username: str = "") -> None:
     threading.Thread(
         target=_apply_and_collect,
+        args=(kick_username,),
         daemon=True,
         name="hy2-aio-apply",
     ).start()
@@ -3301,17 +3304,21 @@ class Handler(BaseHTTPRequestHandler):
             response["message"] = "已无启用用户，HY2 已关闭"
 
         # 禁用/删除/轮换密钥之后，这个人可能还挂着已经建立的 QUIC 连接。
-        # users.json 只在重连时校验，所以必须主动踢一次才算真正生效。
-        # 顺序很重要：上面的 apply_user_change 已经把 disabled 落盘了，
-        # 现在踢掉，他重连时就会被验证后端拒绝，不会踢了又连回来。
+        # Hysteria 的 userpass 在重载新 config.yaml 前仍持有旧密码表，
+        # 因此当 apply_pending 为真时，把踢人延后到内核重启完成之后再执行，
+        # 避免重启前踢人被客户端立即重连绕过。
+        kick_target = ""
         if action in ("disable", "remove", "rotate"):
-            kicked = kick_user_safely(username)
-            if kicked:
-                response["kicked"] = kicked
+            if apply_pending:
+                kick_target = username
+            else:
+                kicked = kick_user_safely(username)
+                if kicked:
+                    response["kicked"] = kicked
 
         self.send_json(200, response)
         if apply_pending:
-            schedule_apply_and_collect()
+            schedule_apply_and_collect(kick_target)
 
     def handle_user_credentials(self, payload: dict[str, Any]) -> None:
         username = str(payload.get("username", ""))
