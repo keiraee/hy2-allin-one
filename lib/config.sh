@@ -411,9 +411,20 @@ case "$cmd" in
     # 面板改端口走这里（root 权限）：改 env → 重建 → 重启，含 NAT 链清理。
     p_target=$(printf '%s' "$cmd" | cut -d: -f2)
     p_value=$(printf '%s' "$cmd" | cut -d: -f3-)
+    res_file=/run/hy2-aio/port-result
+    rm -f "$res_file"
     if [ -x /usr/local/bin/hy2 ]; then
-      /usr/local/bin/hy2 port "$p_target" "$p_value" >/dev/null 2>&1 || :
+      p_err=$(/usr/local/bin/hy2 port "$p_target" "$p_value" 2>&1 >/dev/null) && p_rc=0 || p_rc=$?
+      if [ "$p_rc" -eq 0 ]; then
+        printf 'OK\n' > "$res_file"
+      else
+        p_msg=$(printf '%s\n' "$p_err" | sed 's/\x1b\[[0-9;]*m//g; s/^\[ERROR\] *//' | awk 'NF{line=$0} END{print line}')
+        printf 'ERR:%s\n' "${p_msg:-端口变更失败}" > "$res_file"
+      fi
+    else
+      printf 'ERR:找不到 /usr/local/bin/hy2\n' > "$res_file"
     fi
+    chmod 0644 "$res_file" 2>/dev/null || :
     ;;
   *)
     /bin/systemctl restart hysteria-server.service

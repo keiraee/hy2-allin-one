@@ -80,6 +80,10 @@ class PortControlScriptTests(unittest.TestCase):
     def test_parses_target_and_value(self):
         self.assertIn("cut -d:", self.src)
 
+    def test_writes_port_result_file_for_error_propagation(self):
+        self.assertIn("/run/hy2-aio/port-result", self.src)
+        self.assertIn("ERR:", self.src)
+
 
 class BackendPortApiTests(unittest.TestCase):
     @classmethod

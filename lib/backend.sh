@@ -76,6 +76,7 @@ XRAY_CONFIG = Path("/etc/hy2-aio/xray.json")
 HY2_OFF_FILE = Path("/etc/hy2-aio/hy2.off")
 HYSTERIA_CMD_FILE = Path("/run/hy2-aio/hysteria-cmd")
 HYSTERIA_RELOAD_FLAG = Path("/run/hy2-aio/reload-hysteria")
+PORT_RESULT_FILE = Path("/run/hy2-aio/port-result")
 XRAY_CMD_FILE = Path("/run/hy2-aio/xray-cmd")
 XRAY_RELOAD_FLAG = Path("/run/hy2-aio/reload-xray")
 WEB_DIR = Path("/var/www/hy2-aio")
@@ -1713,11 +1714,21 @@ def request_port_change(target: str, value: str) -> bool:
     if not _re.fullmatch(r"[0-9]+(?:-[0-9]+)?", value):
         raise ValueError("端口格式无效")
     _unlink_quiet(HYSTERIA_RELOAD_FLAG)
+    _unlink_quiet(PORT_RESULT_FILE)
     HYSTERIA_CMD_FILE.write_text(f"port:{target}:{value}" + chr(10), encoding="utf-8")
     HYSTERIA_RELOAD_FLAG.write_text(str(time.time()), encoding="utf-8")
     for _ in range(150):          # 最多 30 秒：改端口含重建+重启，比普通 restart 慢
         time.sleep(0.2)
         if not HYSTERIA_RELOAD_FLAG.exists():
+            result_text = ""
+            if PORT_RESULT_FILE.exists():
+                try:
+                    result_text = PORT_RESULT_FILE.read_text(encoding="utf-8").strip()
+                except OSError:
+                    result_text = ""
+                _unlink_quiet(PORT_RESULT_FILE)
+            if result_text.startswith("ERR:"):
+                raise ValueError(result_text[4:].strip() or "端口变更失败")
             return True
     return False
 
