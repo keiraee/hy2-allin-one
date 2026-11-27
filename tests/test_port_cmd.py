@@ -250,8 +250,14 @@ class NoSelfRestartTests(unittest.TestCase):
 
     def test_still_rebuilds(self):
         """不重启后端，但重建/重启内核这些步骤要保留。"""
-        self.assertIn("rebuild", self.body)
+        self.assertIn("REBUILD_FILE", self.body)
         self.assertIn("restart_hy2_xray_or_die", self.body)
+
+    def test_single_port_clears_hopping_state(self):
+        """从端口跳跃切回单端口时必须关掉 PORT_HOP_ENABLED 并清旧范围。"""
+        self.assertIn("PORT_HOP_ENABLED false", self.body)
+        self.assertIn('PORT_HOP_RANGE ""', self.body)
+        self.assertNotIn("port_hop_ports", self.body)
 
 if __name__ == "__main__":
     unittest.main()

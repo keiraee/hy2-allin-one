@@ -1126,14 +1126,24 @@ port_cmd() {
   [ -n "$value" ] || die "缺少端口值。用法：sudo hy2 port $target <端口或范围>"
 
   # ---- 校验 ----
-  local new_port="$value"
+  local new_port="$value" new_hi=""
   if [ "$target" = "vless" ]; then
     port_number_is_valid "$new_port" || die "端口无效：$new_port（必须是 1-65535 的整数）"
   else
-    # HY2 允许范围（端口跳跃）；单端口也走 range 校验的宽松分支
+    # HY2 允许范围（端口跳跃），起点可以是任意新端口，不要求等于旧 HY2_PORT
     if [[ "$new_port" == *-* ]]; then
-      hop_range_is_valid "$new_port" || die "端口范围无效：$new_port（如 8443-9443，须在 1-65535 内且起点<=终点）"
-      new_port="${new_port%%-*}"
+      local r_start r_end
+      [[ "$new_port" =~ ^([0-9]{1,5})-([0-9]{1,5})$ ]] \
+        || die "端口范围无效：$new_port（如 8443-9443，须在 1-65535 内且起点<终点、跨度 ≤2000）"
+      r_start="${BASH_REMATCH[1]}"
+      r_end="${BASH_REMATCH[2]}"
+      port_number_is_valid "$r_start" && port_number_is_valid "$r_end" \
+        && [ $((10#$r_end)) -gt $((10#$r_start)) ] \
+        && [ $((10#$r_end - 10#$r_start)) -le 2000 ] \
+        || die "端口范围无效：$new_port（如 8443-9443，须在 1-65535 内且起点<终点、跨度 ≤2000）"
+      new_port=$((10#$r_start))
+      new_hi=$((10#$r_end))
+      value="${new_port}-${new_hi}"
     else
       port_number_is_valid "$new_port" || die "端口无效：$new_port"
     fi
@@ -1158,7 +1168,7 @@ port_cmd() {
   # 还留着历史值（或已清空），拿它判定会误拦（实测踩过，hop off 后
   # 仍报「落在范围内」）。
   if command -v port_hop_enabled >/dev/null 2>&1 && port_hop_enabled; then
-    hop_rng="$(port_hop_ports 2>/dev/null || true)"
+    hop_rng="$(hop_range 2>/dev/null || true)"
     [ -n "$hop_rng" ] || hop_rng="${PORT_HOP_RANGE:-}"
   fi
   if [ -n "$hop_rng" ]; then
@@ -1169,25 +1179,18 @@ port_cmd() {
   if [ -n "$hy2_hi" ] && [ "$hy2_hi" = "$hy2_lo" ]; then
     hy2_hi="$hy2_lo"
   fi
-  if [ -n "$hy2_hi" ]; then
-    case "$target" in
-      vless)
-        if [ "$new_port" -ge "$hy2_lo" ] && [ "$new_port" -le "$hy2_hi" ]; then
-          die "端口冲突：VLESS $new_port 落在 HY2 端口跳跃范围 ${hy2_lo}-${hy2_hi}（UDP）内。
+  if [ "$target" = "vless" ] && [ -n "$hy2_hi" ]; then
+    if [ "$new_port" -ge "$hy2_lo" ] && [ "$new_port" -le "$hy2_hi" ]; then
+      die "端口冲突：VLESS $new_port 落在 HY2 端口跳跃范围 ${hy2_lo}-${hy2_hi}（UDP）内。
 换一个范围外的端口，例如：sudo hy2 port vless $((hy2_hi + 1))"
-        fi
-        ;;
-      hy2)
-        if [[ "$value" == *-* ]]; then
-          local vless_now="${XRAY_PORT:-}"
-          local new_hi="${value##*-}"
-          if [ -n "$vless_now" ] && [ "$vless_now" -ge "$new_port" ] && [ "$vless_now" -le "$new_hi" ]; then
-            die "端口冲突：HY2 范围 $value 包含当前 VLESS 端口 $vless_now。
+    fi
+  fi
+  if [ "$target" = "hy2" ] && [ -n "$new_hi" ]; then
+    local vless_now="${XRAY_PORT:-}"
+    if [ -n "$vless_now" ] && [ "$vless_now" -ge "$new_port" ] && [ "$vless_now" -le "$new_hi" ]; then
+      die "端口冲突：HY2 范围 $value 包含当前 VLESS 端口 $vless_now。
 先把 VLESS 挪出该范围：sudo hy2 port vless $((new_hi + 1))"
-          fi
-        fi
-        ;;
-    esac
+    fi
   fi
 
   case "$target" in
@@ -1248,17 +1251,36 @@ PY
       warn "config.env 已是 $new_port 但实际监听配置是 ${current_actual:-未知}（上次操作未完成），继续重建"
     fi
   fi
-  if [ "$new_port" = "$old_value" ] && { [ "$target" != "vless" ] || [ "$current_actual" = "$new_port" ]; }; then
-    log "端口未变化（$target = $new_port），无需操作"
+  local unchanged=0
+  if [ "$target" = "vless" ]; then
+    if [ "$new_port" = "$old_value" ] && [ "$current_actual" = "$new_port" ]; then
+      unchanged=1
+    fi
+  elif [ -n "$new_hi" ]; then
+    if port_hop_enabled && [ "$new_port" = "$old_value" ] && [ "$(hop_range 2>/dev/null || true)" = "$value" ]; then
+      unchanged=1
+    fi
+  else
+    if ! port_hop_enabled && [ "$new_port" = "$old_value" ]; then
+      unchanged=1
+    fi
+  fi
+  if [ "$unchanged" -eq 1 ]; then
+    log "端口未变化（$target = $value），无需操作"
     return 0
   fi
 
   log "回滚快照：$(snapshot_before_change)"
-  if [ "$target" = "hy2" ] && [[ "$value" == *-* ]]; then
-    # 范围形式：关掉旧跳跃语义，直接用 PORT_HOP_RANGE 承载
+  if [ "$target" = "hy2" ] && [ -n "$new_hi" ]; then
+    # 范围形式：更新基准端口并开启端口跳跃
     set_config_env_var HY2_PORT "$new_port"
     set_config_env_var PORT_HOP_RANGE "$value"
     set_config_env_var PORT_HOP_ENABLED true
+  elif [ "$target" = "hy2" ]; then
+    # 单端口形式：关闭端口跳跃并清旧范围，防止 rebuild_config.py 因旧范围起点不匹配而失败
+    set_config_env_var HY2_PORT "$new_port"
+    set_config_env_var PORT_HOP_ENABLED false
+    set_config_env_var PORT_HOP_RANGE ""
   else
     set_config_env_var "$key" "$new_port"
   fi
@@ -1276,12 +1298,31 @@ PY
   # config.env，没有任何内存缓存，无需重启就能看到新端口。
   # config.env 已在上面写好了，直接重建即可。
   log "重建配置..."
-  api_post sync >/dev/null 2>&1 || warn "sync 重建失败，尝试用本地 rebuild"
-  # 双保险：无论 sync 成败，本地 rebuild 都跑一遍（幂等）
-  [ -x "$REBUILD_FILE" ] && "$REBUILD_FILE" >/dev/null 2>&1 || true
-  [ -x "$XRAY_REBUILD_FILE" ] && "$XRAY_REBUILD_FILE" >/dev/null 2>&1 || true
+  if [ -x "$REBUILD_FILE" ]; then
+    "$REBUILD_FILE" || die "Hysteria 配置重建失败"
+  fi
+  if [ -x "$XRAY_REBUILD_FILE" ]; then
+    "$XRAY_REBUILD_FILE" || die "Xray 配置重建失败"
+  fi
   chown hysteria:hysteria "$HYSTERIA_CONFIG" 2>/dev/null || true
   chmod 0660 "$HYSTERIA_CONFIG" 2>/dev/null || true
+  api_post sync >/dev/null 2>&1 || warn "sync 刷新失败，将在下次采集同步"
+
+  # 若本机启用了 ufw / firewalld，同步放行新端口
+  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
+    if [ "$target" = "hy2" ]; then
+      ufw allow "${new_port}/udp" >/dev/null 2>&1 || true
+    else
+      ufw allow "${new_port}/tcp" >/dev/null 2>&1 || true
+    fi
+  elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    if [ "$target" = "hy2" ]; then
+      firewall-cmd --permanent --add-port="${new_port}/udp" >/dev/null 2>&1 || true
+    else
+      firewall-cmd --permanent --add-port="${new_port}/tcp" >/dev/null 2>&1 || true
+    fi
+    firewall-cmd --reload >/dev/null 2>&1 || true
+  fi
 
   log "重启内核（在线用户会短暂断开）..."
   if ! hy2_is_off; then
